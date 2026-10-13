@@ -22,6 +22,21 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-13-ci-resources',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'CI build fix',
+    summary: 'Automated checks now work on a clean checkout.',
+    changes: [
+      {
+        type: 'fixed',
+        title: 'CI generated resources',
+        description:
+          'The check workflow now generates the bundled notices before linting Rust, which failed on clean GitHub runners.',
+      },
+    ],
+  },
+  {
     id: '2026-10-13-exclusions-and-markdown-preview',
     version: '0.1.0',
     date: '2026-10-13',

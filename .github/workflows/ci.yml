@@ -28,5 +28,10 @@ jobs:
       - name: Export Go path for package builds
         run: echo "ZWIP_GO=$(command -v go)" >> "$GITHUB_ENV"
       - run: npm ci
+      # Tauri's build script requires the generated notices resource, so clippy needs it too.
+      - name: Generate bundled resources
+        run: |
+          npm run build:web
+          node scripts/application-notices.mjs
       - run: npm run check
       - run: npm test
