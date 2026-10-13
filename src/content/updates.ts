@@ -22,6 +22,38 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-13-package-progress-indexing-settings-menu',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'Package downloads, indexing progress and Settings menu',
+    summary:
+      'Download packages in place, watch their progress, and see indexing in the status bar.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'Download beside Enable',
+        description:
+          'Each package shows Download, or Update when the catalog has a newer version, next to its Enable button.',
+      },
+      {
+        type: 'added',
+        title: 'Install progress',
+        description: 'A progress bar shows the download size, then verification and installation.',
+      },
+      {
+        type: 'added',
+        title: 'Indexing progress',
+        description:
+          'The status bar shows files indexed while a workspace opens, then build contexts that are still loading.',
+      },
+      {
+        type: 'added',
+        title: 'Settings in the app menu',
+        description: 'Open Settings from Zwip → Settings… or with ⌘,.',
+      },
+    ],
+  },
+  {
     id: '2026-10-13-diff-viewer',
     version: '0.1.0',
     date: '2026-10-13',

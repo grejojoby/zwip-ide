@@ -166,6 +166,9 @@ export interface PackageState {
   capabilities: string[];
   error?: string;
 }
+/** A catalog package being downloaded or installed. */
+export type PackageInstallProgress =
+  { phase: 'downloading'; received: number; total: number | null } | { phase: 'installing' };
 export interface SearchMatch {
   path: string;
   line: number;

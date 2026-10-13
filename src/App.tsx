@@ -1,5 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
+import { listen } from '@tauri-apps/api/event';
 import { api, request } from './api';
 import type {
   EditorOperation,
@@ -67,6 +68,7 @@ import { FileSearch } from './components/FileSearch';
 import { CommandSearch, type ActionCommand } from './components/CommandSearch';
 import { GitPanel, type Selection as GitSelection } from './components/GitPanel';
 import { Packages } from './components/Packages';
+import { IndexingStatus, useScanProgress } from './components/IndexingStatus';
 import { TaskPanel } from './components/TaskPanel';
 import { HistoryPanel } from './components/HistoryPanel';
 import { Recovery } from './components/Recovery';
@@ -177,6 +179,7 @@ export function App() {
   const [error, setError] = useState('');
   const [status, setStatus] = useState('Ready');
   const [opening, setOpening] = useState(false);
+  const scannedFiles = useScanProgress(opening);
   const [closing, setClosing] = useState(false);
   const lifecycleBusy = useRef(false);
   const [recentRoots, setRecentRoots] = useState<string[]>([]);
@@ -214,6 +217,12 @@ export function App() {
     (config) => config.id === workspaceTasks.state.settings.selectedId,
   );
 
+  useEffect(() => {
+    // Zwip → Settings… (⌘,) in the native application menu.
+    if (!('__TAURI_INTERNALS__' in window)) return;
+    const stop = listen('zwip://open-settings', () => setShowSettings(true)).catch(() => null);
+    return () => void stop.then((unlisten) => unlisten?.());
+  }, []);
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     if (globalPreferencesReady) void api.setSetting('zwip.theme', dark).catch(report);
@@ -282,8 +291,10 @@ export function App() {
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     async function pollReadiness() {
+      let loading = false;
       try {
         const reply = await api.workspaceStatus();
+        loading = reply.contexts.some((context) => context.state === 'loading');
         if (active && reply.contexts.length)
           setWorkspace((current) => {
             if (!current || current.generation !== reply.generation) return current;
@@ -295,7 +306,8 @@ export function App() {
       } catch {
         /* A workspace transition may briefly invalidate this read. */
       } finally {
-        if (active) timer = setTimeout(() => void pollReadiness(), 5000);
+        // Poll faster while contexts are still indexing so the status bar progress stays current.
+        if (active) timer = setTimeout(() => void pollReadiness(), loading ? 1000 : 5000);
       }
     }
     timer = setTimeout(() => void pollReadiness(), 500);
@@ -2136,6 +2148,7 @@ export function App() {
         <span className={`status-dot ${navigating || opening ? 'busy' : ''}`} />
         <span role="status">{navigating ? 'Searching semantic contexts…' : status}</span>
         <div className="spacer" />
+        <IndexingStatus scannedFiles={scannedFiles} contexts={workspace?.contexts ?? []} />
         {focusPath && (
           <>
             <span>
@@ -2387,7 +2400,9 @@ export function App() {
         >
           <div className="modal-body" role="status">
             {opening
-              ? 'Synchronizing documents and opening the workspace…'
+              ? scannedFiles
+                ? `Indexing files… ${scannedFiles.toLocaleString()}`
+                : 'Synchronizing documents and opening the workspace…'
               : 'Synchronizing and releasing the editor…'}
           </div>
         </Modal>

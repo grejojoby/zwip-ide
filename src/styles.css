@@ -648,6 +648,17 @@ kbd {
 .status-dot.busy {
   background: var(--orange);
 }
+.indexing-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.indexing-status progress {
+  width: 80px;
+  height: 4px;
+  accent-color: var(--accent);
+}
 .error-banner {
   display: flex;
   align-items: center;
@@ -959,6 +970,25 @@ kbd {
 }
 .package-item .muted {
   font-size: 10px;
+}
+.package-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.install-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.install-progress progress {
+  flex: 0 1 200px;
+  height: 6px;
+  accent-color: var(--accent);
 }
 .results-panel,
 .git-panel,

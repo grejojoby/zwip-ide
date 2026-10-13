@@ -76,6 +76,7 @@ export const api = {
     request<WorkspaceSnapshot>('workspace.setExcluded', { path, excluded }),
   workspaceChanges: () =>
     request<{ paths: string[]; configurationChanged: boolean }>('workspace.changes'),
+  scanProgress: () => request<{ files: number }>('workspace.scanProgress'),
   workspaceStatus: () =>
     request<{ generation: number; contexts: import('./contracts').BuildContext[] }>(
       'workspace.status',
@@ -122,6 +123,10 @@ export const api = {
   rollbackPackage: (id: string) => request<PackageState[]>('package.rollback', { id }),
   enablePackage: (id: string, enabled: boolean) =>
     request<PackageState[]>('package.enable', { id, enabled }),
+  packageInstallProgress: () =>
+    request<Record<string, import('./contracts').PackageInstallProgress>>(
+      'package.installProgress',
+    ),
   installPackage: (path: string) => request<PackageState[]>('package.install', { path }),
   gitStatus: () => request<GitSnapshot>('git.status'),
   gitDiff: (path: string) => request<GitDiff>('git.diff', { path }),

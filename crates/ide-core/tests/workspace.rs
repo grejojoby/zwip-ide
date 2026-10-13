@@ -34,6 +34,24 @@ fn explicit_workspace_uses_its_own_ignore_boundary() {
 }
 
 #[test]
+fn scan_progress_reports_the_indexed_file_count() {
+    let root = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    for name in ["a.go", "b.go", "c.md"] {
+        fs::write(root.path().join(name), "x\n").unwrap();
+    }
+    let core = Core::new(data.path().to_owned()).unwrap();
+    let workspace = core
+        .request("workspace.open", json!({"root":root.path()}))
+        .unwrap();
+    let progress = core.request("workspace.scanProgress", json!({})).unwrap();
+    assert_eq!(
+        progress["files"].as_u64().unwrap() as usize,
+        workspace["files"].as_array().unwrap().len()
+    );
+}
+
+#[test]
 fn explicit_profiles_preserve_defaults_and_invalidate_changed_settings() {
     let root = tempfile::tempdir().unwrap();
     let data = tempfile::tempdir().unwrap();

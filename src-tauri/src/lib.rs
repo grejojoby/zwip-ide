@@ -1,5 +1,6 @@
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::menu::{Menu, MenuItem, MenuItemKind, PredefinedMenuItem};
+use tauri::{Emitter, Manager};
 
 #[tauri::command]
 async fn ide_request(
@@ -27,6 +28,18 @@ pub fn run() {
             let data = std::env::var_os("ZWIP_DATA").map(std::path::PathBuf::from).unwrap_or(app.path().app_data_dir()?);
             let core = Arc::new(ide_core::Core::new(data)?);
             app.manage(core);
+            // The standard macOS menu, plus Settings… in the application menu after About.
+            let menu = Menu::default(app.handle())?;
+            let settings = MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
+            if let Some(MenuItemKind::Submenu(application)) = menu.items()?.into_iter().next() {
+                application.insert_items(&[&settings, &PredefinedMenuItem::separator(app)?], 2)?;
+            }
+            app.set_menu(menu)?;
+            app.on_menu_event(|app, event| {
+                if event.id() == "settings" {
+                    let _ = app.emit("zwip://open-settings", ());
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![ide_request])
