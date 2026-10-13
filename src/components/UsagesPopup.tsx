@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import type { NavigationBatch, SourceLocation } from '../contracts';
+import type { NavigationBatch, Position, SourceLocation } from '../contracts';
 import { CodePreview } from '../editor/highlight';
 import { Icon } from './Icon';
+import { UsagePreview } from './UsagePreview';
 
 export interface PopupAnchor {
   /** Left edge and bottom of the caret line, in viewport pixels. */
@@ -11,23 +12,45 @@ export interface PopupAnchor {
   top: number;
 }
 
+/** Workspace-relative folder for a usage: first and last folders, with … between when longer. */
+export function shortDirectory(path: string, root = ''): string {
+  const relative =
+    root && path.startsWith(`${root.replace(/\/+$/, '')}/`)
+      ? path.slice(root.replace(/\/+$/, '').length + 1)
+      : path.replace(/^\/+/, '');
+  const folders = relative.split('/').slice(0, -1);
+  return folders.length > 2 ? `${folders[0]}/…/${folders.at(-1)}` : folders.join('/');
+}
+
 const GAP = 6;
-const MIN_HEIGHT = 160;
+// Room for a few usage rows plus the code preview.
+const MIN_HEIGHT = 300;
 
 /** IntelliJ-style "Show Usages" popup, placed just below the line it was invoked from. */
 export function UsagesPopup({
   anchor,
   symbol,
+  workspaceRoot,
   batch,
   loading,
+  dark,
+  loadPreview,
+  onNavigate,
   onOpen,
   onDock,
   onClose,
 }: {
   anchor: PopupAnchor;
   symbol: string;
+  /** Workspace root, so paths are shown relative to it. */
+  workspaceRoot?: string;
   batch: NavigationBatch | null;
   loading: boolean;
+  dark: boolean;
+  /** Buffer text for the code preview below the list. */
+  loadPreview(path: string): Promise<string>;
+  /** ⌘-click inside the preview: navigate as the editor would; results open in the editor. */
+  onNavigate(path: string, position: Position): void;
   onOpen(location: SourceLocation): void;
   onDock(): void;
   onClose(): void;
@@ -142,6 +165,11 @@ export function UsagesPopup({
           >
             <CodePreview path={location.path} text={(location.preview || location.name).trim()} />
             <span className="usages-popup-file" title={location.path}>
+              {shortDirectory(location.path, workspaceRoot) && (
+                <span className="usages-popup-dir">
+                  {shortDirectory(location.path, workspaceRoot)}/
+                </span>
+              )}
               {location.path.split('/').pop()}:{location.range.start.line + 1}
             </span>
           </div>
@@ -154,6 +182,14 @@ export function UsagesPopup({
           </p>
         )}
       </div>
+      {locations[selected] && (
+        <UsagePreview
+          location={locations[selected]}
+          dark={dark}
+          load={loadPreview}
+          onNavigate={onNavigate}
+        />
+      )}
     </div>
   );
 }

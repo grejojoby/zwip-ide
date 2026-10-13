@@ -31,6 +31,7 @@ import { syntaxColors } from './syntax-colors';
 import { navigationHighlight, revealNavigationTarget } from './navigation-highlight';
 import type { NavigationOperation, Position, TextDelta } from '../contracts';
 import { offsetAt, positionAt, type OpenEditor } from './editor-store';
+import { currentEditorFontSize, editorFontSizeAfterWheel, setEditorFontSize } from '../model/zoom';
 const mirrored = Annotation.define<boolean>();
 
 function theme(dark: boolean): Extension {
@@ -41,6 +42,7 @@ function theme(dark: boolean): Extension {
         '&': { height: '100%', backgroundColor: 'var(--editor)', color: 'var(--syntax-text)' },
         '.cm-scroller': {
           fontFamily: '"SFMono-Regular", Menlo, Monaco, Consolas, monospace',
+          fontSize: 'var(--editor-font-size, 12px)',
           lineHeight: '1.65',
         },
         '.cm-content': { padding: '12px 0', caretColor: 'var(--text)' },
@@ -274,6 +276,15 @@ export function CodeEditor(props: Props) {
       : EditorState.create({ doc: doc.initial, extensions });
     const view = new EditorView({ state, parent: container.current });
     viewRef.current = view;
+    // ⌘/Ctrl + scroll and trackpad pinch (a ctrlKey wheel) zoom the code font, not the page.
+    const zoomCode = (event: WheelEvent) => {
+      if (!event.metaKey && !event.ctrlKey) return;
+      event.preventDefault();
+      setEditorFontSize(editorFontSizeAfterWheel(currentEditorFontSize(), event.deltaY));
+      for (const other of document.querySelectorAll('.cm-editor'))
+        EditorView.findFromDOM(other as HTMLElement)?.requestMeasure();
+    };
+    view.dom.addEventListener('wheel', zoomCode, { passive: false });
     doc.initial = '';
     let alive = true;
     let syntaxRequest = 0;
@@ -311,6 +322,7 @@ export function CodeEditor(props: Props) {
       stopObservingSyntax();
       doc.state = view.state;
       doc.views.delete(view);
+      view.dom.removeEventListener('wheel', zoomCode);
       view.destroy();
       viewRef.current = null;
     };

@@ -2,5 +2,5 @@
   "identifier": "main",
   "description": "Main IDE window",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:allow-open"]
+  "permissions": ["core:default", "core:webview:allow-set-webview-zoom", "dialog:allow-open"]
 }

@@ -1,6 +1,8 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
+// Already in the main bundle: the syntax runtime shares it with downloaded grammars.
+import { closeCompletion } from '@codemirror/autocomplete';
 import { api, request } from './api';
 import type {
   EditorOperation,
@@ -77,6 +79,14 @@ import { EditPreview } from './components/EditPreview';
 import { SymbolSearch } from './components/SymbolSearch';
 import { Settings, type HistoryPreferences } from './components/Settings';
 import { loadPreference } from './model/preferences';
+import {
+  EDITOR_FONT,
+  UI_ZOOM,
+  nextUiZoom,
+  setEditorFontSize,
+  setUiZoom,
+  zoomDirection,
+} from './model/zoom';
 import { useWorkspaceTasks } from './model/use-workspace-tasks';
 import { runDirectory } from './model/run-configurations';
 import {
@@ -199,6 +209,8 @@ export function App() {
   const [usagesPopup, setUsagesPopup] = useState<{ anchor: PopupAnchor; symbol: string } | null>(
     null,
   );
+  // Files the usage preview opened without a tab; released once the popup and its navigation end.
+  const previewDocuments = useRef(new Set<string>());
   const [batch, setBatch] = useState<NavigationBatch | null>(null);
   const [navigationOperation, setNavigationOperation] = useState<NavigationOperation>('references');
   const [navigationTitle, setNavigationTitle] = useState('Usages');
@@ -222,6 +234,19 @@ export function App() {
     (config) => config.id === workspaceTasks.state.settings.selectedId,
   );
 
+  const uiZoom = useRef<number>(UI_ZOOM.initial);
+  useEffect(() => {
+    // ⌘+ / ⌘− / ⌘0 zoom the whole IDE, also while a dialog is open.
+    const key = (event: KeyboardEvent) => {
+      const direction = zoomDirection(event);
+      if (!direction || !('__TAURI_INTERNALS__' in window)) return;
+      event.preventDefault();
+      uiZoom.current = nextUiZoom(uiZoom.current, direction);
+      void setUiZoom(uiZoom.current).catch(report);
+    };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, []);
   useEffect(() => {
     // Zwip → Settings… (⌘,) in the native application menu.
     if (!('__TAURI_INTERNALS__' in window)) return;
@@ -244,9 +269,14 @@ export function App() {
         maxBytes: 64 * 1024 * 1024,
       }),
       loadPreference<string | null>('zwip.updates.lastSeen', null),
+      loadPreference('zwip.uiZoom', UI_ZOOM.initial),
+      loadPreference('zwip.editorFontSize', EDITOR_FONT.initial),
     ])
-      .then(([theme, roots, keys, retention, lastSeenUpdate]) => {
+      .then(([theme, roots, keys, retention, lastSeenUpdate, zoom, fontSize]) => {
         if (!alive) return;
+        uiZoom.current = zoom;
+        if (zoom !== UI_ZOOM.initial) void setUiZoom(zoom, false).catch(report);
+        setEditorFontSize(fontSize, false);
         setDark(theme);
         setRecentRoots(roots);
         setShortcuts(normalizedShortcuts(keys));
@@ -702,15 +732,8 @@ export function App() {
     });
     history.current.visit(path, position, sourceContextId);
     redraw((value) => value + 1);
-    const [
-      { closeCompletion },
-      { forceLinting, setDiagnostics: clearDiagnostics },
-      { closeHoverTooltips },
-    ] = await Promise.all([
-      import('@codemirror/autocomplete'),
-      import('@codemirror/lint'),
-      import('@codemirror/view'),
-    ]);
+    const [{ forceLinting, setDiagnostics: clearDiagnostics }, { closeHoverTooltips }] =
+      await Promise.all([import('@codemirror/lint'), import('@codemirror/view')]);
     if (documents.documents.get(path) !== doc || doc.sourceContextId !== sourceContextId) return;
     for (const view of doc.views) {
       closeCompletion(view);
@@ -1227,6 +1250,12 @@ export function App() {
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
   }, []);
+  useEffect(() => {
+    if (usagesPopup || navigating) return;
+    for (const path of previewDocuments.current)
+      if (!tabs.includes(path) && path !== split) void documents.close(path).catch(() => undefined);
+    previewDocuments.current.clear();
+  }, [usagesPopup, navigating, tabs, split]);
   const diffView = diffTabs.find((item) => item.path === activeDiff);
   const mainDoc = active ? documents.documents.get(active) : undefined;
   const splitDoc = split ? documents.documents.get(split) : undefined;
@@ -2385,8 +2414,16 @@ export function App() {
         <UsagesPopup
           anchor={usagesPopup.anchor}
           symbol={usagesPopup.symbol}
+          workspaceRoot={workspace?.root}
           batch={batch}
           loading={navigating}
+          dark={dark}
+          loadPreview={async (path) => {
+            const doc = await documents.open(path);
+            previewDocuments.current.add(path);
+            return doc.state?.doc.toString() ?? doc.initial;
+          }}
+          onNavigate={(path, at) => void navigate('smart', at, path)}
           onOpen={(location) => {
             setUsagesPopup(null);
             void openFile(

@@ -92,6 +92,7 @@
   },
   "overrides": {
     "basic-ftp": "6.2.3",
-    "serialize-javascript": "7.1.2"
+    "serialize-javascript": "7.1.2",
+    "@puppeteer/browsers": "3.2.3"
   }
 }

@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { EditorView } from '@codemirror/view';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { NavigationBatch, SourceLocation } from '../contracts';
-import { UsagesPopup } from './UsagesPopup';
+import { shortDirectory, UsagesPopup } from './UsagesPopup';
 
 vi.mock('../api', () => ({ request: async () => null }));
+// jsdom has no text layout; CodeMirror measures ranges when scrolling the preview.
+Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
+Range.prototype.getBoundingClientRect = () => new DOMRect();
 afterEach(cleanup);
 
 const usage = (path: string, line: number, preview: string): SourceLocation => ({
@@ -26,14 +30,25 @@ const batch = (state: NavigationBatch['state']): NavigationBatch => ({
   reasons: [],
 });
 
+// pkg/a.go: the usage is on line 10 (index 9); lines 5–15 surround it.
+const fileText = Array.from({ length: 20 }, (_, at) =>
+  at === 9 ? '    Run()' : `line ${at + 1}`,
+).join('\n');
 function show(state: NavigationBatch['state'] = 'complete') {
-  const handlers = { onOpen: vi.fn(), onDock: vi.fn(), onClose: vi.fn() };
+  const handlers = {
+    onOpen: vi.fn(),
+    onDock: vi.fn(),
+    onClose: vi.fn(),
+    onNavigate: vi.fn(),
+    loadPreview: vi.fn(async () => fileText),
+  };
   render(
     <UsagesPopup
       anchor={{ left: 40, top: 100, bottom: 118 }}
       symbol="Run"
       batch={batch(state)}
       loading={false}
+      dark
       {...handlers}
     />,
   );
@@ -64,5 +79,42 @@ describe('usages popup', () => {
     expect(screen.getByText('partial')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Dock to bottom panel' }));
     expect(onDock).toHaveBeenCalled();
+  });
+  it('shows a trimmed workspace-relative folder before each file name', () => {
+    show();
+    expect(screen.getAllByTitle('pkg/a.go')[0].textContent).toBe('pkg/a.go:10');
+  });
+  it.each([
+    ['/w/main.go', ''],
+    ['/w/cmd/main.go', 'cmd'],
+    ['/w/cmd/api/main.go', 'cmd/api'],
+    ['/w/services/billing/internal/http/handler.go', 'services/…/http'],
+  ])('shortens %s to %j', (path, expected) => {
+    expect(shortDirectory(path, '/w')).toBe(expected);
+  });
+  it('previews the selected usage with its surrounding lines and highlights the match', async () => {
+    const { loadPreview } = show();
+    const preview = await screen.findByLabelText('Preview of pkg/a.go');
+    await waitFor(() => expect(preview.textContent).toContain('Run()'));
+    expect(loadPreview).toHaveBeenCalledWith('pkg/a.go');
+    expect(preview.textContent).toContain('line 5');
+    expect(preview.textContent).toContain('line 15');
+    expect(preview.querySelector('.usage-preview-match')?.textContent).toBe('Run');
+    expect(preview.querySelector('.usage-preview-line')?.textContent).toContain('Run()');
+    fireEvent.keyDown(screen.getByRole('listbox', { name: 'Usages' }), { key: 'ArrowDown' });
+    expect(await screen.findByLabelText('Preview of pkg/b.go')).toBeTruthy();
+  });
+  it('navigates from a ⌘-click in the preview without opening the usage itself', async () => {
+    const { onNavigate, onOpen } = show();
+    const preview = await screen.findByLabelText('Preview of pkg/a.go');
+    await waitFor(() => expect(preview.querySelector('.cm-content')).toBeTruthy());
+    // jsdom has no layout; map the click to the "Run" call on line 10.
+    const offset = fileText.indexOf('Run');
+    vi.spyOn(EditorView.prototype, 'posAtCoords').mockReturnValue(offset + 1);
+    fireEvent.mouseDown(preview.querySelector('.cm-content')!, { metaKey: true, button: 0 });
+    expect(onNavigate).toHaveBeenCalledWith('pkg/a.go', { line: 9, character: 5 });
+    fireEvent.mouseDown(preview.querySelector('.cm-content')!, { button: 0 });
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(onOpen).not.toHaveBeenCalled();
   });
 });

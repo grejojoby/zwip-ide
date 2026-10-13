@@ -22,6 +22,44 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-13-usage-paths-and-dependency-fixes',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'Usage preview, paths and dependency fixes',
+    summary:
+      'Preview each usage before opening it, see where it lives, and two security alerts are resolved.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Usage preview',
+        description:
+          'The usages popup shows the selected usage with five lines above and below, highlighted like the editor. ⌘-click inside the preview navigates from there; results open in the editor.',
+      },
+      {
+        type: 'improved',
+        title: 'Scrolling usage list',
+        description: 'Long usage lists scroll after about eight rows, keeping the preview in view.',
+      },
+      {
+        type: 'improved',
+        title: 'Folders in usages',
+        description:
+          'Each usage shows its workspace folder before the file name, shortened to the first and last folder (services/…/http/handler.go) when the path is long. Hover for the full path.',
+      },
+      {
+        type: 'fixed',
+        title: 'Test tooling security update',
+        description:
+          'The end-to-end test tools no longer include extract-zip, which had unpatched path-traversal advisories. This affects development tooling only, not the app.',
+      },
+      {
+        type: 'maintenance',
+        title: 'Cleaner build',
+        description: 'Removed a lazy import that had no effect and produced a build warning.',
+      },
+    ],
+  },
+  {
     id: '2026-10-13-indexing-progress-per-module',
     version: '0.1.0',
     date: '2026-10-13',

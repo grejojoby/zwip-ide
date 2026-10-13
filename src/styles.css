@@ -3172,8 +3172,22 @@ path.current {
   font-family: var(--mono);
 }
 .usages-popup-list {
+  flex: 0 1 auto;
+  /* About eight rows, then scroll; shrinks first when the popup has little room. */
+  max-height: 190px;
+  min-height: 48px;
   overflow: auto;
   padding: 3px 0;
+}
+.usage-preview {
+  flex: none;
+  /* The usage line with five lines above and below. */
+  height: calc(11 * 1.65 * 12px + 8px);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+.usage-preview-body {
+  height: 100%;
 }
 .usages-popup-list:focus-visible {
   outline: none;
@@ -3198,7 +3212,15 @@ path.current {
   font-size: 12px;
 }
 .usages-popup-file {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--muted);
   font-size: 11px;
+}
+.usages-popup-dir {
+  opacity: 0.75;
 }
