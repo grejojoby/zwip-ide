@@ -21,7 +21,7 @@ const configuration: RunConfiguration = {
     args: ['--port', '8080'],
   },
 };
-async function setup() {
+async function setup(onImport?: () => void) {
   const backend: RunBackend = {
     getSetting: async <T,>() =>
       ({ version: 1, selectedId: 'go', configurations: [configuration] }) as T,
@@ -33,7 +33,7 @@ async function setup() {
   vi.spyOn(backend, 'setSetting');
   const session = new WorkspaceRunSession('/fixture', backend);
   await session.load();
-  render(<TaskPanel session={session} state={session.getSnapshot()} />);
+  render(<TaskPanel session={session} state={session.getSnapshot()} onImport={onImport} />);
   return backend;
 }
 it('preserves imported debugging when only the configuration name changes', async () => {
@@ -71,3 +71,13 @@ it.each(['Command to run', 'Run working directory'])(
     expect(backend.runTask).not.toHaveBeenCalled();
   },
 );
+it('offers IntelliJ import as the last dropdown choice without changing the selection', async () => {
+  const onImport = vi.fn();
+  await setup(onImport);
+  const select = screen.getByLabelText<HTMLSelectElement>('Edit run configuration');
+  const options = [...select.options];
+  expect(options[options.length - 1].textContent).toBe('Import from IntelliJ…');
+  fireEvent.change(select, { target: { value: options[options.length - 1].value } });
+  expect(onImport).toHaveBeenCalledTimes(1);
+  expect(select.value).toBe('go');
+});

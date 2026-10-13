@@ -7,6 +7,7 @@ import * as common from '@lezer/common';
 import * as highlight from '@lezer/highlight';
 import * as lr from '@lezer/lr';
 import { request } from '../api';
+import { builtinKey, builtinSyntax } from './builtin-syntax';
 
 const runtime = {
   '@codemirror/state': state,
@@ -47,14 +48,17 @@ interface SyntaxAsset {
 /** Only checked, enabled package assets supply language-specific editor behavior. */
 export function syntaxFor(path: string): Promise<Extension> {
   const extension = path.split('.').pop() ?? '';
-  const existing = loaded.get(extension);
+  const key = builtinKey(path);
+  const existing = loaded.get(key);
   if (existing) return existing;
   const current = generation;
   const loading = (async () => {
     // JSON remains a core configuration-file convenience, independent of language packages.
     if (extension === 'json') return (await import('@codemirror/lang-json')).json();
     const asset = await request<SyntaxAsset | null>('package.syntax', { extension });
-    if (!asset || current !== generation) return [];
+    if (current !== generation) return [];
+    // Enabled packages supply their own grammar; otherwise the app's built-in one applies.
+    if (!asset) return (await builtinSyntax(path)) ?? [];
     if (asset.abi !== 1) throw new Error('Unsupported package syntax ABI');
     const bytes = new TextEncoder().encode(asset.source);
     const digest = Array.from(
@@ -79,6 +83,6 @@ export function syntaxFor(path: string): Promise<Extension> {
     const module = await factory;
     return current === generation ? module.createSyntax(extension) : [];
   })();
-  loaded.set(extension, loading);
+  loaded.set(key, loading);
   return loading;
 }

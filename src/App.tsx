@@ -37,6 +37,7 @@ import { isCurrentResult, NavigationHistory, shouldFindUsages } from './model/na
 import { withNavigationProgress } from './model/navigation-progress';
 import { mergeContextUpdates } from './model/build-contexts';
 import { Icon } from './components/Icon';
+import { IntelliJImport } from './components/IntelliJImport';
 import { MarkdownPreview } from './components/MarkdownPreview';
 import { Modal } from './components/Modal';
 import { isMarkdownPath } from './model/markdown';
@@ -123,6 +124,7 @@ export function App() {
   const [active, setActive] = useState<string>();
   const [split, setSplit] = useState<string>();
   const [markdownPreview, setMarkdownPreview] = useState(false);
+  const [showRunImport, setShowRunImport] = useState(false);
   const [focusPane, setFocusPane] = useState<'main' | 'split'>('main');
   const focusPath = focusPane === 'split' ? split : active;
   const [position, setPosition] = useState<Position>({ line: 0, character: 0 });
@@ -1928,7 +1930,11 @@ export function App() {
                     </section>
                   )}
                   {tool === 'run' && (
-                    <TaskPanel session={workspaceTasks.session} state={workspaceTasks.state} />
+                    <TaskPanel
+                      session={workspaceTasks.session}
+                      state={workspaceTasks.state}
+                      onImport={() => setShowRunImport(true)}
+                    />
                   )}
                   {tool === 'history' &&
                     (focusPath ? (
@@ -2174,6 +2180,15 @@ export function App() {
             )}
           </div>
         </Modal>
+      )}
+      {showRunImport && workspace && (
+        <IntelliJImport
+          runOnly
+          shortcuts={shortcuts}
+          workspaceRoot={workspace.root}
+          runSession={workspaceTasks.session}
+          onClose={() => setShowRunImport(false)}
+        />
       )}
       {showSettings && (
         <Settings

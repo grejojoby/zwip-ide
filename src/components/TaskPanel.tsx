@@ -2,7 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import type { RunConfiguration, RunState, WorkspaceRunSession } from '../model/run-configurations';
 import { Icon } from './Icon';
 
-export function TaskPanel({ session, state }: { session: WorkspaceRunSession; state: RunState }) {
+const importOption = '__import-from-intellij__';
+
+export function TaskPanel({
+  session,
+  state,
+  onImport,
+}: {
+  session: WorkspaceRunSession;
+  state: RunState;
+  onImport?(): void;
+}) {
   const selected = state.settings.configurations.find(
     (config) => config.id === state.settings.selectedId,
   );
@@ -19,7 +29,10 @@ export function TaskPanel({ session, state }: { session: WorkspaceRunSession; st
             aria-label="Edit run configuration"
             value={state.settings.selectedId ?? ''}
             disabled={!state.ready || state.saving}
-            onChange={(event) => void session.select(event.target.value || null)}
+            onChange={(event) => {
+              if (event.target.value === importOption) onImport?.();
+              else void session.select(event.target.value || null);
+            }}
           >
             <option value="">Ad hoc command / new configuration</option>
             {state.settings.configurations.map((config) => (
@@ -27,6 +40,7 @@ export function TaskPanel({ session, state }: { session: WorkspaceRunSession; st
                 {config.name}
               </option>
             ))}
+            {onImport && <option value={importOption}>Import from IntelliJ…</option>}
           </select>
         </label>
         <button

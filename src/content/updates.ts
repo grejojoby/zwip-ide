@@ -22,6 +22,42 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-13-built-in-highlighting',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'Syntax highlighting for more files',
+    summary: 'Code is highlighted even before any language package is enabled.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Built-in highlighting',
+        description:
+          'Go, TypeScript, JavaScript, HTML, CSS, JSON and SQL, plus Python, Rust, Ruby, Lua, Swift, C-family, Java, Kotlin, shell, YAML, TOML, diff, Dockerfile and go.mod, are highlighted without packages.',
+      },
+      {
+        type: 'maintenance',
+        title: 'Packages still take priority',
+        description:
+          'Enabled Go and Web packages keep supplying their own grammars. Highlighting is not language intelligence; navigation and diagnostics still need packages.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-13-run-import-shortcut',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'Import run configurations from the Run panel',
+    summary: 'Import IntelliJ run configurations without opening Settings.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Import from IntelliJ… in the configuration list',
+        description:
+          'Choose it at the bottom of the Run panel’s configuration list to review and import run configurations only. Settings import is unchanged.',
+      },
+    ],
+  },
+  {
     id: '2026-10-13-ci-test-timeout',
     version: '0.1.0',
     date: '2026-10-13',

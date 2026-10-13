@@ -30,7 +30,7 @@ For local ZIP installation:
 node scripts/package-catalog.mjs --archives-only
 ```
 
-Choose **Install archive…** and select a ZIP from `dist/catalog/`. `archives.json` records SHA-256 digests for these local files; it is not a hosted catalog. To generate a remote catalog, supply an HTTPS location you control with `--base-url`. The generator creates files locally; it neither publishes them nor configures a public service. Packages contain executable code, so use catalogs and archives you trust.
+Choose **Install archive…** and select a ZIP from `dist/catalog/`. `archives.json` records SHA-256 digests for these local files; it is not a hosted catalog. To generate a remote catalog, supply an HTTPS location you control with `--base-url`. The generator creates files locally and does not publish them. The app's built-in catalog is the `packages` release of `grejojoby/zwip-ide`: build with `--base-url https://github.com/grejojoby/zwip-ide/releases/download/packages/`, then replace the assets with `gh release upload packages dist/catalog/*.zip dist/catalog/catalog.json --clobber`. Packages contain executable code, so use catalogs and archives you trust.
 
 ## Build the application
 

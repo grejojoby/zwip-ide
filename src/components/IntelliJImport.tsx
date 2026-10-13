@@ -14,6 +14,7 @@ export function IntelliJImport({
   shortcuts,
   workspaceRoot,
   runSession,
+  runOnly = false,
   onKeymap,
   onAppearance,
   onClose,
@@ -21,8 +22,10 @@ export function IntelliJImport({
   shortcuts: Shortcuts;
   workspaceRoot?: string;
   runSession?: WorkspaceRunSession;
-  onKeymap(shortcuts: Shortcuts): void;
-  onAppearance(dark: boolean): void;
+  /** Show only run/debug configurations, for opening the importer outside Settings. */
+  runOnly?: boolean;
+  onKeymap?(shortcuts: Shortcuts): void;
+  onAppearance?(dark: boolean): void;
   onClose(): void;
 }) {
   const [path, setPath] = useState('');
@@ -222,7 +225,7 @@ export function IntelliJImport({
             {preview.notices.length > 0 && (
               <NoticeList title="Source notes" notices={preview.notices} />
             )}
-            {keymapNames.length > 0 && (
+            {!runOnly && keymapNames.length > 0 && (
               <section aria-label="Keymap import" className="import-section">
                 <h3>Keybindings</h3>
                 <label className="field-label">
@@ -289,7 +292,7 @@ export function IntelliJImport({
                       type="button"
                       disabled={busy || !mapping.changes.length}
                       onClick={() => {
-                        onKeymap(mapping.shortcuts);
+                        onKeymap?.(mapping.shortcuts);
                         onClose();
                       }}
                     >
@@ -299,7 +302,7 @@ export function IntelliJImport({
                 )}
               </section>
             )}
-            {preview.connections.length > 0 && (
+            {!runOnly && preview.connections.length > 0 && (
               <section aria-label="Database connection import" className="import-section">
                 <h3>Database connections</h3>
                 <p className="muted">
@@ -394,7 +397,7 @@ export function IntelliJImport({
                   run/debug configurations found in this source.
                 </p>
               ))}
-            {preview.appearance && (
+            {!runOnly && preview.appearance && (
               <section aria-label="Appearance import" className="import-section">
                 <h3>Appearance</h3>
                 <p className="muted">
@@ -406,7 +409,7 @@ export function IntelliJImport({
                   type="button"
                   disabled={busy}
                   onClick={() => {
-                    onAppearance(preview.appearance!.dark);
+                    onAppearance?.(preview.appearance!.dark);
                     setMessage(
                       'Applied ' + (preview.appearance!.dark ? 'dark' : 'light') + ' appearance.',
                     );
@@ -416,16 +419,18 @@ export function IntelliJImport({
                 </button>
               </section>
             )}
-            {!keymapNames.length &&
-              !preview.connections.length &&
+            {(runOnly || !keymapNames.length) &&
+              (runOnly || !preview.connections.length) &&
               !preview.runConfigurations?.length &&
-              !preview.appearance && <p>No supported settings were found in this source.</p>}
+              (runOnly || !preview.appearance) && (
+                <p>No supported settings were found in this source.</p>
+              )}
           </div>
         )}
       </div>
       <div className="modal-actions">
         <button type="button" disabled={busy} onClick={onClose}>
-          Back to Settings
+          {runOnly ? 'Close' : 'Back to Settings'}
         </button>
       </div>
     </Modal>

@@ -55,7 +55,7 @@ In **Packages**, choose **Install directory…**, select a package under `dist/p
 node scripts/package-catalog.mjs --archives-only
 ```
 
-Choose **Install archive…** and select a ZIP from `dist/catalog/`. No public package catalog is configured by default.
+Choose **Install archive…** and select a ZIP from `dist/catalog/`. The Packages dialog loads the built-in catalog (GitHub release `packages`) automatically; a different HTTPS catalog can still be configured there.
 
 ```sh
 npm run build # Creates target/release/bundle/macos/Zwip.app
