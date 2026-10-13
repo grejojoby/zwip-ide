@@ -22,6 +22,35 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-13-ci-test-timeout',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'CI test timeout',
+    summary: 'Slow automated tests no longer fail on shared build machines.',
+    changes: [
+      {
+        type: 'maintenance',
+        title: 'Longer test timeout',
+        description:
+          'Tests now allow 30 seconds each. Web editor rename tests took over five seconds on GitHub runners.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-13-app-icon',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'App icon and favicon',
+    summary: 'Zwip now has its own icon in the Dock and browser tab.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Application icon',
+        description: 'A simple placeholder "Z" icon replaces the default app icon.',
+      },
+    ],
+  },
+  {
     id: '2026-10-13-default-package-catalog',
     version: '0.1.0',
     date: '2026-10-13',
