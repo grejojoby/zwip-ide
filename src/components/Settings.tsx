@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal } from './Modal';
 import { IntelliJImport } from './IntelliJImport';
 import {
@@ -50,6 +50,47 @@ export function Settings({
   const [showImport, setShowImport] = useState(false);
   const [importNote, setImportNote] = useState('');
   const conflicts = shortcutConflicts(draft);
+  // Listen on the window while recording: WebKit does not focus a button when it is clicked, so
+  // a key handler on the button itself would never run in the desktop app.
+  useEffect(() => {
+    if (!capturing) return;
+    const record = (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === 'Escape') {
+        setCapturing(null);
+        return;
+      }
+      if (event.key === 'Backspace' || event.key === 'Delete') {
+        setDraft((current) => ({ ...current, [capturing]: '' }));
+        setCapturing(null);
+        return;
+      }
+      const shortcut = shortcutFromEvent(event);
+      if (!shortcut) return;
+      if (!validShortcut(shortcut)) {
+        setError('This shortcut key is not supported.');
+        return;
+      }
+      if (!event.metaKey && !event.ctrlKey && !event.altKey && !/^F\d{1,2}$/.test(event.key)) {
+        setError('Use a modifier key or a function key so normal typing remains available.');
+        return;
+      }
+      setDraft((current) => ({ ...current, [capturing]: shortcut }));
+      setCapturing(null);
+      setError('');
+    };
+    // Clicking anywhere else cancels recording, as losing focus used to.
+    const cancel = (event: MouseEvent) => {
+      if (!(event.target as Element | null)?.closest('.shortcut-list button')) setCapturing(null);
+    };
+    window.addEventListener('keydown', record, true);
+    window.addEventListener('mousedown', cancel, true);
+    return () => {
+      window.removeEventListener('keydown', record, true);
+      window.removeEventListener('mousedown', cancel, true);
+    };
+  }, [capturing]);
   async function save() {
     setBusy(true);
     setError('');
@@ -112,41 +153,6 @@ export function Settings({
                       className={capturing === action ? 'recording-shortcut' : ''}
                       aria-label={`Shortcut for ${shortcutActions[action]}`}
                       onClick={() => setCapturing(action)}
-                      onBlur={() => setCapturing(null)}
-                      onKeyDown={(event) => {
-                        if (capturing !== action) return;
-                        event.preventDefault();
-                        event.stopPropagation();
-                        if (event.key === 'Escape') {
-                          setCapturing(null);
-                          return;
-                        }
-                        if (event.key === 'Backspace' || event.key === 'Delete') {
-                          setDraft((current) => ({ ...current, [action]: '' }));
-                          setCapturing(null);
-                          return;
-                        }
-                        const shortcut = shortcutFromEvent(event.nativeEvent);
-                        if (!shortcut) return;
-                        if (!validShortcut(shortcut)) {
-                          setError('This shortcut key is not supported.');
-                          return;
-                        }
-                        if (
-                          !event.metaKey &&
-                          !event.ctrlKey &&
-                          !event.altKey &&
-                          !/^F\d{1,2}$/.test(event.key)
-                        ) {
-                          setError(
-                            'Use a modifier key or a function key so normal typing remains available.',
-                          );
-                          return;
-                        }
-                        setDraft((current) => ({ ...current, [action]: shortcut }));
-                        setCapturing(null);
-                        setError('');
-                      }}
                     >
                       <kbd>
                         {capturing === action

@@ -278,3 +278,142 @@ fn fetch_then_fast_forward_pull_revalidates_updated_tracking_refs() {
         git(other.path(), &["rev-parse", "HEAD"])
     );
 }
+
+#[test]
+fn branch_popup_actions_cover_remote_checkout_compare_update_push_rename_and_delete() {
+    let (root, _data, core) = fixture();
+    let remote = tempfile::tempdir().unwrap();
+    git(remote.path(), &["init", "--bare", "-b", "main"]);
+    let remote_path = remote.path().to_str().unwrap();
+    git(root.path(), &["remote", "add", "origin", remote_path]);
+    git(root.path(), &["push", "-u", "origin", "main"]);
+    git(root.path(), &["switch", "-c", "feature"]);
+    fs::write(root.path().join("feature.txt"), "feature\n").unwrap();
+    git(root.path(), &["add", "."]);
+    git(root.path(), &["commit", "-m", "feature work"]);
+    git(root.path(), &["push", "-u", "origin", "feature"]);
+    git(root.path(), &["switch", "main"]);
+    git(root.path(), &["branch", "-D", "feature"]);
+    git(root.path(), &["fetch", "origin"]);
+
+    // Remote checkout creates a local tracking branch; a second attempt is refused.
+    action(
+        &core,
+        "git.switchBranch",
+        json!({"branch":"origin/feature","remote":true}),
+    );
+    assert_eq!(
+        git(root.path(), &["branch", "--show-current"]).trim(),
+        "feature"
+    );
+    action(&core, "git.switchBranch", json!({"branch":"main"}));
+    let status = core.request("git.status", json!({})).unwrap();
+    assert!(core
+        .request(
+            "git.switchBranch",
+            json!({"branch":"origin/feature","remote":true,"fingerprint":status["fingerprint"]})
+        )
+        .is_err());
+
+    // Compare reports tip-to-tip files and commits unique to each side.
+    fs::write(root.path().join("main.txt"), "main\n").unwrap();
+    git(root.path(), &["add", "."]);
+    git(root.path(), &["commit", "-m", "main work"]);
+    let compare = core
+        .request("git.compareBranch", json!({"branch":"feature"}))
+        .unwrap();
+    assert_eq!(compare["incoming"][0]["subject"], "feature work");
+    assert_eq!(compare["outgoing"][0]["subject"], "main work");
+    assert!(compare["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|file| file["path"] == "feature.txt" && file["status"] == "A"));
+    fs::write(root.path().join("file.txt"), "dirty\n").unwrap();
+    let working = core
+        .request(
+            "git.compareBranch",
+            json!({"branch":"feature","mode":"workingTree"}),
+        )
+        .unwrap();
+    assert!(working["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|file| file["path"] == "file.txt"));
+    git(root.path(), &["checkout", "--", "file.txt"]);
+
+    // Checkout and rebase moves the chosen branch onto the branch that was checked out.
+    action(&core, "git.checkoutRebase", json!({"branch":"feature"}));
+    assert_eq!(
+        git(root.path(), &["branch", "--show-current"]).trim(),
+        "feature"
+    );
+    assert!(root.path().join("main.txt").exists());
+    assert!(root.path().join("feature.txt").exists());
+
+    // Rename, push without an upstream, update another branch, and delete safely.
+    action(
+        &core,
+        "git.renameBranch",
+        json!({"branch":"feature","newName":"feature-2"}),
+    );
+    // The rebased branch diverged from its upstream; pushing is rejected rather than forced.
+    let status = core.request("git.status", json!({})).unwrap();
+    assert!(core
+        .request(
+            "git.pushBranch",
+            json!({"branch":"feature-2","fingerprint":status["fingerprint"]})
+        )
+        .unwrap_err()
+        .contains("non-fast-forward"));
+    git(root.path(), &["switch", "main"]);
+    git(root.path(), &["switch", "-c", "fresh"]);
+    action(&core, "git.pushBranch", json!({"branch":"fresh"}));
+    git(root.path(), &["rev-parse", "--verify", "origin/fresh"]);
+    git(root.path(), &["switch", "main"]);
+    let other = tempfile::tempdir().unwrap();
+    git(other.path(), &["clone", remote_path, "."]);
+    git(
+        other.path(),
+        &["config", "user.email", "other@example.test"],
+    );
+    git(other.path(), &["config", "user.name", "Other"]);
+    git(other.path(), &["config", "commit.gpgsign", "false"]);
+    git(other.path(), &["switch", "feature"]);
+    fs::write(other.path().join("remote.txt"), "remote\n").unwrap();
+    git(other.path(), &["add", "."]);
+    git(other.path(), &["commit", "-m", "remote work"]);
+    git(other.path(), &["push", "origin", "feature"]);
+    git(root.path(), &["branch", "feature", "origin/feature"]);
+    git(root.path(), &["branch", "-u", "origin/feature", "feature"]);
+    action(&core, "git.updateBranch", json!({"branch":"feature"}));
+    assert!(git(root.path(), &["log", "-1", "--format=%s", "feature"]).starts_with("remote work"));
+    let status = core.request("git.status", json!({})).unwrap();
+    assert!(core
+        .request(
+            "git.deleteBranch",
+            json!({"branch":"main","fingerprint":status["fingerprint"]})
+        )
+        .is_err());
+    git(root.path(), &["switch", "-c", "scratch"]);
+    fs::write(root.path().join("scratch.txt"), "x\n").unwrap();
+    git(root.path(), &["add", "."]);
+    git(root.path(), &["commit", "-m", "scratch"]);
+    git(root.path(), &["switch", "main"]);
+    let status = core.request("git.status", json!({})).unwrap();
+    assert!(core
+        .request(
+            "git.deleteBranch",
+            json!({"branch":"scratch","fingerprint":status["fingerprint"]})
+        )
+        .is_err());
+    action(
+        &core,
+        "git.deleteBranch",
+        json!({"branch":"scratch","force":true}),
+    );
+    assert!(git(root.path(), &["branch", "--list", "scratch"])
+        .trim()
+        .is_empty());
+}

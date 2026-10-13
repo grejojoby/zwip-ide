@@ -5,6 +5,7 @@ import type {
   EditorOperation,
   EditorResult,
   NavigationBatch,
+  GitDiff,
   NavigationOperation,
   Position,
   SearchMatch,
@@ -29,6 +30,9 @@ const HttpPanel = lazy(() =>
 const TerminalPanel = lazy(() =>
   import('./components/TerminalPanel').then((module) => ({ default: module.TerminalPanel })),
 );
+const DiffEditor = lazy(() =>
+  import('./components/DiffEditor').then((module) => ({ default: module.DiffEditor })),
+);
 const CodeEditor = lazy(() =>
   import('./editor/CodeEditor').then((module) => ({ default: module.CodeEditor })),
 );
@@ -37,6 +41,7 @@ import { isCurrentResult, NavigationHistory, shouldFindUsages } from './model/na
 import { withNavigationProgress } from './model/navigation-progress';
 import { mergeContextUpdates } from './model/build-contexts';
 import { Icon } from './components/Icon';
+import { BranchPopup } from './components/BranchPopup';
 import { IntelliJImport } from './components/IntelliJImport';
 import { MarkdownPreview } from './components/MarkdownPreview';
 import { Modal } from './components/Modal';
@@ -123,8 +128,12 @@ export function App() {
   const [tabs, setTabs] = useState<string[]>([]);
   const [active, setActive] = useState<string>();
   const [split, setSplit] = useState<string>();
+  const [diffTabs, setDiffTabs] = useState<GitDiff[]>([]);
+  const [activeDiff, setActiveDiff] = useState<string>();
   const [markdownPreview, setMarkdownPreview] = useState(false);
   const [showRunImport, setShowRunImport] = useState(false);
+  const [showBranches, setShowBranches] = useState(false);
+  const [gitRevision, setGitRevision] = useState(0);
   const [focusPane, setFocusPane] = useState<'main' | 'split'>('main');
   const focusPath = focusPane === 'split' ? split : active;
   const [position, setPosition] = useState<Position>({ line: 0, character: 0 });
@@ -385,6 +394,8 @@ export function App() {
       workspaceRef.current = next;
       setTabs([]);
       setActive(undefined);
+      setDiffTabs([]);
+      setActiveDiff(undefined);
       setSplit(undefined);
       setFocusPane('main');
       setBatch(null);
@@ -511,6 +522,7 @@ export function App() {
       if (pane === 'split' && split) setSplit(path);
       else {
         setActive(path);
+        setActiveDiff(undefined);
         setFocusPane('main');
       }
       setRecentFiles((current) => [path, ...current.filter((item) => item !== path)].slice(0, 100));
@@ -619,6 +631,18 @@ export function App() {
       unlock();
       lifecycleBusy.current = false;
     }
+  }
+  function openDiff(diff: GitDiff) {
+    setDiffTabs((current) =>
+      current.some((item) => item.path === diff.path)
+        ? current.map((item) => (item.path === diff.path ? diff : item))
+        : [...current, diff],
+    );
+    setActiveDiff(diff.path);
+  }
+  function closeDiff(path: string) {
+    setDiffTabs((current) => current.filter((item) => item.path !== path));
+    setActiveDiff((current) => (current === path ? undefined : current));
   }
   function closeTab(path: string) {
     if (lifecycleBusy.current) return;
@@ -1137,6 +1161,9 @@ export function App() {
       } else if (matchesShortcut(event, keys.actions)) {
         event.preventDefault();
         setShowActions(true);
+      } else if (matchesShortcut(event, keys.branches)) {
+        event.preventDefault();
+        if (workspaceRef.current) setShowBranches(true);
       } else if (matchesShortcut(event, keys.search)) {
         event.preventDefault();
         setTool('search');
@@ -1151,6 +1178,7 @@ export function App() {
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
   }, []);
+  const diffView = diffTabs.find((item) => item.path === activeDiff);
   const mainDoc = active ? documents.documents.get(active) : undefined;
   const splitDoc = split ? documents.documents.get(split) : undefined;
   const branchChanged = useCallback((name: string) => setBranch(name), []);
@@ -1169,6 +1197,13 @@ export function App() {
       shortcut: shortcutLabel(shortcuts.symbols),
       disabled: !workspace,
       run: () => setShowSymbols(true),
+    },
+    {
+      id: 'branches',
+      label: 'Git branches',
+      shortcut: shortcutLabel(shortcuts.branches),
+      disabled: !workspace,
+      run: () => setShowBranches(true),
     },
     {
       id: 'markdown-preview',
@@ -1560,7 +1595,12 @@ export function App() {
                 ) : (
                   <Suspense fallback={<p className="empty-note">Opening tools…</p>}>
                     {item === 'git' ? (
-                      <GitPanel generation={workspace.generation} onBranch={branchChanged} />
+                      <GitPanel
+                        generation={workspace.generation}
+                        onBranch={branchChanged}
+                        revision={gitRevision}
+                        onOpenDiff={openDiff}
+                      />
                     ) : item === 'database' ? (
                       <DatabasePanel onDirty={setDatabaseDirty} />
                     ) : (
@@ -1597,13 +1637,17 @@ export function App() {
           <main className="workspace-main" style={{ order: 3 }}>
             <div className="editor-tabs" role="tablist" aria-label="Open files">
               {tabs.map((path) => (
-                <div className={`editor-tab ${path === active ? 'active' : ''}`} key={path}>
+                <div
+                  className={`editor-tab ${path === active && !diffView ? 'active' : ''}`}
+                  key={path}
+                >
                   <button
                     role="tab"
-                    aria-selected={path === active}
+                    aria-selected={path === active && !diffView}
                     title={path}
                     onClick={() => {
                       setActive(path);
+                      setActiveDiff(undefined);
                       setFocusPane('main');
                     }}
                   >
@@ -1622,19 +1666,42 @@ export function App() {
                   </button>
                 </div>
               ))}
+              {diffTabs.map((item) => (
+                <div
+                  className={`editor-tab ${item.path === activeDiff ? 'active' : ''}`}
+                  key={`diff:${item.path}`}
+                >
+                  <button
+                    role="tab"
+                    aria-selected={item.path === activeDiff}
+                    title={`Changes in ${item.path}`}
+                    onClick={() => setActiveDiff(item.path)}
+                  >
+                    <Icon name="git" />
+                    {item.path.split('/').pop()} (changes)
+                  </button>
+                  <button
+                    className="tab-close"
+                    aria-label={`Close changes in ${item.path.split('/').pop()}`}
+                    onClick={() => closeDiff(item.path)}
+                  >
+                    <Icon name="close" />
+                  </button>
+                </div>
+              ))}
               <div className="spacer" />
-              {active && isMarkdownPath(active) && (
+              {active && !diffView && isMarkdownPath(active) && (
                 <button
-                  className="icon-button text-button"
+                  className="icon-button"
                   aria-pressed={markdownPreview}
                   aria-label="Toggle Markdown preview"
                   title="Show a live Markdown preview beside the editor"
                   onClick={() => setMarkdownPreview((current) => !current)}
                 >
-                  Preview
+                  <Icon name="eye" />
                 </button>
               )}
-              {active && (
+              {active && !diffView && (
                 <button
                   className="icon-button"
                   aria-label={split ? 'Close split editor' : 'Split editor'}
@@ -1647,7 +1714,7 @@ export function App() {
                 </button>
               )}
             </div>
-            {active && (
+            {active && !diffView && (
               <div className="breadcrumbs">
                 <span>{workspace.name}</span>
                 {active
@@ -1714,7 +1781,11 @@ export function App() {
               </div>
             )}
             <div className="editors">
-              {mainDoc ? (
+              {diffView ? (
+                <Suspense fallback={<p className="empty-note">Opening diff…</p>}>
+                  <DiffEditor diff={diffView} dark={dark} />
+                </Suspense>
+              ) : mainDoc ? (
                 <>
                   <div className={`editor-pane ${focusPane === 'main' ? 'focused' : ''}`}>
                     <Suspense fallback={<p className="empty-note">Opening editor…</p>}>
@@ -2180,6 +2251,21 @@ export function App() {
             )}
           </div>
         </Modal>
+      )}
+      {showBranches && workspace && (
+        <BranchPopup
+          onClose={() => setShowBranches(false)}
+          onChanged={(change) => {
+            setBranch(change.branch);
+            setGitRevision((value) => value + 1);
+            setStatus(
+              change.conflicts
+                ? `${change.message} Conflicts need resolving in the Git panel.`
+                : change.message,
+            );
+            if (change.conflicts) changeAuxiliary('git');
+          }}
+        />
       )}
       {showRunImport && workspace && (
         <IntelliJImport

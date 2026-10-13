@@ -22,6 +22,68 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-13-branch-popup',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'Git branches popup',
+    summary: 'Press Cmd+Shift+B to switch branches and run common branch actions.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Git branches popup',
+        description:
+          'Search local and remote branches, create a branch, or open a branch’s actions: checkout (remote branches get a tracking branch), new branch from it, checkout and rebase, compare, diff with the working tree, rebase, merge, update, push, rename and delete. Merge, rebase, update, push and delete ask for confirmation. The shortcut can be changed in Settings.',
+      },
+      {
+        type: 'maintenance',
+        title: 'Branch popup limits',
+        description:
+          'Compare and working-tree diff list changed files only, and checking out a tag or revision is not included. Push never forces, and update only fast-forwards.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-13-shortcut-recording-and-preview-button',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'Shortcut recording and toolbar fixes',
+    summary: 'Recording a shortcut works again, and the editor toolbar is cleaner.',
+    changes: [
+      {
+        type: 'fixed',
+        title: 'Shortcut recording',
+        description:
+          'Choosing a shortcut in Settings now records the next key press. Clicking elsewhere cancels recording.',
+      },
+      {
+        type: 'improved',
+        title: 'Markdown preview button',
+        description: 'The Preview button is now an eye icon with proper spacing beside Split.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-13-git-diff-tabs',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'Changes open in the editor',
+    summary: 'Selecting a Git change shows its diff in the main editor area.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Diff tabs',
+        description:
+          'Selecting a changed file opens a "(changes)" tab with side-by-side and unified views, highlighted for the file type. Selecting the file again refreshes it.',
+      },
+      {
+        type: 'maintenance',
+        title: 'Commit selection is unchanged',
+        description:
+          'Choose hunks or lines for a partial commit in the Git panel. Diff tabs are read-only and show a snapshot from when the file was selected.',
+      },
+    ],
+  },
+  {
     id: '2026-10-13-built-in-highlighting',
     version: '0.1.0',
     date: '2026-10-13',
@@ -32,7 +94,7 @@ export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
         type: 'added',
         title: 'Built-in highlighting',
         description:
-          'Go, TypeScript, JavaScript, HTML, CSS, JSON and SQL, plus Python, Rust, Ruby, Lua, Swift, C-family, Java, Kotlin, shell, YAML, TOML, diff, Dockerfile and go.mod, are highlighted without packages.',
+          'Go, TypeScript, JavaScript, HTML, CSS, JSON, SQL and Markdown, plus Python, Rust, Ruby, Lua, Swift, C-family, Java, Kotlin, shell, YAML, TOML, diff, Dockerfile and go.mod, are highlighted without packages.',
       },
       {
         type: 'maintenance',

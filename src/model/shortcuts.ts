@@ -13,6 +13,7 @@ export const shortcutActions = {
   rename: 'Rename symbol',
   fixes: 'Quick fixes',
   breakpoint: 'Toggle breakpoint',
+  branches: 'Git branches',
 } as const;
 export type ShortcutAction = keyof typeof shortcutActions;
 export type Shortcuts = Record<ShortcutAction, string>;
@@ -31,6 +32,7 @@ export const defaultShortcuts: Shortcuts = {
   rename: 'Shift-F6',
   fixes: 'Alt-Enter',
   breakpoint: 'Mod-F8',
+  branches: 'Mod-Shift-b',
 };
 const modifierOrder = ['Mod', 'Ctrl', 'Alt', 'Shift'];
 const namedKeys = [

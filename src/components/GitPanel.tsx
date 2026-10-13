@@ -26,9 +26,15 @@ interface Selection {
 export function GitPanel({
   generation,
   onBranch,
+  revision,
+  onOpenDiff,
 }: {
   generation: number;
   onBranch(branch: string): void;
+  /** Changes when Git was modified outside the panel, to trigger a refresh. */
+  revision?: number;
+  /** Shows the selected change in the main editor area. */
+  onOpenDiff?(diff: GitDiff): void;
 }) {
   const [snapshot, setSnapshot] = useState<GitSnapshot | null>(null);
   const [selected, setSelected] = useState<Map<string, Selection>>(new Map());
@@ -69,12 +75,15 @@ export function GitPanel({
   }
   useEffect(() => {
     void refresh();
-  }, [generation]);
+  }, [generation, revision]);
   async function showDiff(path: string) {
     const id = ++diffRequest.current;
     try {
       const next = await api.gitDiff(path);
-      if (id === diffRequest.current) setDiff(next);
+      if (id === diffRequest.current) {
+        setDiff(next);
+        onOpenDiff?.(next);
+      }
     } catch (e) {
       report(e);
     }

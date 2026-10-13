@@ -18,6 +18,7 @@ _Workspace capture from before the current branding; see the [screenshot provena
 - **Git beside your editor.** Move Git to either sidebar, including beside Project, and switch tools with a click. Your workspace remembers the arrangement. Commit selected files, hunks or lines; resolve three-pane merges; review outgoing changes before pushing.
 - **A compact workspace.** Tabs, split editors, project and symbol search, navigation history, light and dark themes, and configurable keyboard shortcuts.
 - **Recoverable editing.** Unsaved-buffer recovery, Local History and reviewed rename edits help preserve work. External file changes do not silently replace dirty buffers.
+- **Git branches at a keystroke.** Cmd+Shift+B opens a searchable branch popup with checkout, merge, rebase, push and other branch actions.
 - **Focused search.** Right-click a folder to exclude it from search and indexing, and review exclusions in Settings. Preview Markdown live beside the editor.
 - **Tools on demand.** Install language and tool packages separately. Save named run configurations, use the integrated terminal, and see new features in the in-app update history.
 - **Bring IntelliJ settings.** Preview custom keybindings, database connections, supported npm/Go run and debug configurations, and compatible light/dark appearance settings from XML, a settings ZIP or a configuration folder. See the [import guide](docs/intellij-import.md) for supported mappings and limitations.

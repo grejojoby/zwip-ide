@@ -1602,17 +1602,192 @@ fn stashes(root: &str) -> Result<Value, String> {
         })
         .collect::<Vec<_>>()))
 }
+fn current_branch(root: &str) -> Result<String, String> {
+    git(root, &["symbolic-ref", "--short", "-q", "HEAD"])
+        .map(|name| name.trim().to_owned())
+        .map_err(|_| "Check out a branch first; HEAD is detached".to_owned())
+}
+fn local_branch(root: &str, name: &str) -> Result<(), String> {
+    git(root, &["check-ref-format", "--branch", name])?;
+    git(
+        root,
+        &["show-ref", "--verify", &format!("refs/heads/{name}")],
+    )
+    .map(|_| ())
+    .map_err(|_| format!("{name} is not a local branch"))
+}
+/// Returns `(remote, branch)` for the branch's configured upstream.
+fn upstream(root: &str, branch: &str) -> Option<(String, String)> {
+    let full = git(
+        root,
+        &[
+            "rev-parse",
+            "--abbrev-ref",
+            &format!("{branch}@{{upstream}}"),
+        ],
+    )
+    .ok()?;
+    let full = full.trim();
+    let remotes = git(root, &["remote"]).ok()?;
+    let remote = remotes
+        .lines()
+        .find(|remote| full.starts_with(&format!("{remote}/")))?;
+    Some((remote.to_owned(), full[remote.len() + 1..].to_owned()))
+}
+fn switch_to(root: &str, branch: &str, remote: bool) -> Result<Value, String> {
+    git(root, &["check-ref-format", "--branch", branch])?;
+    if remote {
+        git(
+            root,
+            &["show-ref", "--verify", &format!("refs/remotes/{branch}")],
+        )
+        .map_err(|_| format!("{branch} is not a remote branch"))?;
+        // Creates a local tracking branch; Git refuses if one with that name already exists.
+        action(root, &["switch", "--track", branch], false)
+    } else {
+        local_branch(root, branch)?;
+        action(root, &["switch", "--", branch], false)
+    }
+}
+fn compare_branch(root: &str, params: &Value) -> Result<Value, String> {
+    let branch = string(params, "branch")?;
+    let target = resolve_commit(root, branch)?;
+    let working_tree = params["mode"].as_str() == Some("workingTree");
+    let current = current_branch(root).unwrap_or_else(|_| "HEAD".into());
+    let head = resolve_commit(root, "HEAD")?;
+    let diff = if working_tree {
+        git(
+            root,
+            &["diff", "--name-status", "--no-renames", "-z", &target, "--"],
+        )?
+    } else {
+        git(
+            root,
+            &[
+                "diff",
+                "--name-status",
+                "--no-renames",
+                "-z",
+                &head,
+                &target,
+                "--",
+            ],
+        )?
+    };
+    let tokens: Vec<_> = diff.split('\0').filter(|part| !part.is_empty()).collect();
+    let files: Vec<_> = tokens
+        .chunks(2)
+        .filter(|pair| pair.len() == 2)
+        .map(|pair| json!({"status":pair[0],"path":pair[1]}))
+        .collect();
+    let commits = |range: String| -> Result<Vec<Value>, String> {
+        Ok(git(
+            root,
+            &["log", "--max-count=100", "--format=%H%x1f%s", &range, "--"],
+        )?
+        .lines()
+        .filter_map(|line| line.split_once('\x1f'))
+        .map(|(id, subject)| json!({"id":id,"subject":subject}))
+        .collect())
+    };
+    let (incoming, outgoing) = if working_tree {
+        (Vec::new(), Vec::new())
+    } else {
+        (
+            commits(format!("{head}..{target}"))?,
+            commits(format!("{target}..{head}"))?,
+        )
+    };
+    Ok(json!({
+        "current": current,
+        "branch": branch,
+        "mode": if working_tree { "workingTree" } else { "branch" },
+        "files": files,
+        "incoming": incoming,
+        "outgoing": outgoing,
+    }))
+}
 fn daily_action(root: &str, method: &str, params: &Value) -> Result<Value, String> {
     let root = reviewed_root(root, params)?;
     match method {
-        "git.switchBranch" => {
-            let branch = string(params, "branch")?;
-            git(&root, &["check-ref-format", "--branch", branch])?;
-            git(
+        "git.switchBranch" => switch_to(
+            &root,
+            string(params, "branch")?,
+            params["remote"].as_bool().unwrap_or(false),
+        ),
+        "git.checkoutRebase" => {
+            if operation(&root) != "none" {
+                return Err("Finish the current integration operation first".into());
+            }
+            let previous = current_branch(&root)?;
+            switch_to(
                 &root,
-                &["show-ref", "--verify", &format!("refs/heads/{branch}")],
+                string(params, "branch")?,
+                params["remote"].as_bool().unwrap_or(false),
             )?;
-            action(&root, &["switch", "--", branch], false)
+            action(&root, &["rebase", &previous], true)
+        }
+        "git.deleteBranch" => {
+            let branch = string(params, "branch")?;
+            local_branch(&root, branch)?;
+            if branch == current_branch(&root).unwrap_or_default() {
+                return Err("The checked-out branch cannot be deleted".into());
+            }
+            let flag = if params["force"].as_bool().unwrap_or(false) {
+                "-D"
+            } else {
+                "-d"
+            };
+            action(&root, &["branch", flag, "--", branch], false)
+        }
+        "git.renameBranch" => {
+            let branch = string(params, "branch")?;
+            let name = string(params, "newName")?;
+            local_branch(&root, branch)?;
+            git(&root, &["check-ref-format", "--branch", name])?;
+            action(&root, &["branch", "-m", "--", branch, name], false)
+        }
+        "git.updateBranch" => {
+            let branch = string(params, "branch")?;
+            local_branch(&root, branch)?;
+            let (remote, name) = upstream(&root, branch)
+                .ok_or_else(|| format!("{branch} has no upstream branch to update from"))?;
+            if branch == current_branch(&root).unwrap_or_default() {
+                action(&root, &["pull", "--ff-only"], false)
+            } else {
+                // Without a leading '+', Git only accepts a fast-forward of the local branch.
+                action(
+                    &root,
+                    &["fetch", "--", &remote, &format!("{name}:{branch}")],
+                    false,
+                )
+            }
+        }
+        "git.pushBranch" => {
+            let branch = string(params, "branch")?;
+            local_branch(&root, branch)?;
+            match upstream(&root, branch) {
+                Some((remote, name)) => action(
+                    &root,
+                    &["push", "--", &remote, &format!("{branch}:{name}")],
+                    false,
+                ),
+                None => {
+                    if !git(&root, &["remote"])?
+                        .lines()
+                        .any(|name| name == "origin")
+                    {
+                        return Err(format!(
+                            "{branch} has no upstream and there is no origin remote"
+                        ));
+                    }
+                    action(
+                        &root,
+                        &["push", "--set-upstream", "--", "origin", branch],
+                        false,
+                    )
+                }
+            }
         }
         "git.createBranch" => {
             let name = string(params, "name")?;
@@ -1705,8 +1880,10 @@ pub fn dispatch(root: &str, data: &Path, method: &str, params: &Value) -> Result
         "git.log" => log(root, params),
         "git.blame" => blame(root, params),
         "git.stashes" => stashes(root),
-        "git.switchBranch" | "git.createBranch" | "git.fetch" | "git.pull" | "git.merge"
-        | "git.rebase" | "git.cherryPick" | "git.stashCreate" | "git.stashApply"
+        "git.compareBranch" => compare_branch(root, params),
+        "git.switchBranch" | "git.createBranch" | "git.checkoutRebase" | "git.deleteBranch"
+        | "git.renameBranch" | "git.updateBranch" | "git.pushBranch" | "git.fetch" | "git.pull"
+        | "git.merge" | "git.rebase" | "git.cherryPick" | "git.stashCreate" | "git.stashApply"
         | "git.stashPop" | "git.stashDrop" => daily_action(root, method, params),
         "git.mergeOpen" => merge_open(root, string(params, "path")?),
         "git.mergeApply" => merge_apply(

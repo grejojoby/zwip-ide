@@ -18,6 +18,7 @@ export type IconName =
   | 'terminal'
   | 'save'
   | 'git'
+  | 'eye'
   | 'arrow'
   | 'clock'
   | 'database'
@@ -43,6 +44,7 @@ const paths: Record<IconName, string> = {
   refresh: 'M20 7A9 9 0 1 0 21 14M20 2v6h-6',
   terminal: 'm4 6 6 6-6 6M13 18h7',
   save: 'M3 3h15l3 3v15H3zM7 3v7h10V3M7 21v-7h10v7',
+  eye: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12ZM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z',
   git: 'm12 2 10 10-10 10L2 12zM8 6l8 10M12 10v7',
   arrow: 'M12 20V4m-7 7 7-7 7 7',
   clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM12 6v6l4 3',

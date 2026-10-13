@@ -94,6 +94,19 @@ describe('reviewed keybindings in Settings', () => {
     fireEvent.click(save);
     await waitFor(() => expect(callbacks.onSave).toHaveBeenCalledOnce());
   });
+  it('records a shortcut even when the clicked button never receives focus', async () => {
+    const callbacks = mount();
+    const binding = screen.getByRole('button', { name: 'Shortcut for Go to file' });
+    fireEvent.click(binding);
+    expect(binding.textContent).toBe('Press shortcut…');
+    // WebKit leaves focus on the page, so the key event does not target the button.
+    fireEvent.keyDown(document.body, { key: 'p', code: 'KeyP', metaKey: true, shiftKey: true });
+    expect(binding.textContent).toBe('⌘⇧P');
+    fireEvent.click(binding);
+    fireEvent.mouseDown(document.body);
+    expect(binding.textContent).toBe('⌘⇧P');
+    expect(callbacks.onSave).not.toHaveBeenCalled();
+  });
   it('keeps the imported draft visible after persistence fails without closing Settings', async () => {
     const callbacks = mount(
       vi.fn(async () => {

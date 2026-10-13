@@ -137,6 +137,14 @@ kbd {
   width: 29px;
   height: 28px;
 }
+.icon-button[aria-pressed='true'] {
+  background: var(--accent-surface);
+}
+.editor-tabs > .icon-button {
+  align-self: center;
+  flex-shrink: 0;
+  margin: 0 3px;
+}
 .spacer {
   flex: 1;
 }
@@ -2621,4 +2629,76 @@ button.danger {
 }
 .sidebar-panel.project-panel > .panel-title > span {
   min-width: 0;
+}
+.diff-editor {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.diff-editor-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.diff-editor-bar strong {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.diff-editor-bar button {
+  font-size: 11px;
+  padding: 3px 8px;
+}
+.diff-editor-bar button[aria-pressed='true'] {
+  background: var(--accent-surface);
+}
+.diff-editor-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.diff-editor-body .cm-mergeView {
+  min-height: 100%;
+}
+
+.branch-popup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 420px;
+}
+.branch-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 55vh;
+  overflow: auto;
+}
+.branch-list button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  justify-content: space-between;
+  border-radius: 3px;
+}
+.branch-list button > span:first-child {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.branch-list h3,
+.branch-heading {
+  margin: 8px 0 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.branch-files {
+  max-height: 40vh;
+  overflow: auto;
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12px;
 }

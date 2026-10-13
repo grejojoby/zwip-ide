@@ -11,6 +11,7 @@ const script =
   async () =>
     (await import('@codemirror/lang-javascript')).javascript({ typescript, jsx });
 
+const markdown: Loader = async () => (await import('@codemirror/lang-markdown')).markdown();
 const go = stream(async () => (await import('@codemirror/legacy-modes/mode/go')).go);
 const clike = <Name extends string>(name: Name) =>
   stream(async () => {
@@ -34,6 +35,8 @@ const byExtension: Record<string, Loader> = {
   htm: async () => (await import('@codemirror/lang-html')).html(),
   css: async () => (await import('@codemirror/lang-css')).css(),
   json: async () => (await import('@codemirror/lang-json')).json(),
+  md: markdown,
+  markdown,
   sql: async () => (await import('@codemirror/lang-sql')).sql(),
   go,
   py: stream(async () => (await import('@codemirror/legacy-modes/mode/python')).python),

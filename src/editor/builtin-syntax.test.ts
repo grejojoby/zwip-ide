@@ -24,6 +24,7 @@ describe('built-in syntax', () => {
     ['x.yaml', 'a: 1\n'],
     ['x.toml', 'a = 1\n'],
     ['run.sh', 'echo hi\n'],
+    ['README.md', '# Title\n\n- item\n'],
     ['go.mod', 'module x\n'],
     ['Dockerfile', 'FROM scratch\n'],
   ])('provides a grammar for %s', async (path, doc) => {
