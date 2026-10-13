@@ -22,6 +22,21 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-13-public-registry-lockfile',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'Build fix for Markdown highlighting',
+    summary: 'Release builds can download every dependency again.',
+    changes: [
+      {
+        type: 'maintenance',
+        title: 'Public package sources',
+        description:
+          'The Markdown highlighting dependencies now download from the public npm registry, so automated builds no longer time out.',
+      },
+    ],
+  },
+  {
     id: '2026-10-13-branch-popup-side-menu',
     version: '0.1.0',
     date: '2026-10-13',
