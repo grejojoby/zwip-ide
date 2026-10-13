@@ -2696,6 +2696,26 @@ button.danger {
   font-size: 11px;
   color: var(--muted);
 }
+.branch-panes {
+  display: flex;
+  gap: 8px;
+  min-height: 0;
+}
+.branch-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.branch-submenu {
+  flex: 0 0 240px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
+.branch-list button[data-expanded] {
+  background: var(--accent-surface);
+}
 .branch-files {
   max-height: 40vh;
   overflow: auto;

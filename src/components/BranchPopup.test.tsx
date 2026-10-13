@@ -53,6 +53,30 @@ describe('branch popup', () => {
     expect(screen.getByText('origin/topic')).toBeTruthy();
     expect(screen.queryByText('feature')).toBeNull();
   });
+  it('moves between branches with the arrow keys as soon as it opens', async () => {
+    await open();
+    const filter = screen.getByLabelText('Filter branches');
+    expect(document.activeElement).toBe(filter);
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+    expect(screen.getByRole('option', { selected: true }).textContent).toContain('feature');
+  });
+  it('opens actions in a side menu beside the branch list and closes it with ArrowLeft', async () => {
+    await open();
+    const filter = screen.getByLabelText('Filter branches');
+    fireEvent.keyDown(filter, { key: 'ArrowDown' });
+    fireEvent.keyDown(filter, { key: 'ArrowDown' });
+    fireEvent.keyDown(filter, { key: 'ArrowRight' });
+    expect(screen.getByRole('menu', { name: 'Actions for feature' })).toBeTruthy();
+    // The branch list stays visible next to the side menu.
+    expect(screen.getAllByRole('option')).toHaveLength(5);
+    expect(document.querySelector('[data-expanded]')?.textContent).toContain('feature');
+    fireEvent.keyDown(filter, { key: 'ArrowDown' });
+    expect(screen.getAllByRole('menuitem')[1].className).toBe('selected');
+    fireEvent.keyDown(filter, { key: 'ArrowLeft' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(document.activeElement).toBe(filter);
+  });
   it('checks out a branch from its action menu using the reviewed fingerprint', async () => {
     const onChanged = await open();
     fireEvent.click(screen.getByText('feature'));

@@ -22,6 +22,27 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-13-branch-popup-side-menu',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'Branch popup side menu',
+    summary: 'Branch actions open beside the list, and arrow keys work right away.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'Side menu for branch actions',
+        description:
+          'Choosing a branch opens its actions in a side menu, keeping the branch list visible. → opens it, ← or Escape closes it.',
+      },
+      {
+        type: 'fixed',
+        title: 'Arrow keys on open',
+        description:
+          'The search box is focused when the popup opens, so arrow keys move between branches without clicking first.',
+      },
+    ],
+  },
+  {
     id: '2026-10-13-package-progress-indexing-settings-menu',
     version: '0.1.0',
     date: '2026-10-13',

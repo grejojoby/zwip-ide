@@ -31,7 +31,6 @@ interface Action {
 }
 type View =
   | { kind: 'list' }
-  | { kind: 'actions'; branch: Branch }
   | { kind: 'input'; title: string; label: string; initial: string; submit(value: string): void }
   | { kind: 'confirm'; title: string; detail: string; confirm: string; submit(): void }
   | { kind: 'compare'; result: Comparison };
@@ -56,6 +55,10 @@ export function BranchPopup({
   const [query, setQuery] = useState('');
   const [view, setView] = useState<View>({ kind: 'list' });
   const [index, setIndex] = useState(0);
+  // The branch whose actions are open in the side menu, and the highlighted action.
+  const [submenu, setSubmenu] = useState<Branch | null>(null);
+  const [actionIndex, setActionIndex] = useState(0);
+  const filter = useRef<HTMLInputElement>(null);
   const [showAllRemote, setShowAllRemote] = useState(false);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
@@ -132,7 +135,7 @@ export function BranchPopup({
         branch: branch.name,
         mode,
       });
-      setView({ kind: 'compare', result });
+      showView({ kind: 'compare', result });
     } catch (e) {
       setError(asError(e).message);
     } finally {
@@ -141,12 +144,12 @@ export function BranchPopup({
   }
   function confirm(title: string, detail: string, label: string, submit: () => void) {
     setError('');
-    setView({ kind: 'confirm', title, detail, confirm: label, submit });
+    showView({ kind: 'confirm', title, detail, confirm: label, submit });
   }
   function askName(title: string, label: string, initial: string, submit: (v: string) => void) {
     setError('');
     setValue(initial);
-    setView({ kind: 'input', title, label, initial, submit });
+    showView({ kind: 'input', title, label, initial, submit });
   }
   function newBranch(start?: Branch) {
     askName(
@@ -249,15 +252,26 @@ export function BranchPopup({
     return list;
   }
   function chooseRow(position: number) {
-    if (position === 0) newBranch();
-    else if (rows[position - 1]) {
+    setIndex(position);
+    if (position === 0) {
+      setSubmenu(null);
+      newBranch();
+    } else if (rows[position - 1]) {
       setError('');
-      setView({ kind: 'actions', branch: rows[position - 1] });
-      setIndex(0);
+      setSubmenu(rows[position - 1]);
+      setActionIndex(0);
     }
   }
+  function closeSubmenu() {
+    setSubmenu(null);
+    filter.current?.focus();
+  }
+  function showView(next: View) {
+    setSubmenu(null);
+    setView(next);
+  }
 
-  const actions = view.kind === 'actions' ? actionsFor(view.branch) : [];
+  const actions = submenu ? actionsFor(submenu) : [];
   const title = snapshot ? `Git Branches in ${snapshot.root.split('/').pop()}` : 'Git Branches';
   return (
     <Modal title={title} onClose={onClose} dismissible={!busy}>
@@ -267,31 +281,33 @@ export function BranchPopup({
         onKeyDown={(event) => {
           if (busy) return;
           const typing = event.target instanceof HTMLInputElement && view.kind === 'input';
-          if (event.key === 'Escape' && view.kind !== 'list') {
+          const step = (at: number, count: number) =>
+            (at + (event.key === 'ArrowDown' ? 1 : count - 1)) % Math.max(1, count);
+          if (event.key === 'Escape' && (submenu || view.kind !== 'list')) {
             event.preventDefault();
             event.stopPropagation();
             setError('');
-            setView({ kind: 'list' });
-            setIndex(0);
-          } else if (typing) {
+            if (submenu) closeSubmenu();
+            else setView({ kind: 'list' });
+          } else if (typing || view.kind !== 'list') {
             return;
-          } else if (view.kind === 'list' || view.kind === 'actions') {
-            const count = view.kind === 'list' ? rows.length + 1 : actions.length;
-            const at = view.kind === 'list' ? selectedIndex : index;
+          } else if (submenu) {
             if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
               event.preventDefault();
-              setIndex((at + (event.key === 'ArrowDown' ? 1 : count - 1)) % Math.max(1, count));
-            } else if (
-              event.key === 'Enter' ||
-              (view.kind === 'list' && event.key === 'ArrowRight')
-            ) {
+              setActionIndex((at) => step(at, actions.length));
+            } else if (event.key === 'Enter' || event.key === 'ArrowRight') {
               event.preventDefault();
-              if (view.kind === 'list') chooseRow(selectedIndex);
-              else actions[at]?.run();
-            } else if (view.kind === 'actions' && event.key === 'ArrowLeft') {
+              actions[actionIndex]?.run();
+            } else if (event.key === 'ArrowLeft') {
               event.preventDefault();
-              setView({ kind: 'list' });
+              closeSubmenu();
             }
+          } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            setIndex(step(selectedIndex, rows.length + 1));
+          } else if (event.key === 'Enter' || event.key === 'ArrowRight') {
+            event.preventDefault();
+            chooseRow(selectedIndex);
           }
         }}
       >
@@ -301,77 +317,82 @@ export function BranchPopup({
           </p>
         )}
         {view.kind === 'list' && (
-          <>
-            <input
-              data-autofocus
-              aria-label="Filter branches"
-              placeholder="Search branches"
-              value={query}
-              disabled={busy && !snapshot}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setIndex(0);
-              }}
-            />
-            <div role="listbox" aria-label="Branches" className="branch-list">
-              <button
-                role="option"
-                aria-selected={selectedIndex === 0}
-                className={selectedIndex === 0 ? 'selected' : ''}
-                disabled={!snapshot}
-                onClick={() => chooseRow(0)}
-              >
-                + New Branch
-              </button>
-              <h3>Local Branches</h3>
-              {local.map((branch, position) => (
-                <BranchRow
-                  key={branch.name}
-                  branch={branch}
-                  selected={selectedIndex === position + 1}
-                  onChoose={() => chooseRow(position + 1)}
-                />
-              ))}
-              {!local.length && <p className="muted">No matching local branches.</p>}
-              <h3>Remote Branches</h3>
-              {remote.map((branch, position) => (
-                <BranchRow
-                  key={branch.name}
-                  branch={branch}
-                  selected={selectedIndex === local.length + position + 1}
-                  onChoose={() => chooseRow(local.length + position + 1)}
-                />
-              ))}
-              {!remoteAll.length && <p className="muted">No matching remote branches.</p>}
-              {hiddenRemote > 0 && (
-                <button className="branch-more" onClick={() => setShowAllRemote(true)}>
-                  Show {hiddenRemote.toLocaleString()} more…
-                </button>
-              )}
-            </div>
-          </>
-        )}
-        {view.kind === 'actions' && (
-          <>
-            <h3 className="branch-heading">{view.branch.name}</h3>
-            <div role="menu" aria-label={`Actions for ${view.branch.name}`} className="branch-list">
-              {actions.map((action, position) => (
+          <div className="branch-panes">
+            <div className="branch-main">
+              <input
+                ref={filter}
+                data-autofocus
+                autoFocus
+                aria-label="Filter branches"
+                placeholder="Search branches"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setIndex(0);
+                  setSubmenu(null);
+                }}
+              />
+              <div role="listbox" aria-label="Branches" className="branch-list">
                 <button
-                  key={action.id}
-                  role="menuitem"
-                  ref={(element) => {
-                    if (position === index) element?.focus({ preventScroll: true });
-                  }}
-                  className={position === index ? 'selected' : ''}
-                  disabled={busy}
-                  onClick={action.run}
+                  role="option"
+                  aria-selected={selectedIndex === 0}
+                  className={selectedIndex === 0 ? 'selected' : ''}
+                  disabled={!snapshot}
+                  onClick={() => chooseRow(0)}
                 >
-                  {action.label}
+                  + New Branch
                 </button>
-              ))}
+                <h3>Local Branches</h3>
+                {local.map((branch, position) => (
+                  <BranchRow
+                    key={branch.name}
+                    branch={branch}
+                    expanded={submenu?.name === branch.name}
+                    selected={selectedIndex === position + 1}
+                    onChoose={() => chooseRow(position + 1)}
+                  />
+                ))}
+                {!local.length && <p className="muted">No matching local branches.</p>}
+                <h3>Remote Branches</h3>
+                {remote.map((branch, position) => (
+                  <BranchRow
+                    key={branch.name}
+                    branch={branch}
+                    expanded={submenu?.name === branch.name}
+                    selected={selectedIndex === local.length + position + 1}
+                    onChoose={() => chooseRow(local.length + position + 1)}
+                  />
+                ))}
+                {!remoteAll.length && <p className="muted">No matching remote branches.</p>}
+                {hiddenRemote > 0 && (
+                  <button className="branch-more" onClick={() => setShowAllRemote(true)}>
+                    Show {hiddenRemote.toLocaleString()} more…
+                  </button>
+                )}
+              </div>
             </div>
-            <button onClick={() => setView({ kind: 'list' })}>Back</button>
-          </>
+            {submenu && (
+              <div
+                role="menu"
+                aria-label={`Actions for ${submenu.name}`}
+                className="branch-list branch-submenu"
+              >
+                <h3 className="branch-heading">{submenu.name}</h3>
+                {actions.map((action, position) => (
+                  <button
+                    key={action.id}
+                    role="menuitem"
+                    className={position === actionIndex ? 'selected' : ''}
+                    disabled={busy}
+                    onMouseEnter={() => setActionIndex(position)}
+                    onClick={action.run}
+                  >
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
         {view.kind === 'input' && (
           <form
@@ -460,16 +481,19 @@ export function BranchPopup({
 function BranchRow({
   branch,
   selected,
+  expanded,
   onChoose,
 }: {
   branch: Branch;
   selected: boolean;
+  expanded: boolean;
   onChoose(): void;
 }) {
   return (
     <button
       role="option"
       aria-selected={selected}
+      data-expanded={expanded || undefined}
       aria-current={branch.current || undefined}
       className={selected ? 'selected' : ''}
       title={branch.subject}
