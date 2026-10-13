@@ -1129,7 +1129,8 @@ impl PackageHost {
         Ok(json!({"url":url}))
     }
     fn catalog_url(&self) -> Result<String, String> {
-        self.db
+        Ok(self
+            .db
             .query_row(
                 "SELECT value FROM package_settings WHERE key='catalog_url'",
                 [],
@@ -1137,7 +1138,7 @@ impl PackageHost {
             )
             .optional()
             .map_err(|e| e.to_string())?
-            .ok_or_else(|| "No curated catalog URL is configured".into())
+            .unwrap_or_else(|| DEFAULT_CATALOG_URL.into()))
     }
     pub fn catalog_request(&self) -> Result<CatalogRequest, String> {
         Ok(CatalogRequest {
@@ -1162,6 +1163,9 @@ impl PackageHost {
         )
     }
 }
+/// Built-in catalog used until the user configures their own.
+const DEFAULT_CATALOG_URL: &str =
+    "https://github.com/grejojoby/zwip-ide/releases/download/packages/catalog.json";
 fn https_url(value: &str) -> Result<url::Url, String> {
     let url = url::Url::parse(value).map_err(|e| e.to_string())?;
     if url.scheme() != "https"
@@ -1562,6 +1566,19 @@ mod tests {
             .err()
             .unwrap()
             .contains("catalog identity"));
+    }
+    #[test]
+    fn catalog_defaults_to_builtin_url_until_configured() {
+        let data = tempfile::tempdir().unwrap();
+        let mut host = PackageHost::new(data.path()).unwrap();
+        assert_eq!(host.catalog_url().unwrap(), DEFAULT_CATALOG_URL);
+        https_url(DEFAULT_CATALOG_URL).unwrap();
+        host.catalog_configure("https://catalog.example.test/catalog.json")
+            .unwrap();
+        assert_eq!(
+            host.catalog_url().unwrap(),
+            "https://catalog.example.test/catalog.json"
+        );
     }
     #[test]
     fn catalog_rejects_insecure_archive_urls_and_duplicate_identities() {

@@ -53,7 +53,7 @@ export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
         type: 'fixed',
         title: 'CI generated resources',
         description:
-          'The check and release workflows now download Rust dependencies and generate the bundled notices first, which failed on clean GitHub runners.',
+          'The check and release workflows now use Rust 1.95.0, download Rust dependencies and generate the bundled notices first, which failed on clean GitHub runners. One Rust style lint was also fixed.',
       },
     ],
   },

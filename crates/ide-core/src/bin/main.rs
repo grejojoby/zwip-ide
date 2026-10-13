@@ -39,7 +39,7 @@ fn read_frame(reader: &mut impl BufRead, limit: usize) -> io::Result<Frame> {
         let newline = available.iter().position(|byte| *byte == b'\n');
         let count = newline.map_or(available.len(), |index| index + 1);
         if !too_large {
-            let payload = newline.map_or(count, |index| index);
+            let payload = newline.unwrap_or(count);
             if bytes.len().saturating_add(payload) > limit {
                 too_large = true;
                 bytes.clear();
