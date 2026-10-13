@@ -22,7 +22,7 @@ npm run dev
 npm run build:packages
 ```
 
-This writes the Go, Web, React/Next, SQL, Redis and HTTP package directories under `dist/packages/`. In the app's Packages dialog, choose **Install directory…**, select a generated directory, then enable it. React/Next is a declarative extension requiring Web; install and enable Web first. Installation and activation are separate, and language workers start on demand. The application does not upgrade or rewrite your workspace's Go modules or TypeScript dependencies.
+This writes the Go, Web, React/Next, SQL, Redis, HTTP and Makefile package directories under `dist/packages/`. In the app's Packages dialog, choose **Install directory…**, select a generated directory, then enable it. React/Next is a declarative extension requiring Web; install and enable Web first. Makefile is a declarative package with no process: it adds Makefile highlighting and lets the IntelliJ importer translate Makefile run configurations. Installation and activation are separate, and language workers start on demand. The application does not upgrade or rewrite your workspace's Go modules or TypeScript dependencies.
 
 For local ZIP installation:
 
@@ -82,6 +82,7 @@ Documents are edited immediately in CodeMirror. Ordered UTF-16 deltas update Rus
 | `packages/web/`        | TypeScript language service worker and HTML/CSS adapters                             |
 | `packages/react-next/` | Declarative project Next.js integration                                              |
 | `packages/tools/`      | Installable SQL, Redis and HTTP workers                                              |
+| `packages/make/`       | Declarative Makefile package: grammar and Makefile run-configuration import          |
 | `tests/`               | Semantic fixtures, service checks and native application scenarios                   |
 | `site/`                | Standalone product landing page; see its [guide](../site/README.md)                  |
 | `docs/`                | Protocol, project constraints and release acceptance status                          |

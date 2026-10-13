@@ -16,7 +16,13 @@ export function GoDebugger({
   onExecution,
   onStopped,
 }: {
-  target: { contextId: string; path: string; args: string[]; cwd?: string };
+  target: {
+    contextId: string;
+    path: string;
+    args: string[];
+    cwd?: string;
+    env?: Record<string, string>;
+  };
   mode: 'debug' | 'test';
   breakpoints: Record<string, number[]>;
   onOpen(path: string, position: Position): void;
@@ -240,6 +246,7 @@ export function GoDebugger({
             program: target.path,
             args: target.args,
             ...(target.cwd && { cwd: target.cwd }),
+            ...(target.env && { env: target.env }),
             stopOnEntry: false,
           },
           ownSession,

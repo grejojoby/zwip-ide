@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { BuildContext } from '../contracts';
 import { IndexingStatus } from './IndexingStatus';
 
-const context = (id: string, state: BuildContext['state']): BuildContext => ({
+const context = (id: string, state: BuildContext['state'], reason?: string): BuildContext => ({
   id,
-  root: '/w',
+  root: `/w/${id}`,
+  reason,
   language: 'go',
   configPath: `/w/${id}`,
   state,
@@ -33,5 +34,29 @@ describe('IndexingStatus', () => {
       <IndexingStatus scannedFiles={null} contexts={[context('a', 'ready')]} />,
     );
     expect(container.textContent).toBe('');
+  });
+  it('lists every module with its state and reason when clicked', () => {
+    render(
+      <IndexingStatus
+        scannedFiles={null}
+        root="/w"
+        contexts={[
+          context('ready-mod', 'ready'),
+          context('queued-mod', 'loading', 'queued for background indexing'),
+          context('broken-mod', 'failed', 'go list failed'),
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('progressbar', { name: 'Indexing build contexts' }));
+    const rows = screen
+      .getByRole('dialog', { name: 'Indexing progress per module' })
+      .querySelectorAll('li');
+    expect([...rows].map((row) => row.textContent)).toEqual([
+      'Indexingqueued-modqueued for background indexing',
+      'Failedbroken-modgo list failed',
+      'Readyready-mod',
+    ]);
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

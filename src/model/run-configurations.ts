@@ -5,6 +5,8 @@ export interface RunConfiguration {
   name: string;
   command: string;
   workingDirectory: string;
+  /** Variables added for Run and Debug, in order. Stored only in local app settings. */
+  env?: EnvironmentVariable[];
   debug?: {
     provider: 'go';
     mode: 'debug' | 'test';
@@ -12,6 +14,10 @@ export interface RunConfiguration {
     workingDirectory: string;
     args: string[];
   };
+}
+export interface EnvironmentVariable {
+  name: string;
+  value: string;
 }
 export interface RunConfigurationSettings {
   version: 1;
@@ -30,7 +36,7 @@ export interface RunState {
 export interface RunBackend {
   getSetting<T>(key: string): Promise<T | null>;
   setSetting<T>(key: string, value: T): Promise<T>;
-  runTask(command: string, cwd: string): Promise<TaskResult>;
+  runTask(command: string, cwd: string, env?: EnvironmentVariable[]): Promise<TaskResult>;
   taskStatus(id: string): Promise<TaskResult>;
   stopTask(id: string): Promise<void>;
 }
@@ -65,6 +71,39 @@ export function runDirectory(root: string, relativePath: string): string {
   const path = relativeWorkingDirectory(relativePath);
   return path === '.' ? root : `${root.replace(/\/+$/, '')}/${path}`;
 }
+const environmentName = /^[A-Za-z_][A-Za-z0-9_]*$/;
+export function validateEnvironment(env: unknown): EnvironmentVariable[] {
+  if (!Array.isArray(env)) throw new Error('Invalid environment variables.');
+  const names = new Set<string>();
+  return env.map((item: unknown) => {
+    const name = (item as EnvironmentVariable | null)?.name;
+    const value = (item as EnvironmentVariable | null)?.value;
+    if (typeof name !== 'string' || !environmentName.test(name))
+      throw new Error(`Invalid environment variable name: ${String(name)}`);
+    if (typeof value !== 'string' || value.includes('\0'))
+      throw new Error(`Invalid value for environment variable ${name}.`);
+    if (names.has(name)) throw new Error(`Environment variable ${name} is set twice.`);
+    names.add(name);
+    return { name, value };
+  });
+}
+/** One NAME=value per line; blank lines and # comments are ignored. */
+export function parseEnvironment(text: string): EnvironmentVariable[] {
+  return validateEnvironment(
+    text
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'))
+      .map((line) => {
+        const split = line.indexOf('=');
+        if (split < 1) throw new Error(`Use NAME=value for each environment variable: ${line}`);
+        return { name: line.slice(0, split).trim(), value: line.slice(split + 1) };
+      }),
+  );
+}
+export function formatEnvironment(env: EnvironmentVariable[] = []): string {
+  return env.map(({ name, value }) => `${name}=${value}`).join('\n');
+}
 export function validateConfiguration(config: RunConfiguration): RunConfiguration {
   if (
     typeof config.id !== 'string' ||
@@ -97,11 +136,13 @@ export function validateConfiguration(config: RunConfiguration): RunConfiguratio
       workingDirectory: relativeWorkingDirectory(candidate.workingDirectory),
     };
   }
+  const env = config.env === undefined ? [] : validateEnvironment(config.env);
   return {
     id: config.id,
     name: config.name.trim(),
     command: config.command,
     workingDirectory: relativeWorkingDirectory(config.workingDirectory),
+    ...(env.length && { env }),
     ...(debug && { debug }),
   };
 }
@@ -227,17 +268,25 @@ export class WorkspaceRunSession {
       (config) => config.id === this.state.settings.selectedId,
     );
     return config
-      ? this.run(config.command, config.workingDirectory, config.name)
+      ? this.run(config.command, config.workingDirectory, config.name, config.env)
       : Promise.resolve(false);
   }
-  async run(command: string, directory: string, label = 'Ad hoc command'): Promise<boolean> {
+  async run(
+    command: string,
+    directory: string,
+    label = 'Ad hoc command',
+    env: EnvironmentVariable[] = [],
+  ): Promise<boolean> {
     if (!this.state.ready || this.state.saving || this.state.starting || this.state.task?.running)
       return false;
     this.update({ starting: true, error: '' });
     try {
       if (!command.trim()) throw new Error('Enter a command to run.');
       const cwd = runDirectory(this.root, directory);
-      const task = await this.backend.runTask(command, cwd);
+      const variables = validateEnvironment(env);
+      const task = variables.length
+        ? await this.backend.runTask(command, cwd, variables)
+        : await this.backend.runTask(command, cwd);
       this.update({ task, taskLabel: label, starting: false });
       this.schedulePoll();
       return true;

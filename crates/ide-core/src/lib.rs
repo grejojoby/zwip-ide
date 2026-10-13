@@ -528,7 +528,22 @@ impl Core {
                 if !cwd.starts_with(&workspace.root) {
                     return Err("Task directory must be inside the workspace".into());
                 }
-                self.tasks.start(string(&params, "command")?, &cwd)
+                let mut env = Vec::new();
+                for item in params["env"].as_array().into_iter().flatten() {
+                    let name = string(item, "name")?;
+                    let value = item["value"].as_str().ok_or("Missing environment value")?;
+                    let mut chars = name.chars();
+                    if !chars
+                        .next()
+                        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                        || !chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+                        || value.contains('\0')
+                    {
+                        return Err(format!("Invalid environment variable {name}"));
+                    }
+                    env.push((name.to_owned(), value.to_owned()));
+                }
+                self.tasks.start(string(&params, "command")?, &cwd, &env)
             }
             "task.status" => self.tasks.status(string(&params, "id")?),
             "task.stop" => {
@@ -599,7 +614,7 @@ impl Core {
                 .packages
                 .lock()
                 .map_err(|e| e.to_string())?
-                .syntax_asset(string(&params, "extension")?),
+                .syntax_asset(string(&params, "extension")?, params["fileName"].as_str()),
             "package.install" => self.package_mutation(|host, workspace| {
                 host.prepare_install(&PathBuf::from(string(&params, "path")?), workspace)
             }),

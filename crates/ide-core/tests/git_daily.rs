@@ -341,6 +341,19 @@ fn branch_popup_actions_cover_remote_checkout_compare_update_push_rename_and_del
         .unwrap()
         .iter()
         .any(|file| file["path"] == "file.txt"));
+    // One file of the comparison carries both full versions as a single hunk.
+    let file = core
+        .request(
+            "git.compareFile",
+            json!({"branch":"feature","path":"file.txt"}),
+        )
+        .unwrap();
+    assert_eq!(file["binary"], false);
+    let lines = file["hunks"][0]["lines"].as_array().unwrap();
+    assert!(lines
+        .iter()
+        .any(|line| line["kind"] == "add" && line["text"] == "dirty"));
+    assert!(lines.iter().any(|line| line["kind"] == "remove"));
     git(root.path(), &["checkout", "--", "file.txt"]);
 
     // Checkout and rebase moves the chosen branch onto the branch that was checked out.

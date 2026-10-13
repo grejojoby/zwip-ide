@@ -8,3 +8,6 @@ await buildToolsPackages();
 
 const { buildReactNextPackage } = await import('../packages/react-next/build.mjs');
 await buildReactNextPackage();
+
+const { buildMakePackage } = await import('../packages/make/build.mjs');
+await buildMakePackage();

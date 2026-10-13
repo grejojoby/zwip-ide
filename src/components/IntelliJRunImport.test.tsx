@@ -6,7 +6,7 @@ import { WorkspaceRunSession, type RunBackend } from '../model/run-configuration
 import type { IntelliJImportPreview } from '../model/intellij-import-contracts';
 import { IntelliJRunImport } from './IntelliJRunImport';
 
-vi.mock('../api', () => ({ api: { previewIntelliJ: vi.fn() } }));
+vi.mock('../api', () => ({ api: { previewIntelliJ: vi.fn(), packages: vi.fn() } }));
 const root = '/fixture/project';
 const preview: IntelliJImportPreview = {
   source: 'Selected settings folder',
@@ -37,7 +37,10 @@ const preview: IntelliJImportPreview = {
     },
   ],
 };
-beforeEach(() => vi.resetAllMocks());
+beforeEach(() => {
+  vi.resetAllMocks();
+  vi.mocked(api.packages).mockResolvedValue([]);
+});
 afterEach(cleanup);
 async function mount() {
   const backend: RunBackend = {
@@ -66,6 +69,76 @@ async function mount() {
   return { backend, session, onError, onMessage };
 }
 describe('reviewed run configuration import', () => {
+  it('imports plain environment values, and credential-like values only when confirmed', async () => {
+    const env = (value: string | null) => [
+      { name: 'SETUP', value: 'c21-or', sensitive: false },
+      { name: 'DB_PASSWORD', value, sensitive: true },
+      { name: 'API_TOKEN', value, sensitive: true },
+    ];
+    const withEnv: IntelliJImportPreview = {
+      ...preview,
+      runConfigurations: [
+        {
+          ...preview.runConfigurations[0],
+          fields: { ...preview.runConfigurations[0].fields, env: env(null) },
+        },
+      ],
+    };
+    const revealed: IntelliJImportPreview = {
+      ...withEnv,
+      runConfigurations: [
+        {
+          ...withEnv.runConfigurations[0],
+          fields: { ...withEnv.runConfigurations[0].fields, env: env('REVEALED') },
+        },
+      ],
+    };
+    vi.mocked(api.previewIntelliJ).mockResolvedValue(revealed);
+    cleanup();
+    const backend: RunBackend = {
+      getSetting: vi.fn().mockResolvedValue(null),
+      setSetting: vi.fn().mockImplementation(async (_key, value) => value),
+      runTask: vi.fn(),
+      taskStatus: vi.fn(),
+      stopTask: vi.fn(),
+    };
+    const session = new WorkspaceRunSession(root, backend);
+    await session.load();
+    const onMessage = vi.fn();
+    render(
+      <IntelliJRunImport
+        preview={withEnv}
+        path="/fixture/.idea"
+        projectRoot={root}
+        session={session}
+        busy={false}
+        onBusy={() => {}}
+        onMessage={onMessage}
+        onError={() => {}}
+      />,
+    );
+    expect(screen.getByText('SETUP=c21-or')).toBeTruthy();
+    expect(screen.getByText('DB_PASSWORD=••••••')).toBeTruthy();
+    fireEvent.click(screen.getByRole('checkbox', { name: /Web dev/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Import value of DB_PASSWORD' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Import 1 selected run configuration' }));
+    await waitFor(() => expect(onMessage).toHaveBeenCalledWith(expect.stringContaining('saved')));
+    expect(api.previewIntelliJ).toHaveBeenCalledWith('/fixture/.idea', root, true);
+    expect(session.getSnapshot().settings.configurations[0].env).toEqual([
+      { name: 'SETUP', value: 'c21-or' },
+      { name: 'DB_PASSWORD', value: 'REVEALED' },
+      { name: 'API_TOKEN', value: '' },
+    ]);
+  });
+  it('does not request credential values when none were confirmed', async () => {
+    vi.mocked(api.previewIntelliJ).mockResolvedValue(preview);
+    await mount();
+    fireEvent.click(screen.getByRole('checkbox', { name: /Web dev/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Import 1 selected run configuration' }));
+    await waitFor(() =>
+      expect(api.previewIntelliJ).toHaveBeenCalledWith('/fixture/.idea', root, false),
+    );
+  });
   it('requires selection, saves the reviewed batch and never launches it', async () => {
     vi.mocked(api.previewIntelliJ).mockResolvedValue(preview);
     const { backend, session, onMessage } = await mount();

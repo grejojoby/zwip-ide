@@ -28,6 +28,7 @@ export function GoTools({
     path: string;
     workingDirectory: string;
     args: string[];
+    env?: { name: string; value: string }[];
     mode: 'debug' | 'test';
   };
 }) {
@@ -65,6 +66,7 @@ export function GoTools({
     path: string;
     args: string[];
     cwd?: string;
+    env?: Record<string, string>;
   } | null>(null);
   useEffect(() => {
     const life = ++epoch.current;
@@ -217,6 +219,9 @@ export function GoTools({
         path: target.path,
         cwd: target.workingDirectory,
         args: [...target.args],
+        ...(target.env?.length && {
+          env: Object.fromEntries(target.env.map(({ name, value }) => [name, value])),
+        }),
       });
       setDebugMode(target.mode);
       setTab('debug');
@@ -238,6 +243,9 @@ export function GoTools({
             Prepared Go {configuredTarget.mode === 'test' ? 'test' : 'debug'} target:{' '}
             {configuredTarget.path} · working directory: {configuredTarget.workingDirectory} ·
             arguments: {JSON.stringify(configuredTarget.args)}
+            {configuredTarget.env?.length
+              ? ` · environment: ${configuredTarget.env.map(({ name }) => name).join(', ')}`
+              : ''}
           </span>{' '}
           <button disabled={locked} onClick={() => void debugPrepared()}>
             Debug prepared configuration

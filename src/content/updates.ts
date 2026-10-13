@@ -22,6 +22,138 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-13-indexing-progress-per-module',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'Indexing progress per module',
+    summary: 'See which modules are still indexing, which are ready and which failed.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Per-module indexing list',
+        description:
+          'Click Indexing in the status bar to list every module with its state and the reason the language package reports, such as queued or in progress. Failed modules show their error.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-13-makefile-package',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'Makefile package',
+    summary:
+      'Install the Makefile package for Makefile highlighting and IntelliJ Makefile run configurations.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Makefile package',
+        description:
+          'A new package in Packages highlights Makefile, GNUmakefile, .mk and .mak files. It runs no process of its own.',
+      },
+      {
+        type: 'added',
+        title: 'Import Makefile targets',
+        description:
+          'With the package enabled, IntelliJ Makefile run configurations import as make commands, with their arguments and environment variables.',
+      },
+      {
+        type: 'maintenance',
+        title: 'Packages can match file names',
+        description:
+          'Package grammars can now apply to extensionless files by name, such as Makefile.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-13-intellij-colors-usages-popup',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'IntelliJ colors and Show Usages popup',
+    summary:
+      'Code uses IntelliJ colors, single targets open directly and usages appear under the caret.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'IntelliJ color schemes',
+        description:
+          'Editors, the SQL console, usage lists and the branch diff window use the IntelliJ Dark and Light colors for keywords, strings, numbers, comments, functions, fields and constants.',
+      },
+      {
+        type: 'improved',
+        title: 'Richer Go highlighting',
+        description:
+          'Go files distinguish function and method declarations, calls, fields and constants. An installed Go package keeps its own grammar until it is updated to a build that includes this change.',
+      },
+      {
+        type: 'improved',
+        title: 'Direct navigation',
+        description:
+          'When a complete search finds exactly one declaration or implementation, it opens directly with the cursor on the symbol and the line highlighted until you move the cursor.',
+      },
+      {
+        type: 'added',
+        title: 'Show Usages popup',
+        description:
+          'Find Usages opens a popup just below the current line, with colored code previews, keyboard navigation and a button to dock the list in the bottom panel. Incomplete search coverage is still shown.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-13-run-configuration-environment',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'Environment variables for run configurations',
+    summary:
+      'Run configurations keep their environment, and many more IntelliJ configurations import.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Environment variables',
+        description:
+          'Each run configuration has an Environment box (NAME=value per line). Values apply to Run and to Debug.',
+      },
+      {
+        type: 'improved',
+        title: 'IntelliJ environment import',
+        description:
+          'Environment values are imported. Values that look like credentials are masked and only imported when you tick them.',
+      },
+      {
+        type: 'improved',
+        title: 'Go package configurations',
+        description:
+          'Go configurations that name a package such as "oscar" now import. Packages in another module are built there and run from the configured working directory; those import Run only.',
+      },
+      {
+        type: 'maintenance',
+        title: 'Still manual',
+        description:
+          'Environment files, Makefile, HTTP request, Docker, remote debug and file-only Go configurations still need manual setup.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-13-branch-diff-window',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'Side-by-side diff with the working tree',
+    summary: 'Show Diff with Working Tree now opens a full diff window instead of a file list.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'Diff window for branch comparisons',
+        description:
+          'Changed files appear in a tree beside a two-pane diff of the branch version and your version, with synchronized scrolling, connector bands, word-level highlights and folded unchanged lines.',
+      },
+      {
+        type: 'added',
+        title: 'Difference navigation',
+        description:
+          'F7 and Shift+F7 move between differences and continue into the next or previous file. Untracked files are still not compared, and code is not syntax highlighted in this view.',
+      },
+    ],
+  },
+  {
     id: '2026-10-13-public-registry-lockfile',
     version: '0.1.0',
     date: '2026-10-13',

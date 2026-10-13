@@ -51,6 +51,14 @@ export interface IntelliJRunConfiguration {
     goParameters?: string;
     pattern?: string;
     framework?: string;
+    makefile?: string;
+    target?: string;
+    /** Folder of an import-path package, resolved through the working directory's go.mod. */
+    packageDirectory?: string;
+    /** Module folder (containing go.mod) of packageDirectory. */
+    packageModule?: string;
+    /** Credential-like values are null until requested with revealEnvironment. */
+    env?: { name: string; value: string | null; sensitive: boolean }[];
   };
   notes: string[];
 }

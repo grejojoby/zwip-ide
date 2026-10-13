@@ -12,7 +12,7 @@ const script =
     (await import('@codemirror/lang-javascript')).javascript({ typescript, jsx });
 
 const markdown: Loader = async () => (await import('@codemirror/lang-markdown')).markdown();
-const go = stream(async () => (await import('@codemirror/legacy-modes/mode/go')).go);
+const go: Loader = async () => (await import('./go-syntax')).goSyntax();
 const clike = <Name extends string>(name: Name) =>
   stream(async () => {
     const modes = await import('@codemirror/legacy-modes/mode/clike');

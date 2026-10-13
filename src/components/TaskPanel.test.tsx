@@ -81,3 +81,32 @@ it('offers IntelliJ import as the last dropdown choice without changing the sele
   expect(onImport).toHaveBeenCalledTimes(1);
   expect(select.value).toBe('go');
 });
+it('edits environment variables, keeps the debug target and rejects invalid lines', async () => {
+  const backend = await setup();
+  const env = screen.getByLabelText('Run environment variables');
+  fireEvent.change(env, { target: { value: 'SETUP=c21-or\nbad line' } });
+  expect(screen.getByRole('alert').textContent).toContain('NAME=value');
+  expect(
+    (screen.getByRole('button', { name: 'Save configuration' }) as HTMLButtonElement).disabled,
+  ).toBe(true);
+  fireEvent.change(env, { target: { value: 'SETUP=c21-or\nPROFILE=dev' } });
+  expect(screen.getByText('Unsaved changes')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Save configuration' }));
+  await waitFor(() =>
+    expect(backend.setSetting).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        configurations: [
+          {
+            ...configuration,
+            env: [
+              { name: 'SETUP', value: 'c21-or' },
+              { name: 'PROFILE', value: 'dev' },
+            ],
+          },
+        ],
+      }),
+    ),
+  );
+  expect(backend.runTask).not.toHaveBeenCalled();
+});

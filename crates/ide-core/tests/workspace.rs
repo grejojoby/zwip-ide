@@ -52,6 +52,38 @@ fn scan_progress_reports_the_indexed_file_count() {
 }
 
 #[test]
+fn tasks_receive_their_configured_environment() {
+    let root = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let core = Core::new(data.path().to_owned()).unwrap();
+    core.request("workspace.open", json!({"root":root.path()}))
+        .unwrap();
+    let task = core
+        .request(
+            "task.start",
+            json!({"command":"printf '%s|%s' \"$SETUP\" \"$EMPTY\"","env":[{"name":"SETUP","value":"c21 or"},{"name":"EMPTY","value":""}]}),
+        )
+        .unwrap();
+    let id = task["id"].as_str().unwrap();
+    let mut status = task.clone();
+    for _ in 0..100 {
+        status = core.request("task.status", json!({"id":id})).unwrap();
+        if status["running"] == false {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert_eq!(status["output"], "c21 or|");
+    assert!(core
+        .request(
+            "task.start",
+            json!({"command":"true","env":[{"name":"BAD-NAME","value":"x"}]}),
+        )
+        .unwrap_err()
+        .contains("BAD-NAME"));
+}
+
+#[test]
 fn explicit_profiles_preserve_defaults_and_invalidate_changed_settings() {
     let root = tempfile::tempdir().unwrap();
     let data = tempfile::tempdir().unwrap();

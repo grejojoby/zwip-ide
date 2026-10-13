@@ -1,0 +1,19 @@
+{
+  "id": "make",
+  "name": "Makefile",
+  "version": "0.1.0",
+  "coreVersion": "^0.1.0",
+  "description": "Makefile highlighting, and importing IntelliJ Makefile run configurations as make commands.",
+  "kind": "feature",
+  "platform": "any",
+  "architecture": "any",
+  "languages": ["makefile"],
+  "capabilities": ["makeTargets"],
+  "syntax": {
+    "abi": 1,
+    "asset": "syntax.mjs",
+    "extensions": ["mk", "mak"],
+    "fileNames": ["Makefile", "makefile", "GNUmakefile"]
+  },
+  "checksums": {}
+}

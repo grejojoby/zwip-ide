@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TaskResult } from '../contracts';
 import {
+  formatEnvironment,
+  parseEnvironment,
   readRunSettings,
   relativeWorkingDirectory,
   runDirectory,
@@ -167,6 +169,37 @@ describe('workspace run configurations', () => {
     expect(await reopened.runSelected()).toBe(false);
   });
 
+  it('saves environment variables and passes them to the selected run', async () => {
+    const { api, storage } = backend();
+    const session = new WorkspaceRunSession('/project', api);
+    await session.load();
+    const env = [
+      { name: 'SETUP', value: 'c21-or' },
+      { name: 'EMPTY', value: '' },
+    ];
+    expect(await session.save({ ...configuration, env })).toBe(true);
+    expect(
+      (storage.get(runSettingsKey('/project')) as { configurations: RunConfiguration[] })
+        .configurations[0].env,
+    ).toEqual(env);
+    expect(await session.runSelected()).toBe(true);
+    expect(api.runTask).toHaveBeenCalledWith('npm run dev', '/project/apps/web', env);
+    expect(await session.save({ ...configuration, env: [{ name: 'BAD-NAME', value: 'x' }] })).toBe(
+      false,
+    );
+    expect(session.getSnapshot().error).toContain('BAD-NAME');
+  });
+  it('parses and formats NAME=value environment text', () => {
+    const env = parseEnvironment('# comment\nSETUP=c21-or\n\nURL=a=b\nEMPTY=\n');
+    expect(env).toEqual([
+      { name: 'SETUP', value: 'c21-or' },
+      { name: 'URL', value: 'a=b' },
+      { name: 'EMPTY', value: '' },
+    ]);
+    expect(formatEnvironment(env)).toBe('SETUP=c21-or\nURL=a=b\nEMPTY=');
+    expect(() => parseEnvironment('no equals sign')).toThrow('NAME=value');
+    expect(() => parseEnvironment('A=1\nA=2')).toThrow('set twice');
+  });
   it('supports ad hoc execution, output polling and stop without creating a configuration', async () => {
     const { api } = backend();
     vi.mocked(api.runTask).mockResolvedValue({

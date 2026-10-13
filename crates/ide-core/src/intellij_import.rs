@@ -479,7 +479,13 @@ pub fn read(params: &Value) -> Result<Preview, String> {
     let mut preview=Preview{source,fingerprint:format!("{:x}",digest.finalize()),keymaps:Vec::new(),active_keymap:None,connections:Vec::new(),run_configurations:Vec::new(),appearance:None,notices:vec!["Passwords and other saved credentials are never imported. Enter them separately in Zwip.".into(), "Only supported keymaps, appearance, run configurations and basic data-source metadata are considered; other IntelliJ settings are ignored.".into()]};
     let mut sources: BTreeMap<String, Vec<&Node>> = BTreeMap::new();
     for (source_name, root) in &roots {
-        collect_runs(root, source_name, &mut preview.run_configurations)?;
+        collect_runs(
+            root,
+            source_name,
+            params["revealEnvironment"] == true,
+            project.as_deref(),
+            &mut preview.run_configurations,
+        )?;
         let mut nodes = Vec::new();
         root.descendants("keymap", &mut nodes);
         for node in nodes {
@@ -882,7 +888,15 @@ fn parse_jdbc(raw: &str, project: Option<&Path>) -> Result<(&'static str, Value)
     Ok((kind, config))
 }
 
-fn collect_runs(root: &Node, source: &str, rows: &mut Vec<Value>) -> Result<(), String> {
+/// Credential-like environment values are withheld unless `reveal` is set, which the
+/// importer does only after the user confirms each value.
+fn collect_runs(
+    root: &Node,
+    source: &str,
+    reveal: bool,
+    project: Option<&Path>,
+    rows: &mut Vec<Value>,
+) -> Result<(), String> {
     let mut configurations = Vec::new();
     if root.name == "configuration" {
         configurations.push(root);
@@ -934,8 +948,14 @@ fn collect_runs(root: &Node, source: &str, rows: &mut Vec<Value>) -> Result<(), 
         );
         let mut fields = serde_json::Map::new();
         let mut notes = Vec::new();
-        let status = match run_fields(node, &mut fields) {
+        let status = match run_fields(node, reveal, &mut fields) {
             Ok(()) => {
+                if let Some((directory, module)) =
+                    project.and_then(|project| package_directory(project, &fields))
+                {
+                    fields.insert("packageDirectory".into(), json!(directory));
+                    fields.insert("packageModule".into(), json!(module));
+                }
                 notes.push("Imported commands must be reviewed before saving. Nothing is executed during import.".into());
                 "ready"
             }
@@ -951,11 +971,18 @@ fn collect_runs(root: &Node, source: &str, rows: &mut Vec<Value>) -> Result<(), 
     }
     Ok(())
 }
-fn run_fields(node: &Node, fields: &mut serde_json::Map<String, Value>) -> Result<(), String> {
+fn run_fields(
+    node: &Node,
+    reveal: bool,
+    fields: &mut serde_json::Map<String, Value>,
+) -> Result<(), String> {
     let kind = node.attr("type").unwrap_or_default();
     if !matches!(
         kind,
-        "js.build_tools.npm" | "GoApplicationRunConfiguration" | "GoTestRunConfiguration"
+        "js.build_tools.npm"
+            | "GoApplicationRunConfiguration"
+            | "GoTestRunConfiguration"
+            | "MAKEFILE_TARGET_RUN_CONFIGURATION"
     ) {
         return Err(
             "This run configuration type is not supported; its settings were not imported.".into(),
@@ -981,22 +1008,69 @@ fn run_fields(node: &Node, fields: &mut serde_json::Map<String, Value>) -> Resul
     }
     for child in &node.children {
         match child.name.as_str() {
-            "module" if child.children.is_empty() && child.attrs.keys().all(|key|key=="name")=>continue,
-            "method" if child.children.is_empty() && child.attrs.keys().all(|key|key=="v")=>continue,
-            "method"=>return Err("Before-launch tasks are not imported; recreate this configuration manually.".into()),
-            "envs"|"env_files"|"env-files" if child.children.is_empty() && child.attrs.is_empty() && child.text.trim().is_empty()=>continue,
-            "envs"|"env_files"|"env-files"|"env-file"|"envFile"|"environment"=>return Err("Environment values or environment files are not imported; recreate this configuration manually.".into()),
-            "scripts" if kind=="js.build_tools.npm"=>{
-                let mut scripts=Vec::new();
-                if !child.attrs.is_empty() || !child.text.trim().is_empty(){return Err("Npm script options require manual setup.".into());}
-                for script in &child.children {
-                    if script.name!="script" || script.attrs.len()!=1 || !script.children.is_empty() || !script.text.trim().is_empty(){return Err("Npm script options require manual setup.".into());}
-                    let script=script.attr("value").ok_or("An npm script has no name.")?;
-                    check_run_value(script)?;scripts.push(json!(script));
-                }
-                if fields.insert("scripts".into(),json!(scripts)).is_some(){return Err("Repeated run configuration fields require manual setup.".into());}continue;
+            "module"
+                if child.children.is_empty() && child.attrs.keys().all(|key| key == "name") =>
+            {
+                continue
             }
-            _=>{},
+            "method" if child.children.is_empty() && child.attrs.keys().all(|key| key == "v") => {
+                continue
+            }
+            "method" => {
+                return Err(
+                    "Before-launch tasks are not imported; recreate this configuration manually."
+                        .into(),
+                )
+            }
+            "envs" | "env_files" | "env-files"
+                if child.children.is_empty()
+                    && child.attrs.is_empty()
+                    && child.text.trim().is_empty() =>
+            {
+                continue
+            }
+            "envs" => {
+                if fields
+                    .insert("env".into(), environment(child, reveal)?)
+                    .is_some()
+                {
+                    return Err("Repeated run configuration fields require manual setup.".into());
+                }
+                continue;
+            }
+            "env_files" | "env-files" | "env-file" | "envFile" | "environment" => {
+                return Err(
+                    "Environment files are not imported; recreate this configuration manually."
+                        .into(),
+                )
+            }
+            "makefile" if kind == "MAKEFILE_TARGET_RUN_CONFIGURATION" => {
+                makefile_fields(child, reveal, fields)?;
+                continue;
+            }
+            "scripts" if kind == "js.build_tools.npm" => {
+                let mut scripts = Vec::new();
+                if !child.attrs.is_empty() || !child.text.trim().is_empty() {
+                    return Err("Npm script options require manual setup.".into());
+                }
+                for script in &child.children {
+                    if script.name != "script"
+                        || script.attrs.len() != 1
+                        || !script.children.is_empty()
+                        || !script.text.trim().is_empty()
+                    {
+                        return Err("Npm script options require manual setup.".into());
+                    }
+                    let script = script.attr("value").ok_or("An npm script has no name.")?;
+                    check_run_value(script)?;
+                    scripts.push(json!(script));
+                }
+                if fields.insert("scripts".into(), json!(scripts)).is_some() {
+                    return Err("Repeated run configuration fields require manual setup.".into());
+                }
+                continue;
+            }
+            _ => {}
         }
         let field=match (kind,child.name.as_str()) {
             ("js.build_tools.npm","package-json")=>"packageJson",
@@ -1024,6 +1098,174 @@ fn run_fields(node: &Node, fields: &mut serde_json::Map<String, Value>) -> Resul
         check_run_value(value)?;
         if fields.insert(field.into(), json!(value)).is_some() {
             return Err("Repeated run configuration fields require manual setup.".into());
+        }
+    }
+    Ok(())
+}
+/// `<envs><env name="…" value="…"/></envs>` as ordered `{name, value, sensitive}` rows.
+fn environment(node: &Node, reveal: bool) -> Result<Value, String> {
+    if !node.attrs.is_empty() || !node.text.trim().is_empty() {
+        return Err("Environment options require manual setup.".into());
+    }
+    let mut names = HashSet::new();
+    let mut rows = Vec::new();
+    for env in &node.children {
+        if env.name != "env"
+            || !env.children.is_empty()
+            || !env.text.trim().is_empty()
+            || env.attrs.keys().any(|key| key != "name" && key != "value")
+        {
+            return Err("Environment options require manual setup.".into());
+        }
+        let name = env
+            .attr("name")
+            .ok_or("An environment variable has no name.")?;
+        let value = env.attr("value").unwrap_or_default();
+        let mut chars = name.chars();
+        if !chars
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            || !chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+            || name.len() > 256
+        {
+            return Err("An environment variable name is not supported.".into());
+        }
+        if !names.insert(name) {
+            return Err("Repeated environment variables require manual setup.".into());
+        }
+        if value.len() > 8192 || value.chars().any(|c| c.is_control() && c != '\t') {
+            return Err("An environment value exceeds supported limits.".into());
+        }
+        let sensitive = looks_sensitive(name) || looks_sensitive(value);
+        rows.push(json!({
+            "name": name,
+            "value": if sensitive && !reveal { Value::Null } else { json!(value) },
+            "sensitive": sensitive,
+        }));
+    }
+    Ok(json!(rows))
+}
+/// Resolves a Go package configured by import path (such as "oscar" or "consumer/tools").
+/// It is looked up through the working directory's go.mod, as `go run <path>` would, and
+/// otherwise through any project module declaring it, as IntelliJ does for multi-module
+/// projects. Returns `(packageDirectory, packageModule)` as `$PROJECT_DIR$/…` paths.
+fn package_directory(
+    project: &Path,
+    fields: &serde_json::Map<String, Value>,
+) -> Option<(String, String)> {
+    let field = |name: &str| fields.get(name).and_then(Value::as_str);
+    if !field("goKind")?.eq_ignore_ascii_case("PACKAGE") {
+        return None;
+    }
+    let package = field("packagePath").filter(|path| *path != ".")?;
+    let relative = field("workingDirectory")?
+        .strip_prefix("$PROJECT_DIR$")?
+        .trim_start_matches('/');
+    if relative.split('/').any(|part| part == "..") {
+        return None;
+    }
+    let declares = |module: &Path| -> Option<PathBuf> {
+        let text = fs::read_to_string(module.join("go.mod")).ok()?;
+        let path = text
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("module "))?
+            .trim()
+            .trim_matches('"');
+        let suffix = if package == path {
+            ""
+        } else {
+            package.strip_prefix(&format!("{path}/"))?
+        };
+        Some(module.join(suffix)).filter(|directory| directory.is_dir())
+    };
+    let mut enclosing = project.join(relative);
+    let found = loop {
+        if enclosing.join("go.mod").is_file() {
+            break declares(&enclosing).map(|directory| (directory, enclosing.clone()));
+        }
+        if enclosing == project || !enclosing.pop() || !enclosing.starts_with(project) {
+            break None;
+        }
+    }
+    .or_else(|| {
+        // Shallow, ignore-aware scan for the module that declares this package.
+        ignore::WalkBuilder::new(project)
+            .max_depth(Some(4))
+            .build()
+            .flatten()
+            .filter(|entry| entry.file_name() == "go.mod")
+            .filter_map(|entry| {
+                let module = entry.path().parent()?.to_path_buf();
+                Some((declares(&module)?, module))
+            })
+            .max_by_key(|(_, module)| module.components().count())
+    })?;
+    let display = |path: &Path| -> Option<String> {
+        let relative = path.strip_prefix(project).ok()?.to_str()?;
+        Some(if relative.is_empty() {
+            "$PROJECT_DIR$".into()
+        } else {
+            format!("$PROJECT_DIR$/{relative}")
+        })
+    };
+    Some((display(&found.0)?, display(&found.1)?))
+}
+fn looks_sensitive(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    CREDENTIAL_WORDS.iter().any(|part| lower.contains(part))
+        // URLs carrying user information, such as postgres://user:pass@host.
+        || lower.split_once("://").is_some_and(|(_, rest)| rest.split('/').next().is_some_and(|host| host.contains('@')))
+}
+const CREDENTIAL_WORDS: [&str; 10] = [
+    "password",
+    "passwd",
+    "secret",
+    "token",
+    "authorization",
+    "api-key",
+    "api_key",
+    "apikey",
+    "credential",
+    "private_key",
+];
+/// `<makefile filename="…" target="…" workingDirectory="…" arguments="…"><envs/></makefile>`.
+fn makefile_fields(
+    node: &Node,
+    reveal: bool,
+    fields: &mut serde_json::Map<String, Value>,
+) -> Result<(), String> {
+    let unsupported = || "Makefile options require manual setup.".to_owned();
+    if !node.text.trim().is_empty() {
+        return Err(unsupported());
+    }
+    let mut insert = |field: &str, value: Value| {
+        if fields.insert(field.into(), value).is_some() {
+            Err("Repeated run configuration fields require manual setup.".to_owned())
+        } else {
+            Ok(())
+        }
+    };
+    for (name, value) in &node.attrs {
+        let field = match name.as_str() {
+            "filename" => "makefile",
+            "target" => "target",
+            "workingDirectory" => "workingDirectory",
+            "arguments" => "programParameters",
+            _ => return Err(unsupported()),
+        };
+        if !value.is_empty() {
+            check_run_value(value)?;
+            insert(field, json!(value))?;
+        }
+    }
+    for child in &node.children {
+        match child.name.as_str() {
+            "envs"
+                if child.children.is_empty()
+                    && child.attrs.is_empty()
+                    && child.text.trim().is_empty() => {}
+            "envs" => insert("env", environment(child, reveal)?)?,
+            _ => return Err(unsupported()),
         }
     }
     Ok(())

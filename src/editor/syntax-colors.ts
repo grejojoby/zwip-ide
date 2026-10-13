@@ -1,26 +1,51 @@
 import type { Extension } from '@codemirror/state';
-import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
-import { tags } from '@lezer/highlight';
+import { syntaxHighlighting } from '@codemirror/language';
+import { tagHighlighter, tags } from '@lezer/highlight';
 
-/** Shared, theme-aware colors for source editors and tool consoles. */
-export function syntaxColors(dark: boolean): Extension {
-  return syntaxHighlighting(
-    HighlightStyle.define([
-      {
-        tag: [tags.keyword, tags.modifier, tags.operatorKeyword],
-        color: dark ? '#dca475' : '#8b3990',
-      },
-      { tag: [tags.string, tags.regexp], color: dark ? '#91c48b' : '#266832' },
-      { tag: [tags.number, tags.bool, tags.null], color: dark ? '#86b5df' : '#225ea8' },
-      { tag: [tags.typeName, tags.className, tags.namespace], color: dark ? '#d3bd83' : '#775200' },
-      { tag: tags.function(tags.variableName), color: dark ? '#8fb7ee' : '#2158a5' },
-      {
-        tag: [tags.comment, tags.docComment],
-        color: dark ? '#9ba1ab' : '#646c78',
-        fontStyle: 'italic',
-      },
-      { tag: [tags.propertyName, tags.attributeName], color: dark ? '#c8c2e8' : '#6d4797' },
-      { tag: tags.invalid, color: dark ? '#f09e9e' : '#b83434' },
-    ]),
-  );
+/**
+ * Token classes shared by editors, consoles and read-only code previews. The colors live in
+ * styles.css (`--syntax-*`) and follow IntelliJ's Dark and Light color schemes.
+ */
+export const codeHighlighter = tagHighlighter([
+  {
+    tag: [tags.keyword, tags.modifier, tags.self, tags.bool, tags.null, tags.atom, tags.escape],
+    class: 'tok-keyword',
+  },
+  {
+    tag: [tags.string, tags.character, tags.special(tags.string), tags.regexp],
+    class: 'tok-string',
+  },
+  { tag: tags.attributeValue, class: 'tok-string' },
+  { tag: [tags.number, tags.integer, tags.float], class: 'tok-number' },
+  { tag: [tags.comment, tags.lineComment, tags.blockComment], class: 'tok-comment' },
+  { tag: tags.docComment, class: 'tok-doc-comment' },
+  {
+    tag: [
+      tags.function(tags.definition(tags.variableName)),
+      tags.function(tags.definition(tags.propertyName)),
+    ],
+    class: 'tok-function-declaration',
+  },
+  {
+    tag: [tags.function(tags.variableName), tags.function(tags.propertyName)],
+    class: 'tok-function-call',
+  },
+  { tag: [tags.propertyName, tags.definition(tags.propertyName)], class: 'tok-field' },
+  {
+    tag: [tags.constant(tags.variableName), tags.standard(tags.variableName)],
+    class: 'tok-constant',
+  },
+  { tag: [tags.typeName, tags.className, tags.namespace], class: 'tok-type' },
+  { tag: [tags.annotation, tags.meta], class: 'tok-annotation' },
+  { tag: tags.tagName, class: 'tok-tag' },
+  { tag: tags.attributeName, class: 'tok-attribute' },
+  { tag: tags.heading, class: 'tok-heading' },
+  { tag: tags.emphasis, class: 'tok-emphasis' },
+  { tag: tags.strong, class: 'tok-strong' },
+  { tag: [tags.link, tags.url], class: 'tok-link' },
+  { tag: tags.invalid, class: 'tok-invalid' },
+]);
+
+export function syntaxColors(): Extension {
+  return syntaxHighlighting(codeHighlighter);
 }

@@ -463,6 +463,99 @@ fn implicit_jdbc_tls_import_is_verified_and_has_an_explicit_review_note() {
     assert_eq!(candidate(&p, "Unverified TLS")["status"], "unsupported");
 }
 #[test]
+fn go_import_path_packages_resolve_through_the_working_directory_module() {
+    let f = Fixture::new();
+    f.write("svc/go.mod", "module svc\n\ngo 1.25\n");
+    f.write("svc/cmd/api/main.go", "package main\n");
+    // Configurations without Go fields must not affect package resolution.
+    f.write(".run/Web.run.xml", "<component name='ProjectRunConfigurationManager'><configuration name='Web' type='js.build_tools.npm'><command value='run'/></configuration></component>");
+    f.write(".idea/runConfigurations/Go.xml","<component name='ProjectRunConfigurationManager'><configuration name='Nested' type='GoApplicationRunConfiguration'><working_directory value='$PROJECT_DIR$/svc'/><kind value='PACKAGE'/><package value='svc/cmd/api'/><directory value='$PROJECT_DIR$'/><filePath value='$PROJECT_DIR$'/></configuration><configuration name='From root' type='GoApplicationRunConfiguration'><working_directory value='$PROJECT_DIR$'/><kind value='PACKAGE'/><package value='svc'/></configuration><configuration name='Missing' type='GoApplicationRunConfiguration'><working_directory value='$PROJECT_DIR$/svc'/><kind value='PACKAGE'/><package value='svc/nope'/></configuration></component>");
+    let preview = f
+        .core
+        .request(
+            "intellij.preview",
+            json!({"path":f.source.path(),"projectRoot":f.source.path()}),
+        )
+        .unwrap();
+    let field = |name: &str| {
+        preview["runConfigurations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["name"] == name)
+            .unwrap()["fields"]["packageDirectory"]
+            .clone()
+    };
+    assert_eq!(field("Nested"), "$PROJECT_DIR$/svc/cmd/api");
+    // The root has no go.mod; like IntelliJ, the module declaring the package is found instead.
+    assert_eq!(field("From root"), "$PROJECT_DIR$/svc");
+    let module = |name: &str| {
+        preview["runConfigurations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["name"] == name)
+            .unwrap()["fields"]["packageModule"]
+            .clone()
+    };
+    assert_eq!(module("Nested"), "$PROJECT_DIR$/svc");
+    assert_eq!(module("From root"), "$PROJECT_DIR$/svc");
+    assert_eq!(field("Missing"), Value::Null);
+}
+#[test]
+fn makefile_targets_import_their_file_target_arguments_and_environment() {
+    let f = Fixture::new();
+    f.write(".idea/runConfigurations/Make.xml","<component name='ProjectRunConfigurationManager'><configuration name='dev-all' type='MAKEFILE_TARGET_RUN_CONFIGURATION' factoryName='Makefile'><makefile filename='$PROJECT_DIR$/Makefile' target='dev-all' workingDirectory='' arguments='-j4'><envs><env name='SETUP' value='c21'/></envs></makefile><method v='2'/></configuration><configuration name='odd' type='MAKEFILE_TARGET_RUN_CONFIGURATION'><makefile filename='$PROJECT_DIR$/Makefile' target='x' sudo='true'/></configuration></component>");
+    let preview = f.preview("");
+    let rows = preview["runConfigurations"].as_array().unwrap();
+    let make = rows.iter().find(|row| row["name"] == "dev-all").unwrap();
+    assert_eq!(make["status"], "ready");
+    assert_eq!(
+        make["fields"],
+        json!({"makefile":"$PROJECT_DIR$/Makefile","target":"dev-all","programParameters":"-j4","env":[{"name":"SETUP","value":"c21","sensitive":false}]})
+    );
+    let odd = rows.iter().find(|row| row["name"] == "odd").unwrap();
+    assert_eq!(odd["status"], "unsupported");
+}
+#[test]
+fn run_environment_imports_plain_values_and_withholds_credentials_until_revealed() {
+    let f = Fixture::new();
+    f.write(".idea/runConfigurations/App.xml","<component name='ProjectRunConfigurationManager'><configuration name='Go env' type='GoApplicationRunConfiguration'><working_directory value='$PROJECT_DIR$'/><envs><env name='SETUP' value='c21-or'/><env name='DB_PASSWORD' value='PLAIN_SECRET'/><env name='DSN' value='postgres://u:URL_SECRET@db/app'/><env name='EMPTY'/></envs><kind value='PACKAGE'/><package value='.'/><method v='2'/></configuration><configuration name='Env file' type='GoApplicationRunConfiguration'><env-file value='.env'/></configuration></component>");
+    let preview = f.preview("");
+    let rows = preview["runConfigurations"].as_array().unwrap();
+    let app = rows.iter().find(|row| row["name"] == "Go env").unwrap();
+    assert_eq!(app["status"], "ready");
+    assert_eq!(
+        app["fields"]["env"],
+        json!([
+            {"name":"SETUP","value":"c21-or","sensitive":false},
+            {"name":"DB_PASSWORD","value":null,"sensitive":true},
+            {"name":"DSN","value":null,"sensitive":true},
+            {"name":"EMPTY","value":"","sensitive":false},
+        ])
+    );
+    assert!(!preview.to_string().contains("SECRET"));
+    let file = rows.iter().find(|row| row["name"] == "Env file").unwrap();
+    assert_eq!(file["status"], "unsupported");
+    let revealed = f
+        .core
+        .request(
+            "intellij.preview",
+            json!({"path":f.source.path(),"revealEnvironment":true}),
+        )
+        .unwrap();
+    let env = &revealed["runConfigurations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["name"] == "Go env")
+        .unwrap()["fields"]["env"];
+    assert_eq!(env[1]["value"], "PLAIN_SECRET");
+    assert_eq!(env[2]["value"], "postgres://u:URL_SECRET@db/app");
+    // Revealing values does not change what the user reviewed.
+    assert_eq!(revealed["fingerprint"], preview["fingerprint"]);
+}
+#[test]
 fn project_run_sources_expose_only_known_fields_and_never_environment_secrets() {
     let f = Fixture::new();
     let npm="<component name='ProjectRunConfigurationManager'><configuration name='Frontend' type='js.build_tools.npm' factoryName='npm'><package-json value='$PROJECT_DIR$/web/package.json'/><command value='run'/><scripts><script value='dev'/></scripts><node-interpreter value='project'/><envs/><method v='2'/></configuration></component>";

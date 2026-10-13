@@ -26,7 +26,11 @@ fn worker_kind() -> String {
 pub struct SyntaxAsset {
     pub abi: u32,
     pub asset: String,
+    #[serde(default)]
     pub extensions: Vec<String>,
+    /// Exact file names without an extension, such as `Makefile`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub file_names: Vec<String>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -433,7 +437,7 @@ impl PackageHost {
         )
         .map_err(|error| format!("Invalid installed package metadata: {error}"))
     }
-    pub fn syntax_asset(&self, extension: &str) -> Result<Value, String> {
+    pub fn syntax_asset(&self, extension: &str, file_name: Option<&str>) -> Result<Value, String> {
         for item in self.installed()?.into_iter().filter(|item| item.enabled) {
             let Ok(manifest) = self.trusted_manifest(&item) else {
                 continue;
@@ -445,6 +449,7 @@ impl PackageHost {
                 .extensions
                 .iter()
                 .any(|candidate| candidate == extension)
+                && !file_name.is_some_and(|name| syntax.file_names.iter().any(|item| item == name))
             {
                 continue;
             }
@@ -486,6 +491,11 @@ impl PackageHost {
             ("sql", "SQL databases", "MySQL, PostgreSQL and SQLite"),
             ("redis", "Redis", "Key and value browsing"),
             ("http", "HTTP client", "Request files and responses"),
+            (
+                "make",
+                "Makefile",
+                "Makefile highlighting and IntelliJ Makefile run configurations",
+            ),
         ]
         .into_iter()
         .map(|(id, name, description)| (id.into(), (name.into(), description.into())))
@@ -1288,8 +1298,17 @@ fn validate_routing(manifest: &Manifest) -> Result<(), String> {
     }
     let mut extensions = manifest.document_extensions.iter().collect::<Vec<_>>();
     if let Some(syntax) = &manifest.syntax {
-        if syntax.abi != 1 || syntax.extensions.is_empty() {
+        if syntax.abi != 1 || syntax.extensions.is_empty() && syntax.file_names.is_empty() {
             return Err("Unsupported syntax ABI or empty extension list".into());
+        }
+        if syntax.file_names.iter().any(|name| {
+            name.is_empty()
+                || name.starts_with('.')
+                || !name
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+        }) {
+            return Err("Package syntax file names must be plain file names".into());
         }
         relative_path(&syntax.asset)?;
         if !manifest.checksums.contains_key(&syntax.asset) {

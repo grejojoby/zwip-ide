@@ -37,10 +37,12 @@ export function request<T>(method: string, params: Record<string, unknown> = {})
   });
 }
 export const api = {
-  previewIntelliJ: (path: string, projectRoot?: string) =>
+  /** `revealEnvironment` includes credential-like run environment values the user confirmed. */
+  previewIntelliJ: (path: string, projectRoot?: string, revealEnvironment = false) =>
     request<import('./model/intellij-import-contracts').IntelliJImportPreview>('intellij.preview', {
       path,
       projectRoot,
+      ...(revealEnvironment && { revealEnvironment }),
     }),
   importIntelliJConnections: (
     path: string,
@@ -162,7 +164,8 @@ export const api = {
   resizeTerminal: (id: string, rows: number, cols: number) =>
     request<void>('terminal.resize', { id, rows, cols }),
   stopTerminal: (id: string) => request<void>('terminal.stop', { id }),
-  runTask: (command: string, cwd?: string) => request<TaskResult>('task.start', { command, cwd }),
+  runTask: (command: string, cwd?: string, env?: { name: string; value: string }[]) =>
+    request<TaskResult>('task.start', { command, cwd, ...(env && { env }) }),
   taskStatus: (id: string) => request<TaskResult>('task.status', { id }),
   stopTask: (id: string) => request<void>('task.stop', { id }),
 };

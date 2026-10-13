@@ -10,6 +10,8 @@ export interface IntelliJRunConfigurationCandidate {
   type: string;
   status: 'ready' | 'unsupported' | 'duplicate';
   configuration?: RunConfiguration;
+  /** Variables whose values look like credentials; imported empty unless the user confirms them. */
+  sensitive: string[];
   notes: string[];
 }
 
@@ -109,6 +111,15 @@ function programArguments(
   });
 }
 
+/** Withheld values become empty strings; `sensitive` collects their names for review. */
+function environment(fields: Fields, sensitive: string[]): RunConfiguration['env'] {
+  const env = (fields.env ?? []).map(({ name, value, sensitive: secret }) => {
+    if (secret) sensitive.push(name);
+    return { name, value: value ?? '' };
+  });
+  return env.length ? env : undefined;
+}
+
 function onlyFields(fields: Fields, allowed: (keyof Fields)[]): void {
   for (const [name, value] of Object.entries(fields)) {
     if (
@@ -126,6 +137,7 @@ function npmConfiguration(
   originalRoot: string,
   workspaceRoot: string,
   notes: string[],
+  sensitive: string[],
 ): RunConfiguration {
   const fields = row.fields;
   onlyFields(fields, [
@@ -136,6 +148,7 @@ function npmConfiguration(
     'nodeInterpreter',
     'packageManager',
     'programParameters',
+    'env',
   ]);
   if (fields.command !== 'run' && fields.command !== 'run-script')
     throw new Error('Only npm run/run-script configurations can be imported.');
@@ -167,11 +180,13 @@ function npmConfiguration(
   notes.push(
     'Runs with npm and Node available to the application shell; IntelliJ project runtime selection is not imported.',
   );
+  const env = environment(fields, sensitive);
   return {
     id: `intellij-run-${row.id}`,
     name: row.name.trim(),
     workingDirectory: directory,
     command: command(['npm', 'run', fields.scripts[0], ...(args.length ? ['--', ...args] : [])]),
+    ...(env && { env }),
   };
 }
 
@@ -180,6 +195,7 @@ function goConfiguration(
   originalRoot: string,
   workspaceRoot: string,
   notes: string[],
+  sensitive: string[],
 ): RunConfiguration {
   const fields = row.fields;
   onlyFields(fields, [
@@ -192,6 +208,9 @@ function goConfiguration(
     'goParameters',
     'pattern',
     'framework',
+    'env',
+    'packageDirectory',
+    'packageModule',
   ]);
   if (fields.goParameters?.trim())
     throw new Error('Custom Go tool arguments/build flags cannot be imported.');
@@ -207,16 +226,34 @@ function goConfiguration(
     throw new Error(
       'Only Go directory or local package configurations are supported; file scope is not equivalent.',
     );
-  if (fields.filePath)
+  // IntelliJ keeps a default project-directory filePath on package/directory configurations;
+  // only a .go file is a real file target.
+  if (fields.filePath?.endsWith('.go'))
     throw new Error('An explicit Go file target cannot be imported as a whole package.');
+  // A module-local import path such as "dchealthchecker" or "consumer/tools"; `go` resolves it
+  // from the working directory. Domain-style paths could name a dependency and stay unsupported.
+  const importPath =
+    kind === 'PACKAGE' &&
+    fields.packagePath !== '.' &&
+    /^[A-Za-z0-9_-]+(\/[A-Za-z0-9_.-]+)*$/.test(fields.packagePath ?? '') &&
+    !(fields.packagePath ?? '').split('/').some((part) => /^\.+$/.test(part))
+      ? fields.packagePath!
+      : undefined;
   if (kind === 'DIRECTORY') {
     if (!fields.directoryPath || projectPath(fields.directoryPath, originalRoot) !== directory)
       throw new Error('The Go directory target must match the working directory for this import.');
     if (fields.packagePath && fields.packagePath !== '.')
       throw new Error('A Go directory configuration contains an unresolved package target.');
+  } else if (importPath) {
+    if (!fields.packageDirectory || !fields.packageModule)
+      throw new Error(
+        `Go package ${importPath} was not found in any module of the selected project. Check the original project directory.`,
+      );
   } else {
     if (fields.packagePath !== '.')
-      throw new Error('Only the local Go package path "." is currently supported.');
+      throw new Error(
+        'Only the local Go package path "." or a module-local import path is supported.',
+      );
     if (fields.directoryPath && projectPath(fields.directoryPath, originalRoot) !== directory)
       throw new Error('The Go package directory and working directory disagree.');
   }
@@ -229,22 +266,53 @@ function goConfiguration(
     ...(pattern ? ['-run', pattern] : []),
     ...(args.length ? ['-args', ...args] : []),
   ];
+  const sdk = [
+    '/usr/bin/env',
+    `GOROOT=${goBinary.slice(0, -'/bin/go'.length)}`,
+    'GOTOOLCHAIN=local',
+    goBinary,
+  ];
+  const packageDirectory =
+    fields.packageDirectory && projectPath(fields.packageDirectory, originalRoot);
+  const packageModule = fields.packageModule && projectPath(fields.packageModule, originalRoot);
+  // `go run <path>` resolves only from inside the package's module. Otherwise build there, as
+  // IntelliJ does, and start the program from the configured working directory.
+  const outsideModule =
+    !!packageModule &&
+    packageModule !== '.' &&
+    directory !== packageModule &&
+    !directory.startsWith(`${packageModule}/`);
+  const packageFolder = `${workspaceRoot === '/' ? '' : workspaceRoot}/${packageDirectory}`;
   const configuration: RunConfiguration = {
     id: `intellij-run-${row.id}`,
     name: row.name.trim(),
     workingDirectory: directory,
-    command: command([
-      '/usr/bin/env',
-      `GOROOT=${goBinary.slice(0, -'/bin/go'.length)}`,
-      'GOTOOLCHAIN=local',
-      goBinary,
-      test ? 'test' : 'run',
-      recursive ? './...' : '.',
-      ...(test ? testArgs : args),
-    ]),
+    command: !outsideModule
+      ? command([
+          ...sdk,
+          test ? 'test' : 'run',
+          recursive ? './...' : (importPath ?? '.'),
+          ...(test ? testArgs : args),
+        ])
+      : test
+        ? // `go test` always runs tests in their package folder, as IntelliJ does.
+          command([...sdk, '-C', packageFolder, 'test', '.', ...testArgs])
+        : `bin="$(mktemp -t zwip-run)" && trap 'rm -f "$bin"' EXIT && ${command([
+            ...sdk,
+            '-C',
+            packageFolder,
+            'build',
+            '-o',
+          ])} "$bin" . && "$bin"${args.length ? ` ${command(args)}` : ''}`,
   };
+  const env = environment(fields, sensitive);
+  if (env) configuration.env = env;
   notes.push(`Go Run uses ${goBinary}; Debug uses the Go package's configured SDK.`);
-  if (recursive) {
+  if (outsideModule) {
+    notes.push(
+      `Builds package ${importPath} in ${packageModule} and runs it from ${directory}. Debug requires a working directory inside the module, so this configuration imports Run only.`,
+    );
+  } else if (recursive) {
     // JetBrains directory tests include descendants. Delve can debug only one test package.
     // https://www.jetbrains.com/help/idea/go-plugin-run-debug-configurations.html
     notes.push(
@@ -254,7 +322,7 @@ function goConfiguration(
     configuration.debug = {
       provider: 'go',
       mode: test ? 'test' : 'debug',
-      path: directory,
+      path: packageDirectory || directory,
       workingDirectory: directory,
       args: [...(test && pattern ? ['-test.run', pattern] : []), ...args],
     };
@@ -262,12 +330,52 @@ function goConfiguration(
   return configuration;
 }
 
-/** Pure preview: no files, settings, processes, or connections are changed. */
+function makeConfiguration(
+  row: IntelliJRunConfiguration,
+  originalRoot: string,
+  workspaceRoot: string,
+  notes: string[],
+  sensitive: string[],
+): RunConfiguration {
+  const fields = row.fields;
+  onlyFields(fields, ['makefile', 'target', 'workingDirectory', 'programParameters', 'env']);
+  if (!fields.makefile) throw new Error('The Makefile path is missing.');
+  const makefile = projectPath(fields.makefile, originalRoot);
+  const target = fields.target ?? '';
+  if (!/^[A-Za-z0-9_./%+-]+$/.test(target) || target.startsWith('-'))
+    throw new Error('Choose exactly one plain Makefile target.');
+  // IntelliJ runs make from the Makefile's folder unless a working directory is set.
+  const directory = fields.workingDirectory
+    ? projectPath(fields.workingDirectory, originalRoot)
+    : makefile.includes('/')
+      ? makefile.slice(0, makefile.lastIndexOf('/'))
+      : '.';
+  const args = programArguments(fields.programParameters, originalRoot, workspaceRoot);
+  notes.push('Runs make available to the application shell.');
+  const env = environment(fields, sensitive);
+  return {
+    id: `intellij-run-${row.id}`,
+    name: row.name.trim(),
+    workingDirectory: directory,
+    command: command([
+      'make',
+      '-f',
+      `${workspaceRoot === '/' ? '' : workspaceRoot}/${makefile}`,
+      target,
+      ...args,
+    ]),
+    ...(env && { env }),
+  };
+}
+
+/** Pure preview: no files, settings, processes, or connections are changed.
+ * `packages` lists enabled package capabilities that add importable configuration types. */
 export function previewIntelliJRunConfigurations(
   rows: IntelliJRunConfiguration[],
   originalProjectRoot: string,
   workspaceRoot: string,
   existing: RunConfiguration[],
+  packages: { make?: boolean } = {},
 ): IntelliJRunConfigurationCandidate[] {
   const ids = new Set(existing.map((item) => item.id));
   const names = new Set(existing.map((item) => item.name));
@@ -277,6 +385,7 @@ export function previewIntelliJRunConfigurations(
       name: row.name,
       type: row.type,
       status: 'unsupported',
+      sensitive: [],
       notes: [...row.notes],
     };
     if (row.status !== 'ready') return candidate;
@@ -287,12 +396,36 @@ export function previewIntelliJRunConfigurations(
       const targetRoot = rootPath(workspaceRoot);
       let configuration: RunConfiguration;
       if (row.type === 'js.build_tools.npm')
-        configuration = npmConfiguration(row, originalRoot, targetRoot, candidate.notes);
-      else if (
+        configuration = npmConfiguration(
+          row,
+          originalRoot,
+          targetRoot,
+          candidate.notes,
+          candidate.sensitive,
+        );
+      else if (row.type === 'MAKEFILE_TARGET_RUN_CONFIGURATION') {
+        if (!packages.make)
+          throw new Error(
+            'Install and enable the Makefile package in Packages to import Makefile targets.',
+          );
+        configuration = makeConfiguration(
+          row,
+          originalRoot,
+          targetRoot,
+          candidate.notes,
+          candidate.sensitive,
+        );
+      } else if (
         row.type === 'GoApplicationRunConfiguration' ||
         row.type === 'GoTestRunConfiguration'
       )
-        configuration = goConfiguration(row, originalRoot, targetRoot, candidate.notes);
+        configuration = goConfiguration(
+          row,
+          originalRoot,
+          targetRoot,
+          candidate.notes,
+          candidate.sensitive,
+        );
       else throw new Error('This IntelliJ run configuration type is unsupported.');
       if (ids.has(configuration.id) || names.has(configuration.name)) {
         candidate.status = 'duplicate';

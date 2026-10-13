@@ -47,15 +47,17 @@ interface SyntaxAsset {
 }
 /** Only checked, enabled package assets supply language-specific editor behavior. */
 export function syntaxFor(path: string): Promise<Extension> {
-  const extension = path.split('.').pop() ?? '';
-  const key = builtinKey(path);
+  const fileName = path.split(/[\\/]/).pop() ?? '';
+  const extension = fileName.includes('.') ? fileName.slice(fileName.lastIndexOf('.') + 1) : '';
+  // Extensionless files (Makefile, Dockerfile) are cached by name, not under a shared ''.
+  const key = builtinKey(path) || `name:${fileName}`;
   const existing = loaded.get(key);
   if (existing) return existing;
   const current = generation;
   const loading = (async () => {
     // JSON remains a core configuration-file convenience, independent of language packages.
     if (extension === 'json') return (await import('@codemirror/lang-json')).json();
-    const asset = await request<SyntaxAsset | null>('package.syntax', { extension });
+    const asset = await request<SyntaxAsset | null>('package.syntax', { extension, fileName });
     if (current !== generation) return [];
     // Enabled packages supply their own grammar; otherwise the app's built-in one applies.
     if (!asset) return (await builtinSyntax(path)) ?? [];

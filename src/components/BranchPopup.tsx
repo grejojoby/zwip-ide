@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, request } from '../api';
 import type { GitSnapshot } from '../contracts';
 import { asError } from '../model/document-session';
+import { BranchDiffWindow } from './BranchDiffWindow';
 import { Modal } from './Modal';
 
 interface Branch {
@@ -272,6 +273,10 @@ export function BranchPopup({
   }
 
   const actions = submenu ? actionsFor(submenu) : [];
+  if (view.kind === 'compare' && view.result.mode === 'workingTree')
+    return (
+      <BranchDiffWindow branch={view.result.branch} files={view.result.files} onClose={onClose} />
+    );
   const title = snapshot ? `Git Branches in ${snapshot.root.split('/').pop()}` : 'Git Branches';
   return (
     <Modal title={title} onClose={onClose} dismissible={!busy}>
@@ -455,9 +460,6 @@ export function BranchPopup({
                 only in {view.result.branch}, {view.result.outgoing.length} only in{' '}
                 {view.result.current}.
               </p>
-            )}
-            {view.result.mode === 'workingTree' && (
-              <p className="muted">Tracked files only; untracked files are not compared.</p>
             )}
             {view.result.files.length ? (
               <ul className="branch-files" aria-label="Changed files">

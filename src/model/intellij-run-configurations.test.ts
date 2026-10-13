@@ -149,6 +149,122 @@ describe('IntelliJ run configuration preview', () => {
     expect(result.notes.join('\n')).toMatch(/Recursive test debugging is unsupported/);
   });
 
+  it('runs module-local Go import paths and ignores IntelliJ default file and directory fields', () => {
+    const result = preview(
+      go({
+        goKind: 'PACKAGE',
+        packagePath: 'server/cmd/api',
+        packageDirectory: '$PROJECT_DIR$/server/cmd/api',
+        packageModule: '$PROJECT_DIR$/server',
+        directoryPath: '$PROJECT_DIR$',
+        filePath: '$PROJECT_DIR$',
+        env: [
+          { name: 'SETUP', value: 'c21-or', sensitive: false },
+          { name: 'DB_PASSWORD', value: null, sensitive: true },
+        ],
+      }),
+    );
+    expect(result.status).toBe('ready');
+    expect(result.configuration?.command).toMatch(/' 'run' 'server\/cmd\/api'$/);
+    expect(result.configuration?.workingDirectory).toBe('server');
+    expect(result.configuration?.debug).toMatchObject({
+      path: 'server/cmd/api',
+      workingDirectory: 'server',
+    });
+    expect(result.configuration?.env).toEqual([
+      { name: 'SETUP', value: 'c21-or' },
+      { name: 'DB_PASSWORD', value: '' },
+    ]);
+    expect(result.sensitive).toEqual(['DB_PASSWORD']);
+  });
+  it('explains import paths that are not declared by any project module', () => {
+    expectUnsupported(go({ goKind: 'PACKAGE', packagePath: 'oscar' }), /not found in any module/);
+  });
+  it('builds packages from another module and runs them from the working directory', () => {
+    const result = preview(
+      go({
+        workingDirectory: '$PROJECT_DIR$',
+        goKind: 'PACKAGE',
+        packagePath: 'oscar',
+        packageDirectory: '$PROJECT_DIR$/oscar',
+        packageModule: '$PROJECT_DIR$/oscar',
+        programParameters: '--port 80',
+      }),
+    );
+    expect(result.status).toBe('ready');
+    expect(result.configuration?.workingDirectory).toBe('.');
+    expect(result.configuration?.command).toMatch(
+      /^bin="\$\(mktemp -t zwip-run\)" && trap .* '-C' '\/workspace\/oscar' 'build' '-o' "\$bin" \. && "\$bin" '--port' '80'$/,
+    );
+    expect(result.configuration?.debug).toBeUndefined();
+    expect(result.notes.join('\n')).toMatch(/Run only/);
+  });
+  it('imports Makefile targets as make commands only while the Makefile package is enabled', () => {
+    const row: IntelliJRunConfiguration = {
+      id: 'make-dev',
+      name: 'dev-all',
+      type: 'MAKEFILE_TARGET_RUN_CONFIGURATION',
+      status: 'ready',
+      notes: [],
+      fields: {
+        makefile: '$PROJECT_DIR$/tools/Makefile',
+        target: 'dev-all',
+        programParameters: '-j4 MODE="fast build"',
+        env: [{ name: 'SETUP', value: 'c21', sensitive: false }],
+      },
+    };
+    const [blocked] = previewIntelliJRunConfigurations([row], '/original', '/workspace', []);
+    expect(blocked.status).toBe('unsupported');
+    expect(blocked.notes.join('\n')).toMatch(/Makefile package/);
+    const [ready] = previewIntelliJRunConfigurations([row], '/original', '/workspace', [], {
+      make: true,
+    });
+    expect(ready.status).toBe('ready');
+    expect(ready.configuration).toEqual({
+      id: 'intellij-run-make-dev',
+      name: 'dev-all',
+      workingDirectory: 'tools',
+      command: "'make' '-f' '/workspace/tools/Makefile' 'dev-all' '-j4' 'MODE=fast build'",
+      env: [{ name: 'SETUP', value: 'c21' }],
+    });
+    const [explicit] = previewIntelliJRunConfigurations(
+      [{ ...row, fields: { ...row.fields, workingDirectory: '$PROJECT_DIR$' } }],
+      '/original',
+      '/workspace',
+      [],
+      { make: true },
+    );
+    expect(explicit.configuration?.workingDirectory).toBe('.');
+  });
+  it.each([
+    [{ target: '' }, /plain Makefile target/],
+    [{ target: '--always-make' }, /plain Makefile target/],
+    [{ target: 'a b' }, /plain Makefile target/],
+    [{ makefile: undefined }, /Makefile path/],
+    [{ makefile: '/elsewhere/Makefile' }, /outside/],
+  ] satisfies [Partial<IntelliJRunConfiguration['fields']>, RegExp][])(
+    'rejects unsupported Makefile settings %j',
+    (fields, reason) => {
+      const [result] = previewIntelliJRunConfigurations(
+        [
+          {
+            id: 'm',
+            name: 'm',
+            type: 'MAKEFILE_TARGET_RUN_CONFIGURATION',
+            status: 'ready',
+            notes: [],
+            fields: { makefile: '$PROJECT_DIR$/Makefile', target: 'build', ...fields },
+          },
+        ],
+        '/original',
+        '/workspace',
+        [],
+        { make: true },
+      );
+      expect(result.status).toBe('unsupported');
+      expect(result.notes.join('\n')).toMatch(reason);
+    },
+  );
   it('never re-enables backend-rejected environment or before-launch configurations', () => {
     const result = preview({
       ...npm(),
@@ -193,6 +309,7 @@ describe('IntelliJ run configuration preview', () => {
     [{ workingDirectory: '$PROJECT_DIR$/other' }, /target must match/],
     [{ goKind: 'PACKAGE', packagePath: 'example.com/remote' }, /local Go package/],
     [{ goKind: 'PACKAGE', packagePath: './...' }, /local Go package/],
+    [{ goKind: 'PACKAGE', packagePath: 'svc/../other' }, /local Go package/],
     [{ workingDirectory: '' }, /explicit Go working/],
     [{ framework: 'gocheck' }, /framework/],
     [{ nodeInterpreter: 'project' }, /nodeInterpreter/],

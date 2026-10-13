@@ -64,6 +64,7 @@ import { FileActions, type FileActionResult } from './components/FileActions';
 import { HierarchyTree, type HierarchyOperation } from './components/HierarchyTree';
 import { NavigationResults } from './components/NavigationResults';
 import { TargetChooser } from './components/TargetChooser';
+import { UsagesPopup, type PopupAnchor } from './components/UsagesPopup';
 import { FileSearch } from './components/FileSearch';
 import { CommandSearch, type ActionCommand } from './components/CommandSearch';
 import { GitPanel, type Selection as GitSelection } from './components/GitPanel';
@@ -166,6 +167,7 @@ export function App() {
     path: string;
     workingDirectory: string;
     args: string[];
+    env?: { name: string; value: string }[];
     mode: 'debug' | 'test';
   }>();
   const [breakpoints, setBreakpoints] = useState<Record<string, number[]>>({});
@@ -194,6 +196,9 @@ export function App() {
   const [closePath, setClosePath] = useState<string>();
   const [pendingRoot, setPendingRoot] = useState<string>();
   const [targets, setTargets] = useState<SourceLocation[] | null>(null);
+  const [usagesPopup, setUsagesPopup] = useState<{ anchor: PopupAnchor; symbol: string } | null>(
+    null,
+  );
   const [batch, setBatch] = useState<NavigationBatch | null>(null);
   const [navigationOperation, setNavigationOperation] = useState<NavigationOperation>('references');
   const [navigationTitle, setNavigationTitle] = useState('Usages');
@@ -498,6 +503,7 @@ export function App() {
     record = true,
     pane: 'main' | 'split' = focusPane,
     sourceContextId?: string,
+    highlightEnd?: Position,
   ) {
     if (lifecycleBusy.current) return;
     const generation = workspaceRef.current?.generation;
@@ -539,11 +545,16 @@ export function App() {
       setRecentFiles((current) => [path, ...current.filter((item) => item !== path)].slice(0, 100));
       if (target) {
         doc.pendingPosition = target;
+        doc.pendingHighlight = highlightEnd;
+        const reveal =
+          highlightEnd && (await import('./editor/navigation-highlight')).revealNavigationTarget;
         for (const view of doc.views) {
           const anchor = offsetAt(view.state, target);
-          view.dispatch({ selection: { anchor }, scrollIntoView: true });
+          if (reveal && highlightEnd) reveal(view, anchor, offsetAt(view.state, highlightEnd));
+          else view.dispatch({ selection: { anchor }, scrollIntoView: true });
           view.focus();
           doc.pendingPosition = undefined;
+          doc.pendingHighlight = undefined;
         }
         setPosition(target);
       }
@@ -723,7 +734,23 @@ export function App() {
     setError('');
     setTargets(null);
     setBatch(null);
+    setUsagesPopup(null);
     const generation = workspaceRef.current.generation;
+    // Usages open in a popup under the caret line unless the docked panel already shows them.
+    let popupShown = false;
+    const showUsagesPopup = () => {
+      const view = [...doc.views].find((item) => item.hasFocus) ?? [...doc.views][0];
+      if (tool === 'usages' || !view) return false;
+      const offset = offsetAt(view.state, at);
+      const coords = view.coordsAtPos(offset);
+      if (!coords) return false;
+      const word = view.state.wordAt(offset);
+      setUsagesPopup({
+        anchor: { left: coords.left, top: coords.top, bottom: coords.bottom },
+        symbol: word ? view.state.sliceDoc(word.from, word.to) : 'symbol',
+      });
+      return true;
+    };
     try {
       const revision = await doc.session.flush();
       const version = doc.session.version;
@@ -748,7 +775,9 @@ export function App() {
       const run = (requestedOperation: NavigationOperation) => {
         setNavigationOperation(requestedOperation);
         setNavigationTitle(titles[requestedOperation]);
-        if (requestedOperation !== 'definition' && requestedOperation !== 'typeDefinition')
+        if (requestedOperation === 'references' && showUsagesPopup()) popupShown = true;
+        // Declarations and implementations open the tool only when there is no single target.
+        else if (!['definition', 'typeDefinition', 'implementations'].includes(requestedOperation))
           setTool('usages');
         return withNavigationProgress(
           () => api.navigate({ ...query, operation: requestedOperation }),
@@ -780,7 +809,7 @@ export function App() {
       setNavigationOperation(actual);
       setNavigationTitle(titles[actual]);
       if (
-        (actual === 'definition' || actual === 'typeDefinition') &&
+        (actual === 'definition' || actual === 'typeDefinition' || actual === 'implementations') &&
         result.state === 'complete' &&
         result.locations.length === 1
       ) {
@@ -792,6 +821,7 @@ export function App() {
           true,
           focusPane,
           location.contextIds[0],
+          location.range.end,
         );
       } else if (
         (actual === 'definition' || actual === 'typeDefinition' || actual === 'implementations') &&
@@ -799,7 +829,7 @@ export function App() {
       ) {
         setTargets(result.locations);
         setTool('usages');
-      } else setTool('usages');
+      } else if (!popupShown) setTool('usages');
       setStatus(
         `${titles[actual]} · ${result.state} · ${result.searchedContexts}/${result.totalContexts} contexts`,
       );
@@ -1420,6 +1450,7 @@ export function App() {
                     path: runDirectory(workspace.root, debug.path),
                     workingDirectory: runDirectory(workspace.root, debug.workingDirectory),
                     args: debug.args,
+                    env: selectedRunConfiguration.env,
                     mode: debug.mode,
                   });
                   setGoOpen(true);
@@ -1995,6 +2026,7 @@ export function App() {
                             true,
                             focusPane,
                             location.contextIds[0],
+                            location.range.end,
                           )
                         }
                         onCancel={cancelNavigation}
@@ -2148,7 +2180,11 @@ export function App() {
         <span className={`status-dot ${navigating || opening ? 'busy' : ''}`} />
         <span role="status">{navigating ? 'Searching semantic contexts…' : status}</span>
         <div className="spacer" />
-        <IndexingStatus scannedFiles={scannedFiles} contexts={workspace?.contexts ?? []} />
+        <IndexingStatus
+          scannedFiles={scannedFiles}
+          contexts={workspace?.contexts ?? []}
+          root={workspace?.root}
+        />
         {focusPath && (
           <>
             <span>
@@ -2340,8 +2376,33 @@ export function App() {
               true,
               focusPane,
               location.contextIds[0],
+              location.range.end,
             );
           }}
+        />
+      )}
+      {usagesPopup && (
+        <UsagesPopup
+          anchor={usagesPopup.anchor}
+          symbol={usagesPopup.symbol}
+          batch={batch}
+          loading={navigating}
+          onOpen={(location) => {
+            setUsagesPopup(null);
+            void openFile(
+              location.path,
+              location.range.start,
+              true,
+              focusPane,
+              location.contextIds[0],
+              location.range.end,
+            );
+          }}
+          onDock={() => {
+            setUsagesPopup(null);
+            setTool('usages');
+          }}
+          onClose={() => setUsagesPopup(null)}
         />
       )}
       {closePath && (

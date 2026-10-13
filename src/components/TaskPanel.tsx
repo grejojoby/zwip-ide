@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import type { RunConfiguration, RunState, WorkspaceRunSession } from '../model/run-configurations';
+import {
+  formatEnvironment,
+  parseEnvironment,
+  type EnvironmentVariable,
+  type RunConfiguration,
+  type RunState,
+  type WorkspaceRunSession,
+} from '../model/run-configurations';
 import { Icon } from './Icon';
 
 const importOption = '__import-from-intellij__';
@@ -100,19 +107,28 @@ function ConfigurationForm({
   const [name, setName] = useState(selected?.name ?? '');
   const [command, setCommand] = useState(selected?.command ?? '');
   const [directory, setDirectory] = useState(selected?.workingDirectory ?? '.');
+  const [envText, setEnvText] = useState(formatEnvironment(selected?.env));
+  let env: EnvironmentVariable[] = [];
+  let envError = '';
+  try {
+    env = parseEnvironment(envText);
+  } catch (error) {
+    envError = error instanceof Error ? error.message : String(error);
+  }
   const changedTarget =
     !!selected && (selected.command !== command || selected.workingDirectory !== directory);
   const dirty =
     !!selected &&
     (selected.name !== name ||
       selected.command !== command ||
-      selected.workingDirectory !== directory);
+      selected.workingDirectory !== directory ||
+      formatEnvironment(selected.env) !== formatEnvironment(env));
   return (
     <form
       className="run-configuration-form"
       onSubmit={(event) => {
         event.preventDefault();
-        void session.run(command, directory, name.trim() || 'Ad hoc command');
+        if (!envError) void session.run(command, directory, name.trim() || 'Ad hoc command', env);
       }}
     >
       <div className="run-configuration-fields">
@@ -134,7 +150,23 @@ function ConfigurationForm({
             onChange={(event) => setDirectory(event.target.value)}
           />
         </label>
+        <label className="run-environment">
+          Environment
+          <textarea
+            aria-label="Run environment variables"
+            placeholder="NAME=value, one per line"
+            rows={Math.min(6, Math.max(2, envText.split('\n').length))}
+            spellCheck={false}
+            value={envText}
+            onChange={(event) => setEnvText(event.target.value)}
+          />
+        </label>
       </div>
+      {envError && (
+        <p className="error-message inline-notice" role="alert">
+          {envError}
+        </p>
+      )}
       <div className="task-command">
         <Icon name="terminal" />
         <input
@@ -146,7 +178,12 @@ function ConfigurationForm({
         <button
           type="submit"
           disabled={
-            !state.ready || state.saving || state.starting || state.task?.running || !command.trim()
+            !state.ready ||
+            state.saving ||
+            state.starting ||
+            state.task?.running ||
+            !command.trim() ||
+            !!envError
           }
         >
           <Icon name="play" />
@@ -154,13 +191,14 @@ function ConfigurationForm({
         </button>
         <button
           type="button"
-          disabled={!state.ready || state.saving || !command.trim() || !name.trim()}
+          disabled={!state.ready || state.saving || !command.trim() || !name.trim() || !!envError}
           onClick={() =>
             void session.save({
               id: selected?.id ?? crypto.randomUUID(),
               name,
               command,
               workingDirectory: directory,
+              ...(env.length && { env }),
               ...(!changedTarget && selected?.debug && { debug: selected.debug }),
             })
           }

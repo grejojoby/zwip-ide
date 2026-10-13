@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import type { NavigationBatch, SourceLocation } from '../contracts';
+import { CodePreview } from '../editor/highlight';
 import { Icon } from './Icon';
 export function NavigationResults({
   batch,
@@ -53,7 +54,7 @@ export function NavigationResults({
                 onClick={() => onOpen(location)}
               >
                 <span className="line-number">{location.range.start.line + 1}</span>
-                <code>{location.preview || location.name}</code>
+                <CodePreview path={location.path} text={location.preview || location.name} />
                 <span className="relationship">{location.relationship}</span>
               </button>
             ))}

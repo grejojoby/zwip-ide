@@ -180,7 +180,10 @@ fn head_entry(root: &str, path: &str) -> Result<Option<Entry>, String> {
     if head(root).is_empty() {
         return Ok(None);
     }
-    let output = run(root, &["ls-tree", "-z", "HEAD", "--", path])?;
+    tree_entry(root, "HEAD", path)
+}
+fn tree_entry(root: &str, commit: &str, path: &str) -> Result<Option<Entry>, String> {
+    let output = run(root, &["ls-tree", "-z", commit, "--", path])?;
     if !output.status.success() {
         return Err(output_error(&output));
     }
@@ -349,6 +352,9 @@ pub fn status(root: &str) -> Result<Value, String> {
 }
 
 fn text_patch(before: &[u8], after: &[u8]) -> Result<String, String> {
+    patch_with_context(before, after, 3)
+}
+fn patch_with_context(before: &[u8], after: &[u8], context: usize) -> Result<String, String> {
     let temp = tempfile::tempdir().map_err(|e| e.to_string())?;
     fs::write(temp.path().join("before"), before).map_err(|e| e.to_string())?;
     fs::write(temp.path().join("after"), after).map_err(|e| e.to_string())?;
@@ -360,7 +366,7 @@ fn text_patch(before: &[u8], after: &[u8]) -> Result<String, String> {
             "--no-ext-diff",
             "--no-textconv",
             "--text",
-            "--unified=3",
+            &format!("--unified={context}"),
             "--",
             "before",
             "after",
@@ -1707,6 +1713,28 @@ fn compare_branch(root: &str, params: &Value) -> Result<Value, String> {
         "outgoing": outgoing,
     }))
 }
+/// One file of a branch-vs-working-tree comparison, with the whole file as context so the
+/// viewer can show both full versions side by side.
+fn compare_file(root: &str, params: &Value) -> Result<Value, String> {
+    let branch = string(params, "branch")?;
+    let path = string(params, "path")?;
+    path_arg(path)?;
+    let root = repo_root(root)?;
+    let target = resolve_commit(&root, branch)?;
+    let entry = tree_entry(&root, &target, path)?;
+    let before = blob(&root, entry.as_ref())?;
+    let after = worktree_bytes(&root, path)?;
+    let is_binary =
+        entry.as_ref().is_some_and(|e| e.mode == "160000") || binary(&before) || binary(&after);
+    let hunks = if is_binary {
+        Vec::new()
+    } else {
+        let lines = |bytes: &[u8]| bytes.iter().filter(|b| **b == b'\n').count() + 1;
+        let context = lines(&before).max(lines(&after));
+        parse_hunks(&patch_with_context(&before, &after, context)?)?
+    };
+    Ok(json!({"branch": branch, "path": path, "binary": is_binary, "hunks": hunks}))
+}
 fn daily_action(root: &str, method: &str, params: &Value) -> Result<Value, String> {
     let root = reviewed_root(root, params)?;
     match method {
@@ -1881,6 +1909,7 @@ pub fn dispatch(root: &str, data: &Path, method: &str, params: &Value) -> Result
         "git.blame" => blame(root, params),
         "git.stashes" => stashes(root),
         "git.compareBranch" => compare_branch(root, params),
+        "git.compareFile" => compare_file(root, params),
         "git.switchBranch" | "git.createBranch" | "git.checkoutRebase" | "git.deleteBranch"
         | "git.renameBranch" | "git.updateBranch" | "git.pushBranch" | "git.fetch" | "git.pull"
         | "git.merge" | "git.rebase" | "git.cherryPick" | "git.stashCreate" | "git.stashApply"

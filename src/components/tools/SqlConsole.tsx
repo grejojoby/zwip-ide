@@ -22,7 +22,6 @@ export function SqlConsole({
   const parent = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const language = useRef(new Compartment());
-  const colors = useRef(new Compartment());
   const callbacks = useRef({ onExecute, onRead });
   callbacks.current = { onExecute, onRead };
   useEffect(() => {
@@ -35,7 +34,7 @@ export function SqlConsole({
           history(),
           autocompletion(),
           language.current.of([]),
-          colors.current.of(syntaxColors(document.documentElement.dataset.theme === 'dark')),
+          syntaxColors(),
           keymap.of([
             {
               key: 'Mod-Enter',
@@ -54,7 +53,7 @@ export function SqlConsole({
               height: '100%',
               fontSize: '12px',
               background: 'var(--editor)',
-              color: 'var(--text)',
+              color: 'var(--syntax-text)',
             },
             '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--mono)' },
             '.cm-gutters': { background: 'var(--surface)', color: 'var(--muted)', border: 'none' },
@@ -64,17 +63,6 @@ export function SqlConsole({
       }),
     });
     view.current = editor;
-    const themeObserver = new MutationObserver(() => {
-      editor.dispatch({
-        effects: colors.current.reconfigure(
-          syntaxColors(document.documentElement.dataset.theme === 'dark'),
-        ),
-      });
-    });
-    themeObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['data-theme'],
-    });
     callbacks.current.onRead(() => {
       const selected = editor.state.selection.main;
       return selected.empty
@@ -82,7 +70,6 @@ export function SqlConsole({
         : editor.state.sliceDoc(selected.from, selected.to);
     });
     return () => {
-      themeObserver.disconnect();
       view.current = null;
       editor.destroy();
     };

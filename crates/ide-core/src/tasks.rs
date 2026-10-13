@@ -26,7 +26,13 @@ impl Default for Tasks {
     }
 }
 impl Tasks {
-    pub fn start(&self, command: &str, cwd: &Path) -> Result<Value, String> {
+    /// `env` adds or overrides variables for this task only.
+    pub fn start(
+        &self,
+        command: &str,
+        cwd: &Path,
+        env: &[(String, String)],
+    ) -> Result<Value, String> {
         if command.trim().is_empty() {
             return Err("Enter a command to run".into());
         }
@@ -34,6 +40,7 @@ impl Tasks {
         process
             .args(["-lc", command])
             .current_dir(cwd)
+            .envs(env.iter().map(|(name, value)| (name, value)))
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());

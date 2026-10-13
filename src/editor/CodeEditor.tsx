@@ -28,16 +28,17 @@ import { externalDocumentChange } from './external-change';
 import { semanticExtensions, type SemanticCallbacks } from './semantic-extensions';
 import { defaultShortcuts, type Shortcuts } from '../model/shortcuts';
 import { syntaxColors } from './syntax-colors';
+import { navigationHighlight, revealNavigationTarget } from './navigation-highlight';
 import type { NavigationOperation, Position, TextDelta } from '../contracts';
 import { offsetAt, positionAt, type OpenEditor } from './editor-store';
 const mirrored = Annotation.define<boolean>();
 
 function theme(dark: boolean): Extension {
   return [
-    syntaxColors(dark),
+    syntaxColors(),
     EditorView.theme(
       {
-        '&': { height: '100%', backgroundColor: 'var(--editor)', color: 'var(--text)' },
+        '&': { height: '100%', backgroundColor: 'var(--editor)', color: 'var(--syntax-text)' },
         '.cm-scroller': {
           fontFamily: '"SFMono-Regular", Menlo, Monaco, Consolas, monospace',
           lineHeight: '1.65',
@@ -59,6 +60,8 @@ function theme(dark: boolean): Extension {
         '.cm-tooltip': { backgroundColor: 'var(--surface)', border: '1px solid var(--border)' },
         '.cm-panels': { backgroundColor: 'var(--surface)', color: 'var(--text)' },
         '&.cm-focused': { outline: 'none' },
+        '.cm-navigation-target': { backgroundColor: 'var(--navigation-target)' },
+        '.cm-navigation-symbol': { outline: '1px solid var(--accent)', borderRadius: '2px' },
       },
       { dark },
     ),
@@ -199,6 +202,7 @@ export function CodeEditor(props: Props) {
       highlightActiveLine(),
       highlightActiveLineGutter(),
       highlightSelectionMatches(),
+      navigationHighlight,
       syntax.current.of([]),
       color.current.of(theme(callbacks.current.dark)),
       ...semanticExtensions(doc, () => callbacks.current),
@@ -292,11 +296,15 @@ export function CodeEditor(props: Props) {
     callbacks.current.onPosition(positionAt(view.state, view.state.selection.main.head));
     if (doc.pendingPosition) {
       const anchor = offsetAt(view.state, doc.pendingPosition);
-      view.dispatch({
-        selection: { anchor },
-        effects: EditorView.scrollIntoView(anchor, { y: 'center' }),
-      });
+      if (doc.pendingHighlight)
+        revealNavigationTarget(view, anchor, offsetAt(view.state, doc.pendingHighlight));
+      else
+        view.dispatch({
+          selection: { anchor },
+          effects: EditorView.scrollIntoView(anchor, { y: 'center' }),
+        });
       doc.pendingPosition = undefined;
+      doc.pendingHighlight = undefined;
     }
     return () => {
       alive = false;

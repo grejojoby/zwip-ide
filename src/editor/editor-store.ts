@@ -15,6 +15,8 @@ export interface OpenEditor {
   /** Notified after every editor transaction that changes the document text. */
   changeListeners: Set<() => void>;
   pendingPosition?: Position;
+  /** End of the navigation target to highlight at `pendingPosition`. */
+  pendingHighlight?: Position;
 }
 export class EditorStore {
   readonly documents = new Map<string, OpenEditor>();
