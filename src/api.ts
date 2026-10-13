@@ -72,6 +72,8 @@ export const api = {
   refreshWorkspace: () => request<WorkspaceSnapshot>('workspace.refresh'),
   rescanWorkspace: (reanalyze: boolean) =>
     request<WorkspaceSnapshot>('workspace.rescan', { reanalyze }),
+  setDirectoryExcluded: (path: string, excluded: boolean) =>
+    request<WorkspaceSnapshot>('workspace.setExcluded', { path, excluded }),
   workspaceChanges: () =>
     request<{ paths: string[]; configurationChanged: boolean }>('workspace.changes'),
   workspaceStatus: () =>

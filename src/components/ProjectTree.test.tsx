@@ -49,4 +49,24 @@ describe('active source in project tree', () => {
       'true',
     );
   });
+  it('does not mark directories selected when no file is active', () => {
+    render(<ProjectTree root="/project" files={files} onOpen={() => {}} />);
+    expect(screen.getByRole('treeitem', { name: 'src' }).getAttribute('aria-selected')).toBe(
+      'false',
+    );
+  });
+});
+describe('excluding directories from the project tree', () => {
+  it('offers exclusion for folders only', () => {
+    const onExclude = vi.fn();
+    render(<ProjectTree root="/project" files={files} onOpen={() => {}} onExclude={onExclude} />);
+    fireEvent.contextMenu(screen.getByRole('treeitem', { name: 'src' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Exclude from search and indexing' }));
+    expect(onExclude).toHaveBeenCalledWith('src');
+    expect(screen.queryByRole('menu')).toBeNull();
+    fireEvent.click(screen.getByRole('treeitem', { name: 'src' }));
+    fireEvent.click(screen.getByRole('treeitem', { name: 'deep' }));
+    fireEvent.contextMenu(screen.getByRole('treeitem', { name: 'first.ts' }));
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
 });

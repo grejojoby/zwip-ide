@@ -155,9 +155,25 @@ pub struct Workspace {
     pub directories: Vec<String>,
     pub contexts: Vec<BuildContext>,
     pub excluded: Vec<String>,
+    #[serde(default)]
+    pub excluded_directories: Vec<ExcludedDirectory>,
 }
+/// A directory left out of the file index, with the reason it was skipped.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExcludedDirectory {
+    pub path: String,
+    pub reason: String,
+}
+const MAX_LISTED_EXCLUSIONS: usize = 1000;
 
-pub fn scan(root: &Path, generation: u64, rules: &[DiscoveryRule]) -> Result<Workspace, String> {
+/// `exclusions` are workspace-relative directory paths the user chose to skip.
+pub fn scan(
+    root: &Path,
+    generation: u64,
+    rules: &[DiscoveryRule],
+    exclusions: &[String],
+) -> Result<Workspace, String> {
     let discovery = rules
         .iter()
         .map(|rule| {
@@ -173,6 +189,9 @@ pub fn scan(root: &Path, generation: u64, rules: &[DiscoveryRule]) -> Result<Wor
         return Err("Workspace must be a directory".into());
     }
     let root_filter = root.clone();
+    let skipped = std::sync::Arc::new(std::sync::Mutex::new(Vec::<ExcludedDirectory>::new()));
+    let skipped_filter = skipped.clone();
+    let user_excluded: HashSet<String> = exclusions.iter().cloned().collect();
     let mut builder = WalkBuilder::new(&root);
     builder
         .hidden(false)
@@ -185,17 +204,36 @@ pub fn scan(root: &Path, generation: u64, rules: &[DiscoveryRule]) -> Result<Wor
             let path = entry.path();
             let name = entry.file_name().to_string_lossy();
             if entry.file_type().is_some_and(|kind| kind.is_dir()) {
-                if matches!(
+                let reason = if matches!(
                     name.as_ref(),
                     ".git" | "node_modules" | "target" | "dist" | ".next" | ".cache" | "coverage"
                 ) {
-                    return false;
-                }
-                if path.components().any(|c| c.as_os_str() == ".claude") && name == "worktrees" {
-                    return false;
-                }
-                // Linked worktrees have a .git file; nested standalone repositories remain valid roots.
-                if path != root_filter && path.join(".git").is_file() {
+                    Some("Dependency or build directory")
+                } else if path.components().any(|c| c.as_os_str() == ".claude")
+                    && name == "worktrees"
+                {
+                    Some("Agent worktrees")
+                } else if path != root_filter && path.join(".git").is_file() {
+                    // Linked worktrees have a .git file; nested standalone repositories remain valid roots.
+                    Some("Linked worktree")
+                } else if path.strip_prefix(&root_filter).is_ok_and(|relative| {
+                    user_excluded.contains(relative.to_string_lossy().as_ref())
+                }) {
+                    Some("Excluded by you")
+                } else {
+                    None
+                };
+                if let Some(reason) = reason {
+                    if let (Ok(mut skipped), Ok(relative)) =
+                        (skipped_filter.lock(), path.strip_prefix(&root_filter))
+                    {
+                        if skipped.len() < MAX_LISTED_EXCLUSIONS {
+                            skipped.push(ExcludedDirectory {
+                                path: relative.to_string_lossy().into_owned(),
+                                reason: reason.to_owned(),
+                            });
+                        }
+                    }
                     return false;
                 }
             }
@@ -253,6 +291,8 @@ pub fn scan(root: &Path, generation: u64, rules: &[DiscoveryRule]) -> Result<Wor
     directories.sort();
     add_profiles(&root, &mut contexts)?;
     contexts.sort_by(|a, b| a.id.cmp(&b.id));
+    let mut excluded_directories = skipped.lock().map_err(|e| e.to_string())?.clone();
+    excluded_directories.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(Workspace {
         name: root
             .file_name()
@@ -265,6 +305,7 @@ pub fn scan(root: &Path, generation: u64, rules: &[DiscoveryRule]) -> Result<Wor
         directories,
         contexts,
         excluded,
+        excluded_directories,
     })
 }
 

@@ -12,6 +12,7 @@ import {
   type Shortcuts,
 } from '../model/shortcuts';
 import { asError } from '../model/document-session';
+import type { ExcludedDirectory } from '../contracts';
 import type { WorkspaceRunSession } from '../model/run-configurations';
 export interface HistoryPreferences {
   retentionDays: number;
@@ -23,6 +24,8 @@ export function Settings({
   dark,
   workspaceRoot,
   runSession,
+  excludedDirectories,
+  onInclude,
   onTheme,
   onSave,
   onClose,
@@ -32,6 +35,8 @@ export function Settings({
   dark: boolean;
   workspaceRoot?: string;
   runSession?: WorkspaceRunSession;
+  excludedDirectories?: ExcludedDirectory[];
+  onInclude?(relativePath: string): Promise<void>;
   onTheme(dark: boolean): void;
   onSave(shortcuts: Shortcuts, history: HistoryPreferences): Promise<void>;
   onClose(): void;
@@ -163,6 +168,47 @@ export function Settings({
                 </p>
               ))}
             </div>
+            {excludedDirectories && (
+              <div className="settings-section">
+                <h3>Excluded from search and indexing</h3>
+                <p className="muted">
+                  Dependency and build directories are always skipped. Right-click a folder in the
+                  project tree to exclude it. Paths matched by .gitignore are skipped but not listed
+                  here.
+                </p>
+                {excludedDirectories.length ? (
+                  <ul className="excluded-list" aria-label="Excluded directories">
+                    {excludedDirectories.map((item) => (
+                      <li key={item.path}>
+                        <code title={item.path}>{item.path}</code>
+                        <span className="muted">{item.reason}</span>
+                        {item.reason === 'Excluded by you' && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={async () => {
+                              setBusy(true);
+                              setError('');
+                              try {
+                                await onInclude?.(item.path);
+                              } catch (e) {
+                                setError(asError(e).message);
+                              } finally {
+                                setBusy(false);
+                              }
+                            }}
+                          >
+                            Include again
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="muted">No directories are excluded.</p>
+                )}
+              </div>
+            )}
             <div className="settings-section">
               <h3>Local History</h3>
               <div className="history-settings">

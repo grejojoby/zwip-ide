@@ -540,3 +540,62 @@ fn workspace_edit_validates_all_files_before_atomic_recovery_update() {
         );
     }
 }
+
+#[test]
+fn user_excluded_directories_leave_the_index_and_persist_until_restored() {
+    let root = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    fs::create_dir_all(root.path().join("vendor/lib")).unwrap();
+    fs::write(root.path().join("vendor/lib/a.txt"), "needle").unwrap();
+    fs::write(root.path().join("keep.txt"), "needle").unwrap();
+    let paths = |workspace: &serde_json::Value| -> Vec<String> {
+        workspace["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|file| file["relativePath"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    let core = Core::new(data.path().to_owned()).unwrap();
+    core.request("workspace.open", json!({"root":root.path()}))
+        .unwrap();
+    for bad in ["", "../outside", "missing", "keep.txt"] {
+        assert!(
+            core.request("workspace.setExcluded", json!({"path":bad,"excluded":true}))
+                .is_err(),
+            "accepted {bad:?}"
+        );
+    }
+    let excluded = core
+        .request(
+            "workspace.setExcluded",
+            json!({"path":"vendor","excluded":true}),
+        )
+        .unwrap();
+    assert_eq!(paths(&excluded), ["keep.txt"]);
+    assert!(excluded["excludedDirectories"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["path"] == "vendor" && item["reason"] == "Excluded by you"));
+    assert_eq!(
+        core.request("workspace.search", json!({"query":"needle"}))
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    let reopened = Core::new(data.path().to_owned())
+        .unwrap()
+        .request("workspace.open", json!({"root":root.path()}))
+        .unwrap();
+    assert_eq!(paths(&reopened), ["keep.txt"]);
+    let restored = core
+        .request(
+            "workspace.setExcluded",
+            json!({"path":"vendor","excluded":false}),
+        )
+        .unwrap();
+    assert_eq!(paths(&restored), ["keep.txt", "vendor/lib/a.txt"]);
+}

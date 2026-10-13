@@ -12,6 +12,8 @@ export interface OpenEditor {
   state: EditorState | null;
   initial: string;
   views: Set<EditorView>;
+  /** Notified after every editor transaction that changes the document text. */
+  changeListeners: Set<() => void>;
   pendingPosition?: Position;
 }
 export class EditorStore {
@@ -44,6 +46,7 @@ export class EditorStore {
       state: null,
       initial: snapshot.content,
       views: new Set(),
+      changeListeners: new Set(),
       editingLocked: this.editingLocks > 0,
     };
     this.documents.set(snapshot.path, document);

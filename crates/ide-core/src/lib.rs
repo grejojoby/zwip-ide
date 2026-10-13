@@ -44,6 +44,9 @@ pub struct Core {
     watcher: Mutex<Option<notify::RecommendedWatcher>>,
     file_events: Arc<Mutex<HashSet<String>>>,
 }
+fn exclusions_key(root: &str) -> String {
+    format!("workspaceExclusions:{root}")
+}
 impl Core {
     pub fn new(data: PathBuf) -> Result<Self, Box<dyn std::error::Error>> {
         let documents = Documents::new(&data).map_err(std::io::Error::other)?;
@@ -160,6 +163,7 @@ impl Core {
                     &PathBuf::from(&previous.root),
                     previous.generation,
                     &self.discovery_rules()?,
+                    &self.exclusions(&previous.root)?,
                 )?;
                 if params["reanalyze"] == true || workspace.contexts != previous.contexts {
                     let languages = previous
@@ -188,6 +192,35 @@ impl Core {
                     Some(Arc::new(workspace.clone()));
                 serde_json::to_value(workspace).map_err(|e| e.to_string())
             }
+            "workspace.setExcluded" => {
+                let root = self.current()?.root.clone();
+                let relative = string(&params, "path")?.trim_matches('/').to_owned();
+                let excluded = params["excluded"]
+                    .as_bool()
+                    .ok_or("Missing excluded flag")?;
+                let mut exclusions = self.exclusions(&root)?;
+                if excluded {
+                    let parsed = std::path::Path::new(&relative);
+                    if relative.is_empty()
+                        || !parsed
+                            .components()
+                            .all(|part| matches!(part, std::path::Component::Normal(_)))
+                    {
+                        return Err("Choose a directory inside the workspace".into());
+                    }
+                    if !PathBuf::from(&root).join(parsed).is_dir() {
+                        return Err(format!("{relative} is not a directory in this workspace"));
+                    }
+                    if !exclusions.contains(&relative) {
+                        exclusions.push(relative);
+                    }
+                } else {
+                    exclusions.retain(|item| item != &relative);
+                }
+                exclusions.sort();
+                self.documents.lock().map_err(|e|e.to_string())?.db.execute("INSERT INTO settings(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value",rusqlite::params![exclusions_key(&root),json!(exclusions).to_string()]).map_err(|e|e.to_string())?;
+                self.dispatch("workspace.rescan", json!({"reanalyze":true}))
+            }
             "workspace.refresh" => {
                 let _transition = self
                     .workspace_transition
@@ -199,6 +232,7 @@ impl Core {
                     &PathBuf::from(&previous.root),
                     generation,
                     &self.discovery_rules()?,
+                    &self.exclusions(&previous.root)?,
                 )?;
                 self.packages.lock().map_err(|e| e.to_string())?.stop_all();
                 self.generation.store(generation, Ordering::SeqCst);
@@ -223,8 +257,13 @@ impl Core {
                 self.ensure_open()?;
                 let root = string(&params, "root")?.to_owned();
                 let generation = self.generation.load(Ordering::SeqCst) + 1;
-                let workspace =
-                    workspace::scan(&PathBuf::from(root), generation, &self.discovery_rules()?)?;
+                let exclusions = self.exclusions(&root)?;
+                let workspace = workspace::scan(
+                    &PathBuf::from(root),
+                    generation,
+                    &self.discovery_rules()?,
+                    &exclusions,
+                )?;
                 // Changes accepted while discovery was running must survive a
                 // switch. Keep this guard through publication so no delta can
                 // become dirty between the check and releasing the old mirrors.
@@ -605,6 +644,27 @@ impl Core {
             }
             "app.info" => Ok(json!({"version":"0.1.0","dataDirectory":self.data})),
             _ => Err(format!("Unsupported operation: {method}")),
+        }
+    }
+    /// Workspace-relative directories the user excluded from search and indexing.
+    fn exclusions(&self, root: &str) -> Result<Vec<String>, String> {
+        use rusqlite::OptionalExtension;
+        let root = std::fs::canonicalize(root).map_err(|e| e.to_string())?;
+        let value: Option<String> = self
+            .documents
+            .lock()
+            .map_err(|e| e.to_string())?
+            .db
+            .query_row(
+                "SELECT value FROM settings WHERE key=?1",
+                [exclusions_key(&root.to_string_lossy())],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        match value {
+            Some(value) => serde_json::from_str(&value).map_err(|e| e.to_string()),
+            None => Ok(Vec::new()),
         }
     }
     fn discovery_rules(&self) -> Result<Vec<workspace::DiscoveryRule>, String> {

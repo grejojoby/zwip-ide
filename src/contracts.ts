@@ -23,6 +23,11 @@ export interface BuildContext {
   state: 'ready' | 'loading' | 'failed' | 'unavailable';
   reason?: string;
 }
+export interface ExcludedDirectory {
+  /** Workspace-relative directory path. */
+  path: string;
+  reason: string;
+}
 export interface WorkspaceSnapshot {
   root: string;
   name: string;
@@ -31,6 +36,7 @@ export interface WorkspaceSnapshot {
   directories?: string[];
   contexts: BuildContext[];
   excluded: string[];
+  excludedDirectories?: ExcludedDirectory[];
 }
 export interface DocumentSnapshot {
   path: string;

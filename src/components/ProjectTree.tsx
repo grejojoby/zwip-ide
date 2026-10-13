@@ -9,13 +9,16 @@ export function ProjectTree({
   root,
   active,
   onOpen,
+  onExclude,
 }: {
   files: FileEntry[];
   directories?: string[];
   root: string;
   active?: string;
   onOpen(path: string): void;
+  onExclude?(relativePath: string): void;
 }) {
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [filter, setFilter] = useState('');
   const [expanded, setExpanded] = useState(new Set<string>());
   const [scroll, setScroll] = useState(0);
@@ -90,6 +93,9 @@ export function ProjectTree({
       return next;
     });
   }
+  function openMenu(id: string, x: number, y: number) {
+    if (onExclude) setMenu({ id, x, y });
+  }
   function moveFocus(index: number) {
     if (!viewport.current) return;
     const next = Math.max(0, Math.min(entries.length - 1, index));
@@ -121,51 +127,92 @@ export function ProjectTree({
         onScroll={(e) => setScroll(e.currentTarget.scrollTop)}
       >
         <div style={{ height: entries.length * ROW, position: 'relative' }}>
-          {shown.map((entry, index) => (
-            <button
-              key={entry.id}
-              role="treeitem"
-              aria-level={entry.depth + 1}
-              aria-selected={active === entry.file?.path}
-              aria-expanded={entry.directory ? expanded.has(entry.id) : undefined}
-              data-index={first + index}
-              className={`tree-row ${active === entry.file?.path ? 'selected' : ''}`}
-              style={{ top: (first + index) * ROW, paddingLeft: 10 + entry.depth * 14 }}
-              title={entry.id}
-              onClick={() => (entry.directory ? toggle(entry.id) : onOpen(entry.file!.path))}
-              onKeyDown={(e) => {
-                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          {shown.map((entry, index) => {
+            const selected = entry.file !== undefined && active === entry.file.path;
+            return (
+              <button
+                key={entry.id}
+                role="treeitem"
+                aria-level={entry.depth + 1}
+                aria-selected={selected}
+                aria-expanded={entry.directory ? expanded.has(entry.id) : undefined}
+                data-index={first + index}
+                className={`tree-row ${selected ? 'selected' : ''}`}
+                style={{ top: (first + index) * ROW, paddingLeft: 10 + entry.depth * 14 }}
+                title={entry.id}
+                onClick={() => (entry.directory ? toggle(entry.id) : onOpen(entry.file!.path))}
+                onContextMenu={(e) => {
+                  if (!entry.directory || !onExclude) return;
                   e.preventDefault();
-                  moveFocus(first + index + (e.key === 'ArrowDown' ? 1 : -1));
-                }
-                if (
-                  entry.directory &&
-                  ((e.key === 'ArrowRight' && !expanded.has(entry.id)) ||
-                    (e.key === 'ArrowLeft' && expanded.has(entry.id)))
-                ) {
-                  e.preventDefault();
-                  toggle(entry.id);
-                }
-              }}
-            >
-              {entry.directory ? (
-                <Icon
-                  name="chevron"
-                  style={{
-                    width: 10,
-                    transform: expanded.has(entry.id) ? 'rotate(90deg)' : undefined,
-                  }}
-                />
-              ) : (
-                <span className="tree-spacer" />
-              )}
-              <Icon name={entry.directory ? 'folder' : 'file'} />
-              <span>{entry.name}</span>
-            </button>
-          ))}
+                  openMenu(entry.id, e.clientX, e.clientY);
+                }}
+                onKeyDown={(e) => {
+                  if (
+                    entry.directory &&
+                    (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10'))
+                  ) {
+                    e.preventDefault();
+                    const box = e.currentTarget.getBoundingClientRect();
+                    openMenu(entry.id, box.left + 24, box.bottom);
+                    return;
+                  }
+                  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    moveFocus(first + index + (e.key === 'ArrowDown' ? 1 : -1));
+                  }
+                  if (
+                    entry.directory &&
+                    ((e.key === 'ArrowRight' && !expanded.has(entry.id)) ||
+                      (e.key === 'ArrowLeft' && expanded.has(entry.id)))
+                  ) {
+                    e.preventDefault();
+                    toggle(entry.id);
+                  }
+                }}
+              >
+                {entry.directory ? (
+                  <Icon
+                    name="chevron"
+                    style={{
+                      width: 10,
+                      transform: expanded.has(entry.id) ? 'rotate(90deg)' : undefined,
+                    }}
+                  />
+                ) : (
+                  <span className="tree-spacer" />
+                )}
+                <Icon name={entry.directory ? 'folder' : 'file'} />
+                <span>{entry.name}</span>
+              </button>
+            );
+          })}
         </div>
         {!entries.length && <p className="empty-note">No matching files.</p>}
       </div>
+      {menu && (
+        <div
+          role="menu"
+          className="tree-context-menu"
+          style={{ left: menu.x, top: menu.y }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setMenu(null);
+          }}
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget)) setMenu(null);
+          }}
+        >
+          <button
+            role="menuitem"
+            ref={(element) => element?.focus()}
+            onClick={() => {
+              onExclude?.(menu.id);
+              setMenu(null);
+            }}
+          >
+            Exclude from search and indexing
+          </button>
+        </div>
+      )}
       <div className="panel-footnote">{files.length.toLocaleString()} workspace files</div>
     </>
   );

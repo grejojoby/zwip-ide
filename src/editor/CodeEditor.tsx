@@ -226,6 +226,7 @@ export function CodeEditor(props: Props) {
       }),
       EditorView.updateListener.of((update) => {
         doc.state = update.state;
+        if (update.docChanged) for (const listener of doc.changeListeners) listener();
         if (
           update.docChanged &&
           !update.transactions.some(

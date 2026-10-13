@@ -99,3 +99,16 @@ The product, npm package and desktop Cargo package are named **Zwip**. The deskt
 New installations use the application identifier `dev.zwip.ide`, `zwip.*` preference keys, Zwip Keychain services, `.zwip.json` workspace configuration and `ZWIP_*` environment variables. `ZWIP_DATA` explicitly selects an application data directory. The source repository is `grejojoby/zwip-ide`; clone instructions use `zwip` as the local checkout name. Screenshot pixels are unchanged captures from before the current branding, with their original provenance retained.
 
 Zwip starts with a fresh application store. Previous application data, preferences, credentials and workspace configuration are not imported or used as fallback. Existing data is left untouched. Install the desired packages, configure connections and settings, and create `.zwip.json` profiles as needed.
+
+## Continuous integration and releases
+
+`.github/workflows/ci.yml` runs `npm run check` and `npm test` on pushes to `main` and on pull requests, using a macOS Apple Silicon runner with Node 24.16.0, Go 1.25.5 (passed to package builds through `ZWIP_GO`) and stable Rust.
+
+`.github/workflows/release.yml` runs when a `v*` tag is pushed. The tag must equal `v` plus the `package.json` version. It tests, runs `npm run build`, zips `Zwip.app` with a SHA-256 file, and creates a GitHub **pre-release** with both attached. The build is ad-hoc signed and not notarized, so macOS Gatekeeper requires right-click → Open on first launch.
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+These workflows have not yet run on GitHub-hosted runners; confirm the first run before relying on them.

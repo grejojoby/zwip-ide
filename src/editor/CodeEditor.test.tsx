@@ -44,6 +44,7 @@ beforeEach(() => {
     state: null,
     initial: initial.content,
     views: new Set(),
+    changeListeners: new Set(),
   };
   container = document.createElement('div');
   document.body.append(container);

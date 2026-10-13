@@ -37,7 +37,9 @@ import { isCurrentResult, NavigationHistory, shouldFindUsages } from './model/na
 import { withNavigationProgress } from './model/navigation-progress';
 import { mergeContextUpdates } from './model/build-contexts';
 import { Icon } from './components/Icon';
+import { MarkdownPreview } from './components/MarkdownPreview';
 import { Modal } from './components/Modal';
+import { isMarkdownPath } from './model/markdown';
 import { ProjectTree } from './components/ProjectTree';
 import { SidebarRail, SidebarMoveButton } from './components/SidebarRail';
 import {
@@ -107,9 +109,20 @@ export function App() {
   const [workspace, setWorkspace] = useState<WorkspaceSnapshot | null>(null);
   const workspaceRef = useRef(workspace);
   workspaceRef.current = workspace;
+  async function setDirectoryExcluded(path: string, excluded: boolean) {
+    const next = await api.setDirectoryExcluded(path, excluded);
+    workspaceRef.current = next;
+    setWorkspace(next);
+    setStatus(
+      excluded
+        ? `Excluded ${path} from search and indexing`
+        : `Included ${path} in search and indexing`,
+    );
+  }
   const [tabs, setTabs] = useState<string[]>([]);
   const [active, setActive] = useState<string>();
   const [split, setSplit] = useState<string>();
+  const [markdownPreview, setMarkdownPreview] = useState(false);
   const [focusPane, setFocusPane] = useState<'main' | 'split'>('main');
   const focusPath = focusPane === 'split' ? split : active;
   const [position, setPosition] = useState<Position>({ line: 0, character: 0 });
@@ -1156,6 +1169,12 @@ export function App() {
       run: () => setShowSymbols(true),
     },
     {
+      id: 'markdown-preview',
+      label: markdownPreview ? 'Hide Markdown preview' : 'Show Markdown preview',
+      disabled: !active || !isMarkdownPath(active),
+      run: () => setMarkdownPreview((current) => !current),
+    },
+    {
       id: 'save',
       label: 'Save file',
       shortcut: shortcutLabel(shortcuts.save),
@@ -1534,6 +1553,7 @@ export function App() {
                     root={workspace.root}
                     active={focusPath}
                     onOpen={(path) => void openFile(path)}
+                    onExclude={(path) => void setDirectoryExcluded(path, true)}
                   />
                 ) : (
                   <Suspense fallback={<p className="empty-note">Opening tools…</p>}>
@@ -1601,6 +1621,17 @@ export function App() {
                 </div>
               ))}
               <div className="spacer" />
+              {active && isMarkdownPath(active) && (
+                <button
+                  className="icon-button text-button"
+                  aria-pressed={markdownPreview}
+                  aria-label="Toggle Markdown preview"
+                  title="Show a live Markdown preview beside the editor"
+                  onClick={() => setMarkdownPreview((current) => !current)}
+                >
+                  Preview
+                </button>
+              )}
               {active && (
                 <button
                   className="icon-button"
@@ -1740,6 +1771,14 @@ export function App() {
                           onSave={() => void save(split)}
                         />
                       </Suspense>
+                    </div>
+                  )}
+                  {markdownPreview && mainDoc && isMarkdownPath(mainDoc.session.path) && (
+                    <div className="editor-pane secondary">
+                      <div className="split-heading">
+                        Preview · {mainDoc.session.path.split('/').pop()}
+                      </div>
+                      <MarkdownPreview key={mainDoc.session.path} document={mainDoc} />
                     </div>
                   )}
                 </>
@@ -2141,6 +2180,8 @@ export function App() {
           shortcuts={shortcuts}
           workspaceRoot={workspace?.root}
           runSession={workspace ? workspaceTasks.session : undefined}
+          excludedDirectories={workspace?.excludedDirectories}
+          onInclude={(path) => setDirectoryExcluded(path, false)}
           history={historyPreferences}
           dark={dark}
           onTheme={setDark}

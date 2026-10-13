@@ -22,6 +22,54 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-13-exclusions-and-markdown-preview',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'Folder exclusions and Markdown preview',
+    summary: 'Skip folders in search, and preview Markdown beside the editor as you type.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Exclude folders from search and indexing',
+        description:
+          'Right-click a folder in the project tree to leave it out of file search, text search and language discovery. Excluded folders also disappear from the tree.',
+      },
+      {
+        type: 'added',
+        title: 'Excluded folders list',
+        description:
+          'Settings lists skipped folders and why, and lets you include your own exclusions again. Paths matched by .gitignore are skipped but not listed.',
+      },
+      {
+        type: 'added',
+        title: 'Live Markdown preview',
+        description:
+          'Choose Preview on a Markdown file to see it rendered beside the editor, updating as you type. Raw HTML is not rendered, links do not open, and images are not loaded.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-13-tree-selection-and-releases',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'Project tree selection and release builds',
+    summary: 'Folders no longer look selected, and release builds can be published to GitHub.',
+    changes: [
+      {
+        type: 'fixed',
+        title: 'Folders highlighted in the project tree',
+        description:
+          'All folders appeared selected when no file was open. Only the open file is highlighted now.',
+      },
+      {
+        type: 'maintenance',
+        title: 'CI and release workflows',
+        description:
+          'GitHub Actions now runs checks and tests on pushes and pull requests. Pushing a version tag builds the app and attaches a zipped, ad-hoc-signed Apple Silicon build to a GitHub pre-release; it is not notarized.',
+      },
+    ],
+  },
+  {
     id: '2026-10-13-product-language',
     version: '0.1.0',
     date: '2026-10-13',
