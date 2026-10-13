@@ -22,6 +22,33 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-13-diff-viewer',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'Better diff viewer',
+    summary: 'Changes open in the main editor with a GitHub-style side-by-side view.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'Side-by-side diff',
+        description:
+          'Removed and added lines now sit on matching rows with their own line numbers, like GitHub. The unified view is unchanged and is the default.',
+      },
+      {
+        type: 'improved',
+        title: 'Diffs open in the main editor only',
+        description:
+          'The Git panel no longer shows a second copy of the diff. Choose hunks or lines for a partial commit from the diff tab; selections now persist while the Git panel is closed.',
+      },
+      {
+        type: 'maintenance',
+        title: 'Diff limits',
+        description:
+          'The diff shows changed hunks with nearby context rather than the whole file, and it has no syntax highlighting or intra-line highlights.',
+      },
+    ],
+  },
+  {
     id: '2026-10-13-branch-popup',
     version: '0.1.0',
     date: '2026-10-13',

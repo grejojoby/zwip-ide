@@ -5,6 +5,7 @@ use std::{
     fs,
     io::Read,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -168,12 +169,15 @@ pub struct ExcludedDirectory {
 const MAX_LISTED_EXCLUSIONS: usize = 1000;
 
 /// `exclusions` are workspace-relative directory paths the user chose to skip.
+/// `scanned` counts indexed files as the walk proceeds so callers can report progress.
 pub fn scan(
     root: &Path,
     generation: u64,
     rules: &[DiscoveryRule],
     exclusions: &[String],
+    scanned: &AtomicU64,
 ) -> Result<Workspace, String> {
+    scanned.store(0, Ordering::Relaxed);
     let discovery = rules
         .iter()
         .map(|rule| {
@@ -258,6 +262,7 @@ pub fn scan(
         if !entry.file_type().is_some_and(|kind| kind.is_file()) {
             continue;
         }
+        scanned.fetch_add(1, Ordering::Relaxed);
         let path = entry.path();
         let relative = path
             .strip_prefix(&root)

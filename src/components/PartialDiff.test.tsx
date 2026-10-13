@@ -41,3 +41,44 @@ describe('partial commit selection', () => {
     expect(screen.queryByRole('checkbox')).toBeNull();
   });
 });
+
+describe('side by side diff', () => {
+  const paired: GitDiff = {
+    ...diff,
+    hunks: [
+      {
+        id: 'h',
+        oldStart: 1,
+        newStart: 1,
+        lines: [
+          { id: 'c1', kind: 'context', text: 'keep', oldLine: 1, newLine: 1 },
+          { id: 'r1', kind: 'remove', text: 'old one', oldLine: 2 },
+          { id: 'r2', kind: 'remove', text: 'old two', oldLine: 3 },
+          { id: 'a1', kind: 'add', text: 'new one', newLine: 2 },
+          { id: 'c2', kind: 'context', text: 'end', oldLine: 4, newLine: 3 },
+        ],
+      },
+    ],
+  };
+  it('puts removals on the left and additions on the right, with empty padding', () => {
+    const { container } = render(
+      <PartialDiff diff={paired} selected={new Set()} onSelect={() => {}} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Side by side' }));
+    const rows = [...container.querySelectorAll('.split-diff-row')];
+    expect(rows).toHaveLength(4);
+    const [removed, added] = rows[1].querySelectorAll('.split-diff-cell');
+    expect(removed.textContent).toContain('old one');
+    expect(added.textContent).toContain('new one');
+    const [leftover, padding] = rows[2].querySelectorAll('.split-diff-cell');
+    expect(leftover.textContent).toContain('old two');
+    expect(padding.classList.contains('split-diff-empty')).toBe(true);
+  });
+  it('keeps exact line selection in the split view', () => {
+    const select = vi.fn();
+    render(<PartialDiff diff={paired} selected={new Set()} onSelect={select} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Side by side' }));
+    fireEvent.click(screen.getByLabelText('Include add at line 2'));
+    expect([...select.mock.calls[0][0]]).toEqual(['a1']);
+  });
+});

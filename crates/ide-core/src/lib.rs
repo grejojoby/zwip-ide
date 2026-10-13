@@ -43,6 +43,10 @@ pub struct Core {
     tasks: tasks::Tasks,
     watcher: Mutex<Option<notify::RecommendedWatcher>>,
     file_events: Arc<Mutex<HashSet<String>>>,
+    /// Files indexed so far by the running (or last) workspace scan.
+    scanned_files: AtomicU64,
+    /// Catalog downloads and installs in flight, keyed by package ID.
+    package_progress: Mutex<HashMap<String, Value>>,
 }
 fn exclusions_key(root: &str) -> String {
     format!("workspaceExclusions:{root}")
@@ -66,6 +70,8 @@ impl Core {
             workspace_transition: Mutex::new(()),
             watcher: Mutex::new(None),
             file_events: Arc::new(Mutex::new(HashSet::new())),
+            scanned_files: AtomicU64::new(0),
+            package_progress: Mutex::new(HashMap::new()),
             tasks: tasks::Tasks::default(),
             packages: Mutex::new(packages),
             canceled: Mutex::new(HashMap::new()),
@@ -164,6 +170,7 @@ impl Core {
                     previous.generation,
                     &self.discovery_rules()?,
                     &self.exclusions(&previous.root)?,
+                    &self.scanned_files,
                 )?;
                 if params["reanalyze"] == true || workspace.contexts != previous.contexts {
                     let languages = previous
@@ -233,6 +240,7 @@ impl Core {
                     generation,
                     &self.discovery_rules()?,
                     &self.exclusions(&previous.root)?,
+                    &self.scanned_files,
                 )?;
                 self.packages.lock().map_err(|e| e.to_string())?.stop_all();
                 self.generation.store(generation, Ordering::SeqCst);
@@ -263,6 +271,7 @@ impl Core {
                     generation,
                     &self.discovery_rules()?,
                     &exclusions,
+                    &self.scanned_files,
                 )?;
                 // Changes accepted while discovery was running must survive a
                 // switch. Keep this guard through publication so no delta can
@@ -301,6 +310,9 @@ impl Core {
                 Ok(json!({"paths":paths,"configurationChanged":configuration_changed}))
             }
             "workspace.status" => self.workspace_status(),
+            "workspace.scanProgress" => {
+                Ok(json!({"files": self.scanned_files.load(Ordering::Relaxed)}))
+            }
             "document.sync" => {
                 self.analysis_epoch.fetch_add(1, Ordering::SeqCst);
                 self.documents
@@ -605,17 +617,37 @@ impl Core {
                 request.catalog()
             }
             "package.installCatalog" => {
+                let id = string(&params, "id")?;
                 let request = self
                     .packages
                     .lock()
                     .map_err(|e| e.to_string())?
                     .catalog_request()?;
-                let downloaded =
-                    request.download(string(&params, "id")?, string(&params, "version")?)?;
-                self.package_mutation(|host, workspace| {
-                    host.prepare_install_download(downloaded, workspace)
-                })
+                let report = |progress: Value| {
+                    if let Ok(mut all) = self.package_progress.lock() {
+                        all.insert(id.to_owned(), progress);
+                    }
+                };
+                let result = request
+                    .download(id, string(&params, "version")?, |received, total| {
+                        report(json!({"phase":"downloading","received":received,"total":total}))
+                    })
+                    .and_then(|downloaded| {
+                        report(json!({"phase":"installing"}));
+                        self.package_mutation(|host, workspace| {
+                            host.prepare_install_download(downloaded, workspace)
+                        })
+                    });
+                self.package_progress
+                    .lock()
+                    .map_err(|e| e.to_string())?
+                    .remove(id);
+                result
             }
+            "package.installProgress" => Ok(json!(*self
+                .package_progress
+                .lock()
+                .map_err(|e| e.to_string())?)),
             "package.restart" => self.package_mutation(|host, workspace| {
                 host.prepare_restart(
                     string(&params, "id")?,

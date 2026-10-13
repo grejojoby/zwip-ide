@@ -256,7 +256,13 @@ impl CatalogRequest {
     pub fn catalog(&self) -> Result<Value, String> {
         Ok(json!({"url":self.url,"packages":self.load()?.packages}))
     }
-    pub fn download(&self, id: &str, version: &str) -> Result<DownloadedPackage, String> {
+    /// `progress` receives bytes downloaded so far and the expected total, when known.
+    pub fn download(
+        &self,
+        id: &str,
+        version: &str,
+        progress: impl Fn(u64, Option<u64>),
+    ) -> Result<DownloadedPackage, String> {
         let catalog = self.load()?;
         let candidates: Vec<_> = catalog
             .packages
@@ -282,6 +288,8 @@ impl CatalogRequest {
         {
             return Err("Package archive exceeds 256 MiB".into());
         }
+        let total = response.content_length();
+        progress(0, total);
         let mut archive = tempfile::NamedTempFile::new().map_err(|e| e.to_string())?;
         let mut count = 0_u64;
         let mut buffer = [0_u8; 32768];
@@ -299,6 +307,7 @@ impl CatalogRequest {
             archive
                 .write_all(&buffer[..read])
                 .map_err(|e| e.to_string())?;
+            progress(count, total);
         }
         if format!("{:x}", digest.finalize()) != entry.sha256 {
             return Err("Downloaded archive checksum does not match the trusted catalog".into());

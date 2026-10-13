@@ -1849,13 +1849,6 @@ button.danger {
   border-right: none;
   border-bottom: 1px solid var(--border);
 }
-.git-content > .diff-container > .diff-title {
-  flex-wrap: wrap;
-}
-.git-content > .diff-container > .diff-title strong {
-  overflow-wrap: anywhere;
-  min-width: 0;
-}
 .database-panel,
 .sql-browser,
 .http-panel,
@@ -2636,32 +2629,10 @@ button.danger {
   display: flex;
   flex-direction: column;
 }
-.diff-editor-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--border);
-}
-.diff-editor-bar strong {
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.diff-editor-bar button {
-  font-size: 11px;
-  padding: 3px 8px;
-}
-.diff-editor-bar button[aria-pressed='true'] {
-  background: var(--accent-surface);
-}
 .diff-editor-body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-}
-.diff-editor-body .cm-mergeView {
-  min-height: 100%;
 }
 
 .branch-popup {
@@ -2701,4 +2672,40 @@ button.danger {
   margin: 0;
   padding-left: 16px;
   font-size: 12px;
+}
+
+.split-diff-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.split-diff-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 0;
+  min-height: 21px;
+  padding: 0 8px;
+}
+.split-diff-cell + .split-diff-cell {
+  border-left: 1px solid var(--border);
+}
+.split-diff-cell code {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.split-diff-cell input,
+.split-diff-cell .checkbox-spacer {
+  margin-top: 4px;
+}
+.split-diff-empty {
+  background: repeating-linear-gradient(
+    135deg,
+    transparent 0 4px,
+    color-mix(in srgb, var(--muted) 12%, transparent) 4px 5px
+  );
+}
+.split-diff .diff-hunk-title {
+  min-width: 0;
 }

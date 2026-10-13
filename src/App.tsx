@@ -30,9 +30,6 @@ const HttpPanel = lazy(() =>
 const TerminalPanel = lazy(() =>
   import('./components/TerminalPanel').then((module) => ({ default: module.TerminalPanel })),
 );
-const DiffEditor = lazy(() =>
-  import('./components/DiffEditor').then((module) => ({ default: module.DiffEditor })),
-);
 const CodeEditor = lazy(() =>
   import('./editor/CodeEditor').then((module) => ({ default: module.CodeEditor })),
 );
@@ -43,6 +40,7 @@ import { mergeContextUpdates } from './model/build-contexts';
 import { Icon } from './components/Icon';
 import { BranchPopup } from './components/BranchPopup';
 import { IntelliJImport } from './components/IntelliJImport';
+import { PartialDiff } from './components/PartialDiff';
 import { MarkdownPreview } from './components/MarkdownPreview';
 import { Modal } from './components/Modal';
 import { isMarkdownPath } from './model/markdown';
@@ -67,7 +65,7 @@ import { NavigationResults } from './components/NavigationResults';
 import { TargetChooser } from './components/TargetChooser';
 import { FileSearch } from './components/FileSearch';
 import { CommandSearch, type ActionCommand } from './components/CommandSearch';
-import { GitPanel } from './components/GitPanel';
+import { GitPanel, type Selection as GitSelection } from './components/GitPanel';
 import { Packages } from './components/Packages';
 import { TaskPanel } from './components/TaskPanel';
 import { HistoryPanel } from './components/HistoryPanel';
@@ -130,6 +128,7 @@ export function App() {
   const [split, setSplit] = useState<string>();
   const [diffTabs, setDiffTabs] = useState<GitDiff[]>([]);
   const [activeDiff, setActiveDiff] = useState<string>();
+  const [gitSelection, setGitSelection] = useState(new Map<string, GitSelection>());
   const [markdownPreview, setMarkdownPreview] = useState(false);
   const [showRunImport, setShowRunImport] = useState(false);
   const [showBranches, setShowBranches] = useState(false);
@@ -639,6 +638,14 @@ export function App() {
         : [...current, diff],
     );
     setActiveDiff(diff.path);
+  }
+  function chooseDiffLines(diff: GitDiff, ids: Set<string>) {
+    setGitSelection((current) => {
+      const next = new Map(current);
+      if (ids.size) next.set(diff.path, { changes: ids, fingerprint: diff.fingerprint });
+      else next.delete(diff.path);
+      return next;
+    });
   }
   function closeDiff(path: string) {
     setDiffTabs((current) => current.filter((item) => item.path !== path));
@@ -1600,6 +1607,8 @@ export function App() {
                         onBranch={branchChanged}
                         revision={gitRevision}
                         onOpenDiff={openDiff}
+                        selected={gitSelection}
+                        onSelectedChange={setGitSelection}
                       />
                     ) : item === 'database' ? (
                       <DatabasePanel onDirty={setDatabaseDirty} />
@@ -1782,9 +1791,18 @@ export function App() {
             )}
             <div className="editors">
               {diffView ? (
-                <Suspense fallback={<p className="empty-note">Opening diff…</p>}>
-                  <DiffEditor diff={diffView} dark={dark} />
-                </Suspense>
+                <div className="diff-editor">
+                  <div className="diff-editor-body">
+                    <PartialDiff
+                      diff={diffView}
+                      selected={
+                        gitSelection.get(diffView.path)?.changes ??
+                        (gitSelection.has(diffView.path) ? null : new Set())
+                      }
+                      onSelect={(ids) => chooseDiffLines(diffView, ids)}
+                    />
+                  </div>
+                </div>
               ) : mainDoc ? (
                 <>
                   <div className={`editor-pane ${focusPane === 'main' ? 'focused' : ''}`}>

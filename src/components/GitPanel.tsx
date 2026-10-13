@@ -1,4 +1,12 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
 import { api } from '../api';
 import type {
   ChangelistSelection,
@@ -19,7 +27,7 @@ import type { MergeResolution } from './MergeEditor';
 const MergeEditor = lazy(() =>
   import('./MergeEditor').then((module) => ({ default: module.MergeEditor })),
 );
-interface Selection {
+export interface Selection {
   changes: Set<string> | null;
   fingerprint: string;
 }
@@ -28,6 +36,8 @@ export function GitPanel({
   onBranch,
   revision,
   onOpenDiff,
+  selected,
+  onSelectedChange: setSelected,
 }: {
   generation: number;
   onBranch(branch: string): void;
@@ -35,10 +45,12 @@ export function GitPanel({
   revision?: number;
   /** Shows the selected change in the main editor area. */
   onOpenDiff?(diff: GitDiff): void;
+  /** Lines chosen for commit, owned by the app so the main-editor diff can edit them too. */
+  selected: Map<string, Selection>;
+  onSelectedChange: Dispatch<SetStateAction<Map<string, Selection>>>;
 }) {
   const [snapshot, setSnapshot] = useState<GitSnapshot | null>(null);
-  const [selected, setSelected] = useState<Map<string, Selection>>(new Map());
-  const [diff, setDiff] = useState<GitDiff | null>(null);
+  const [diffPath, setDiffPath] = useState<string>();
   const [push, setPush] = useState<PushPlan | null>(null);
   const [merge, setMerge] = useState<MergeSession | null>(null);
   const [conflicts, setConflicts] = useState<string[]>([]);
@@ -81,7 +93,7 @@ export function GitPanel({
     try {
       const next = await api.gitDiff(path);
       if (id === diffRequest.current) {
-        setDiff(next);
+        setDiffPath(next.path);
         onOpenDiff?.(next);
       }
     } catch (e) {
@@ -115,15 +127,6 @@ export function GitPanel({
       return next;
     });
   }
-  function chooseLines(ids: Set<string>) {
-    if (!diff) return;
-    setSelected((current) => {
-      const next = new Map(current);
-      if (ids.size) next.set(diff.path, { changes: ids, fingerprint: diff.fingerprint });
-      else next.delete(diff.path);
-      return next;
-    });
-  }
   const stale =
     snapshot && [...selected.values()].some((item) => item.fingerprint !== snapshot.fingerprint);
   async function reviewCommit() {
@@ -154,7 +157,7 @@ export function GitPanel({
       setCommit(null);
       setMessage('');
       setSelected(new Map());
-      setDiff(null);
+      setDiffPath(undefined);
       setNotice('Commit created.');
     } catch (e) {
       report(e);
@@ -298,7 +301,7 @@ export function GitPanel({
         </button>
       </div>
       {snapshot && (
-        <GitOperations snapshot={snapshot} path={diff?.path} onUpdate={() => void refresh()} />
+        <GitOperations snapshot={snapshot} path={diffPath} onUpdate={() => void refresh()} />
       )}
       <div className="changelist-bar">
         <label>
@@ -388,21 +391,6 @@ export function GitPanel({
           {snapshot && !files.length && (
             <p className="empty-note">
               {snapshot.files.length ? 'No changes in this changelist.' : 'Working tree is clean.'}
-            </p>
-          )}
-        </div>
-        <div className="diff-container">
-          {diff ? (
-            <PartialDiff
-              diff={diff}
-              selected={
-                selected.get(diff.path)?.changes ?? (selected.has(diff.path) ? null : new Set())
-              }
-              onSelect={chooseLines}
-            />
-          ) : (
-            <p className="empty-note">
-              Select a changed file to inspect its diff. Select hunks or lines for a partial commit.
             </p>
           )}
         </div>
