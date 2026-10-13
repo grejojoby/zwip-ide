@@ -28,6 +28,9 @@ jobs:
       - name: Export Go path for package builds
         run: echo "ZWIP_GO=$(command -v go)" >> "$GITHUB_ENV"
       - run: npm ci
+      # The notices script runs `cargo metadata --offline`, so crates must be downloaded first.
+      - name: Fetch Rust dependencies
+        run: cargo fetch --locked
       # Tauri's build script requires the generated notices resource, so clippy needs it too.
       - name: Generate bundled resources
         run: |

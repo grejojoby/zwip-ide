@@ -32,6 +32,9 @@ jobs:
       - name: Export Go path for package builds
         run: echo "ZWIP_GO=$(command -v go)" >> "$GITHUB_ENV"
       - run: npm ci
+      # The notices script runs `cargo metadata --offline`, so crates must be downloaded first.
+      - name: Fetch Rust dependencies
+        run: cargo fetch --locked
       - run: npm test
       - run: npm run build
       - name: Archive app

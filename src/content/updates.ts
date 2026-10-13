@@ -22,6 +22,27 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-13-default-package-catalog',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'Packages download without setup',
+    summary: 'The Packages dialog now lists installable packages right away.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Built-in package catalog',
+        description:
+          'Go, Web, React/Next, SQL, Redis and HTTP packages can be installed without entering a catalog URL. You can still use your own HTTPS catalog.',
+      },
+      {
+        type: 'maintenance',
+        title: 'Packages are checksum-verified',
+        description:
+          'Downloads must match the catalog checksums but are not separately signed. Packages contain executable code.',
+      },
+    ],
+  },
+  {
     id: '2026-10-13-ci-resources',
     version: '0.1.0',
     date: '2026-10-13',
@@ -32,7 +53,7 @@ export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
         type: 'fixed',
         title: 'CI generated resources',
         description:
-          'The check workflow now generates the bundled notices before linting Rust, which failed on clean GitHub runners.',
+          'The check and release workflows now download Rust dependencies and generate the bundled notices first, which failed on clean GitHub runners.',
       },
     ],
   },

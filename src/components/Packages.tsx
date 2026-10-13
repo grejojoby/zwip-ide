@@ -16,6 +16,14 @@ export function Packages({ onClose }: { onClose(): void }) {
       .then(setPackages)
       .catch((e) => setError(asError(e).message))
       .finally(() => setBusy(false));
+    // The built-in catalog loads automatically; failures (e.g. offline) stay quiet until retried.
+    api
+      .packageCatalog()
+      .then((result) => {
+        setCatalog(result);
+        setUrl(result.url);
+      })
+      .catch(() => undefined);
   }, []);
   async function action(operation: () => Promise<PackageState[]>) {
     setBusy(true);
@@ -113,7 +121,7 @@ export function Packages({ onClose }: { onClose(): void }) {
             </article>
           ))}
         </div>
-        <details>
+        <details open>
           <summary>Curated catalog</summary>
           <p className="muted">Use an HTTPS catalog you trust to supply executable packages.</p>
           <form
