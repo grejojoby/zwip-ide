@@ -1,0 +1,56 @@
+{
+  "date": "2026-10-12",
+  "state": "passed",
+  "scope": "Real Go package DAP backend using a disposable fixture; native IDE UI is qualified separately",
+  "platform": "macOS 27.0.1 (26A434), darwin/arm64",
+  "go": "/Users/grejo.j/.gvm/gos/go1.25.5/bin/go",
+  "goVersion": "go1.25.5",
+  "delveVersion": "1.27.2",
+  "delveSha256": "ffe15dc8e03c04460ddd924b5962cb8a4f20b1b63207ae0f4f06e3501316f29a",
+  "execution": "Outside the agent execution sandbox, with Go race detector enabled",
+  "testCommand": "go test -race -count=1 -run 'TestDelve|TestDAP' -v ./cmd/lean-go",
+  "tests": [
+    {
+      "name": "TestDAPFraming",
+      "state": "passed",
+      "seconds": 0
+    },
+    {
+      "name": "TestDelveBreakpointStackVariablesContinue",
+      "state": "passed",
+      "seconds": 4.06
+    },
+    {
+      "name": "TestDelveNoDebugLaunchAndOutput",
+      "state": "passed",
+      "seconds": 1.06
+    }
+  ],
+  "assertions": [
+    "Verified breakpoint at source line 5",
+    "Stack frame reports source line 5",
+    "Local variable value is 42",
+    "Watch value + 1 evaluates to 43",
+    "Next stops on source lines 6 and 7",
+    "Watch value after increment evaluates to 43",
+    "Running program responds to pause with stopped reason pause",
+    "Continue reaches terminated event",
+    "debug.stop completes and adapter process exits",
+    "noDebug launch emits expected output and terminates"
+  ],
+  "securityChanges": "None",
+  "hostObservation": "Developer mode remains disabled; prior task_for_pid stall cause is unresolved and is not a current reproduced blocker",
+  "profileReviewRegression": {
+    "date": "2026-10-12",
+    "state": "passed",
+    "changes": [
+      "Build-setting launch environment cannot override the selected profile; application variables remain supported",
+      "Selecting a .go source file launches its complete package, preserving sibling files"
+    ],
+    "nativeBreakpointSuiteSeconds": 7.082,
+    "nativeSiblingFileNoDebugTestSeconds": 2.35,
+    "profileAndGenericCacheRaceSuiteSeconds": 3.877,
+    "defaultProfilePreferenceMutationCaught": true,
+    "securityChanges": "None"
+  }
+}

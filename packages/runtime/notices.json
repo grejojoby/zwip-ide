@@ -1,0 +1,5 @@
+{
+  "NODE-LICENSE": "https://raw.githubusercontent.com/nodejs/node/v24.16.0/LICENSE",
+  "NODE-REDIS-LICENSE": "https://raw.githubusercontent.com/redis/node-redis/redis@6.3.0/LICENSE",
+  "VSCODE-L10N-LICENSE": "https://raw.githubusercontent.com/microsoft/vscode-l10n/main/LICENSE"
+}

@@ -1,0 +1,256 @@
+{
+  "oracleVersion": 1,
+  "method": "Expected targets hand-adjudicated from source declarations, imports, call sites and explicit heritage before provider execution. This is not a desktop interaction capture.",
+  "contexts": [
+    "interfaces/atlas/frontend/tsconfig.json",
+    "interfaces/quizstudio/frontend/tsconfig.json"
+  ],
+  "cases": [
+    {
+      "id": "atlas-normalization-definition",
+      "operation": "definition",
+      "source": {
+        "path": "interfaces/atlas/frontend/lib/domain-validation.ts",
+        "needle": "normalizeDomainInput(t)",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "interfaces/atlas/frontend/lib/domain-validation.ts",
+          "needle": "normalizeDomainInput(raw",
+          "occurrence": 0
+        }
+      ],
+      "comparison": "exact workspace-owned target positions, excluding dependency files"
+    },
+    {
+      "id": "atlas-criteria-import-definition",
+      "operation": "definition",
+      "source": {
+        "path": "interfaces/atlas/frontend/components/ConditionalRulesEditor.tsx",
+        "needle": "getCriterionStatus(rule)",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "interfaces/atlas/frontend/lib/campaignFilters.ts",
+          "needle": "getCriterionStatus(r:",
+          "occurrence": 0
+        }
+      ],
+      "comparison": "exact workspace-owned target positions, excluding dependency files"
+    },
+    {
+      "id": "atlas-criteria-all-references",
+      "operation": "references",
+      "source": {
+        "path": "interfaces/atlas/frontend/lib/campaignFilters.ts",
+        "needle": "getCriterionStatus(r:",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "interfaces/atlas/frontend/lib/campaignFilters.ts",
+          "needle": "getCriterionStatus",
+          "occurrence": 0
+        },
+        {
+          "path": "interfaces/atlas/frontend/lib/campaignFilters.ts",
+          "needle": "getCriterionStatus",
+          "occurrence": 1
+        },
+        {
+          "path": "interfaces/atlas/frontend/lib/campaignFilters.ts",
+          "needle": "getCriterionStatus",
+          "occurrence": 2
+        },
+        {
+          "path": "interfaces/atlas/frontend/components/ConditionalRulesEditor.tsx",
+          "needle": "getCriterionStatus",
+          "occurrence": 0
+        },
+        {
+          "path": "interfaces/atlas/frontend/components/ConditionalRulesEditor.tsx",
+          "needle": "getCriterionStatus",
+          "occurrence": 1
+        },
+        {
+          "path": "interfaces/atlas/frontend/components/ConditionalRulesEditor.tsx",
+          "needle": "getCriterionStatus",
+          "occurrence": 2
+        },
+        {
+          "path": "interfaces/atlas/frontend/components/ConditionalRulesEditor.tsx",
+          "needle": "getCriterionStatus",
+          "occurrence": 3
+        }
+      ],
+      "comparison": "exact workspace-owned target positions, excluding dependency files"
+    },
+    {
+      "id": "atlas-rule-interface-type",
+      "operation": "typeDefinition",
+      "source": {
+        "path": "interfaces/atlas/frontend/lib/campaignFilters.ts",
+        "needle": "r.status, r.is_active",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "interfaces/atlas/frontend/components/ConditionalRulesEditor.tsx",
+          "needle": "ConditionalRule {",
+          "occurrence": 0
+        }
+      ],
+      "comparison": "exact workspace-owned target positions, excluding dependency files"
+    },
+    {
+      "id": "atlas-criterion-outgoing-call",
+      "operation": "outgoingCalls",
+      "source": {
+        "path": "interfaces/atlas/frontend/lib/campaignFilters.ts",
+        "needle": "isCriterionActive(r:",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "interfaces/atlas/frontend/lib/campaignFilters.ts",
+          "needle": "getCriterionStatus(r:",
+          "occurrence": 0,
+          "relationship": "callee"
+        }
+      ],
+      "comparison": "exact workspace-owned target positions, excluding dependency files"
+    },
+    {
+      "id": "atlas-domain-validation-outgoing-calls",
+      "operation": "outgoingCalls",
+      "source": {
+        "path": "interfaces/atlas/frontend/lib/domain-validation.ts",
+        "needle": "validateDomainInputAsEntered(raw",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "interfaces/atlas/frontend/lib/domain-validation.ts",
+          "needle": "normalizeDomainInput(raw",
+          "occurrence": 0,
+          "relationship": "callee"
+        },
+        {
+          "path": "interfaces/atlas/frontend/lib/domain-validation.ts",
+          "needle": "validateDomainHostname(normalized:",
+          "occurrence": 0,
+          "relationship": "callee"
+        }
+      ],
+      "comparison": "exact workspace-owned target positions, excluding dependency files"
+    },
+    {
+      "id": "quizstudio-jsx-component-definition",
+      "operation": "definition",
+      "source": {
+        "path": "interfaces/quizstudio/frontend/app/quizzes/page.tsx",
+        "needle": "PageHeader\n        title=",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "interfaces/quizstudio/frontend/components/orbit/PageHeader.tsx",
+          "needle": "PageHeader({",
+          "occurrence": 0
+        }
+      ],
+      "comparison": "exact workspace-owned target positions, excluding dependency files"
+    },
+    {
+      "id": "quizstudio-jsx-prop-definition",
+      "operation": "definition",
+      "source": {
+        "path": "interfaces/quizstudio/frontend/app/quizzes/page.tsx",
+        "needle": "title=\"Quiz\"",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "interfaces/quizstudio/frontend/components/orbit/PageHeader.tsx",
+          "needle": "title: string",
+          "occurrence": 0
+        }
+      ],
+      "comparison": "exact workspace-owned target positions, excluding dependency files"
+    },
+    {
+      "id": "quizstudio-quiz-interface-subtype",
+      "operation": "typeHierarchy",
+      "source": {
+        "path": "interfaces/quizstudio/frontend/lib/api/client.ts",
+        "needle": "QuizResponse {",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "interfaces/quizstudio/frontend/lib/api/client.ts",
+          "needle": "QuizFullResponse extends",
+          "occurrence": 0,
+          "relationship": "extendedBy"
+        }
+      ],
+      "comparison": "exact workspace-owned target positions, excluding dependency files"
+    },
+    {
+      "id": "quizstudio-quiz-interface-parent",
+      "operation": "typeHierarchy",
+      "source": {
+        "path": "interfaces/quizstudio/frontend/lib/api/client.ts",
+        "needle": "QuizFullResponse extends",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "interfaces/quizstudio/frontend/lib/api/client.ts",
+          "needle": "QuizResponse {",
+          "occurrence": 0,
+          "relationship": "extends"
+        }
+      ],
+      "comparison": "exact workspace-owned target positions, excluding dependency files"
+    },
+    {
+      "id": "quizstudio-question-interface-subtype",
+      "operation": "typeHierarchy",
+      "source": {
+        "path": "interfaces/quizstudio/frontend/lib/api/client.ts",
+        "needle": "QuestionResponse {",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "interfaces/quizstudio/frontend/lib/api/client.ts",
+          "needle": "QuestionFullResponse extends",
+          "occurrence": 0,
+          "relationship": "extendedBy"
+        }
+      ],
+      "comparison": "exact workspace-owned target positions, excluding dependency files"
+    },
+    {
+      "id": "quizstudio-component-outgoing-call",
+      "operation": "outgoingCalls",
+      "source": {
+        "path": "interfaces/quizstudio/frontend/components/orbit/PageHeader.tsx",
+        "needle": "PageHeader({",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "interfaces/quizstudio/frontend/lib/utils.ts",
+          "needle": "cn(...inputs",
+          "occurrence": 0,
+          "relationship": "callee"
+        }
+      ],
+      "comparison": "exact workspace-owned target positions, excluding dependency files"
+    }
+  ]
+}

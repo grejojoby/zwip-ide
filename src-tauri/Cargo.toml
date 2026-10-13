@@ -1,0 +1,23 @@
+[package]
+name = "zwip"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "zwip_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde_json.workspace = true
+ide-core = { path = "../crates/ide-core" }
+tauri-plugin-wdio = { version = "1", optional = true }
+tauri-plugin-wdio-webdriver = { version = "1", optional = true }
+
+[features]
+e2e = ["dep:tauri-plugin-wdio", "dep:tauri-plugin-wdio-webdriver"]
+custom-protocol = ["tauri/custom-protocol"]

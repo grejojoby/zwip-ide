@@ -1,0 +1,9 @@
+[
+  "@codemirror/state",
+  "@codemirror/view",
+  "@codemirror/language",
+  "@codemirror/autocomplete",
+  "@lezer/common",
+  "@lezer/highlight",
+  "@lezer/lr"
+]

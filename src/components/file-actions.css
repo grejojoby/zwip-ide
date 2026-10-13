@@ -1,0 +1,60 @@
+.file-actions-trigger {
+  font-size: 11px;
+  padding: 3px 6px;
+}
+.file-actions-body label {
+  display: grid;
+  gap: 8px;
+}
+.file-actions-body .muted {
+  color: var(--muted);
+}
+.file-action-path {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+.file-actions-grid {
+  display: grid;
+  gap: 8px;
+}
+.file-actions-grid button {
+  text-align: left;
+}
+.file-action-preview dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px 16px;
+}
+.file-action-preview dt {
+  color: var(--muted);
+}
+.file-action-preview dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.file-trash-list {
+  display: grid;
+  gap: 8px;
+  max-height: 50vh;
+  overflow: auto;
+}
+.file-trash-entry {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.file-trash-entry > div {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.file-trash-entry strong {
+  overflow-wrap: anywhere;
+}
+.file-trash-entry span {
+  font-size: 11px;
+  color: var(--muted);
+}

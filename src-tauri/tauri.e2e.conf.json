@@ -1,0 +1,6 @@
+{
+  "app": {
+    "withGlobalTauri": true
+  },
+  "identifier": "dev.zwip.ide.tests"
+}

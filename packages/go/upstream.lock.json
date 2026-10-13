@@ -1,0 +1,20 @@
+{
+  "module": "golang.org/x/tools/gopls",
+  "version": "v0.21.1",
+  "sum": "h1:1/o9z5Brdero4jFm9Jr46Uwj8GU9lQdoSXHMlwRHb/w=",
+  "goModSum": "h1:eyYJvtYY6UF9WbXilvCkD3fdYMJwG5cVCS4bdOQ2qIs=",
+  "revision": "5c4433be420451410e8cfd968eda32a818dac087",
+  "delve": {
+    "module": "github.com/go-delve/delve",
+    "version": "v1.27.2",
+    "sum": "h1:dhcjFjiVoQI53uwsG7EqYiMhdvFuywsBZx4KDOK+sYE=",
+    "goModSum": "h1:nkFriKZ7rywF+tspcCgJeouzq6b0krJlJiGp15T81hA=",
+    "revision": "d116177dd925e085ba5dd340f8c644f4a1501a3b"
+  },
+  "tools": {
+    "module": "golang.org/x/tools",
+    "version": "v0.39.1-0.20260109155911-b69ac100ecb7",
+    "sum": "h1:UaaZx92hw3fDa9xRcX2//NBRE3sR4VHQLlt0TkN2geY=",
+    "goModSum": "h1:JnefbkDPyD8UU2kI5fuf8ZX4/yUeh9W877ZeBONxUqQ="
+  }
+}

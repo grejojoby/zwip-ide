@@ -1,0 +1,10 @@
+node_modules/
+dist/
+target/
+artifacts/
+src-tauri/gen/
+packages/go/upstream/
+packages/go/bin/
+Cargo.lock
+# Preserve vendored third-party license originals and their recorded checksums.
+licenses/application/

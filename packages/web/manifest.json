@@ -1,0 +1,72 @@
+{
+  "id": "web",
+  "name": "Web Languages",
+  "version": "0.1.0",
+  "coreVersion": "0.1.0",
+  "description": "JavaScript and TypeScript navigation, completion, diagnostics and reviewed edits with workspace SDKs and TSX/JSX support.",
+  "capabilities": [
+    "definition",
+    "typeDefinition",
+    "references",
+    "implementations",
+    "typeHierarchy",
+    "incomingCalls",
+    "outgoingCalls",
+    "completion",
+    "hover",
+    "diagnostics",
+    "format",
+    "rename",
+    "symbols",
+    "workspaceSymbols",
+    "codeActions"
+  ],
+  "languages": ["web", "typescript", "javascript", "tsx", "jsx", "html", "css"],
+  "executable": "runtime/node",
+  "args": ["worker.mjs"],
+  "checksums": {},
+  "syntax": {
+    "abi": 1,
+    "asset": "syntax.mjs",
+    "extensions": ["ts", "tsx", "js", "jsx", "mjs", "cjs", "mts", "cts", "html", "htm", "css"]
+  },
+  "documentExtensions": [
+    "ts",
+    "tsx",
+    "js",
+    "jsx",
+    "mjs",
+    "cjs",
+    "mts",
+    "cts",
+    "html",
+    "htm",
+    "css"
+  ],
+  "discovery": [
+    {
+      "language": "web",
+      "documentExtensions": [
+        "ts",
+        "tsx",
+        "js",
+        "jsx",
+        "mjs",
+        "cjs",
+        "mts",
+        "cts",
+        "html",
+        "htm",
+        "css"
+      ],
+      "configGlobs": ["tsconfig*.json", "jsconfig*.json"],
+      "configurationGlobs": [
+        "tsconfig*.json",
+        "jsconfig*.json",
+        "package.json",
+        "package-lock.json",
+        "next.config.*"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1199 @@
+{
+  "at": "2026-10-12T16:37:08.569Z",
+  "workspace": "/Users/grejo.j/IdeaProjects/goserving",
+  "workspaceHead": "7e900d4d00aa0a9dc63fc3beccb43c42bd2f9c03",
+  "oracleMethod": "Expected target positions adjudicated from tracked source declarations, imports and all matching call sites before provider execution. Physical targets only; no desktop interaction capture. All 33 tracked Go module contexts are included.",
+  "contextCount": 33,
+  "sourceManifestSha256": "242ab8f94829c6ca5fdabdb21c84e86d82c9b94687d87a59c7ea36b21b97de64",
+  "sourcesSha256": {
+    "consumer/helper/util.go": "6fd5e64e9ad9fb2c3e931d738eb4d44f0db95336f42f393823480ef276d341d6",
+    "common/cmlib/gobot/gobot.go": "92d9e7d58cc888e9e2d68b9bada74927059693eb248cbc2ee9c39ab2a8c01d7d",
+    "gobackend/fms/app/pkg/flockbot/flockbot.go": "1a4df201d7960fe0391e4604d0f53b756ca89a0e5b5e55f3cb353633b16d1a67",
+    "gobackend/utopia/app/pkg/utopiavogondata/helper.go": "ceadac205068f6722b47032440b42ad715ef962abfac5df8fb3c0dae1b70fec7",
+    "pureplaybackend/app/pkg/flockbot/flockbot.go": "1a4df201d7960fe0391e4604d0f53b756ca89a0e5b5e55f3cb353633b16d1a67",
+    "slothcrons/app/pkg/cronlogger/flockbot.go": "8c322d700014d50cec7a1c547bafafaecc9a27f2b6c331b808066dec7ccbe237",
+    "slothcrons/app/pkg/helper/helper.go": "01132ce6a142defb1bab790c47f62843e0e297bbd3098463581d44bed576414e",
+    "lib/cmerr/cmErrorWrapper.go": "04b183b55d7a43388d863bd2a102151368fb03d796e4d30cb0bfe3de352b5319",
+    "lib/cmerr/cmerr.go": "bee4e62d3d8faa0d0703233320e7fa7fd3217d8838047074f87368011cc4a9f4"
+  },
+  "environment": {
+    "go": "/Users/grejo.j/.gvm/gos/go1.25.5/bin/go",
+    "dependencyDownloads": true,
+    "pkgConfigPath": "/opt/homebrew/opt/pcre/lib/pkgconfig"
+  },
+  "scope": "Packaged Go worker, all tracked Go modules, source-adjudicated targets; normal module cache, readonly source/module configuration. Native UI behavior is not qualified by this run.",
+  "cases": [
+    {
+      "id": "go-cross-module-function-definition",
+      "operation": "definition",
+      "source": {
+        "path": "consumer/helper/util.go",
+        "position": {
+          "line": 7,
+          "character": 22
+        }
+      },
+      "expected": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "position": {
+            "line": 26,
+            "character": 5
+          }
+        }
+      ],
+      "actual": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "position": {
+            "line": 26,
+            "character": 5
+          },
+          "relationship": "definition",
+          "contextIds": ["consumer/go.mod"]
+        }
+      ],
+      "state": "complete",
+      "searchedContexts": 1,
+      "totalContexts": 1,
+      "reasons": [],
+      "targetsMatch": true,
+      "complete": true,
+      "durationMs": 636.1680419999902
+    },
+    {
+      "id": "go-cross-module-all-function-references",
+      "operation": "references",
+      "source": {
+        "path": "common/cmlib/gobot/gobot.go",
+        "position": {
+          "line": 26,
+          "character": 5
+        }
+      },
+      "expected": [
+        {
+          "path": "consumer/helper/util.go",
+          "position": {
+            "line": 7,
+            "character": 22
+          }
+        },
+        {
+          "path": "gobackend/fms/app/pkg/flockbot/flockbot.go",
+          "position": {
+            "line": 13,
+            "character": 20
+          }
+        },
+        {
+          "path": "gobackend/utopia/app/pkg/utopiavogondata/helper.go",
+          "position": {
+            "line": 102,
+            "character": 22
+          }
+        },
+        {
+          "path": "gobackend/utopia/app/pkg/utopiavogondata/helper.go",
+          "position": {
+            "line": 118,
+            "character": 22
+          }
+        },
+        {
+          "path": "pureplaybackend/app/pkg/flockbot/flockbot.go",
+          "position": {
+            "line": 13,
+            "character": 20
+          }
+        },
+        {
+          "path": "slothcrons/app/pkg/cronlogger/flockbot.go",
+          "position": {
+            "line": 16,
+            "character": 22
+          }
+        },
+        {
+          "path": "slothcrons/app/pkg/cronlogger/flockbot.go",
+          "position": {
+            "line": 26,
+            "character": 22
+          }
+        },
+        {
+          "path": "slothcrons/app/pkg/helper/helper.go",
+          "position": {
+            "line": 29,
+            "character": 22
+          }
+        },
+        {
+          "path": "slothcrons/app/pkg/helper/helper.go",
+          "position": {
+            "line": 128,
+            "character": 22
+          }
+        }
+      ],
+      "actual": [
+        {
+          "path": "consumer/helper/util.go",
+          "position": {
+            "line": 7,
+            "character": 22
+          },
+          "relationship": "references",
+          "contextIds": ["consumer/go.mod"]
+        },
+        {
+          "path": "gobackend/fms/app/pkg/flockbot/flockbot.go",
+          "position": {
+            "line": 13,
+            "character": 20
+          },
+          "relationship": "references",
+          "contextIds": ["gobackend/fms/go.mod"]
+        },
+        {
+          "path": "gobackend/utopia/app/pkg/utopiavogondata/helper.go",
+          "position": {
+            "line": 102,
+            "character": 22
+          },
+          "relationship": "references",
+          "contextIds": ["gobackend/utopia/go.mod"]
+        },
+        {
+          "path": "gobackend/utopia/app/pkg/utopiavogondata/helper.go",
+          "position": {
+            "line": 118,
+            "character": 22
+          },
+          "relationship": "references",
+          "contextIds": ["gobackend/utopia/go.mod"]
+        },
+        {
+          "path": "pureplaybackend/app/pkg/flockbot/flockbot.go",
+          "position": {
+            "line": 13,
+            "character": 20
+          },
+          "relationship": "references",
+          "contextIds": ["pureplaybackend/go.mod"]
+        },
+        {
+          "path": "slothcrons/app/pkg/cronlogger/flockbot.go",
+          "position": {
+            "line": 16,
+            "character": 22
+          },
+          "relationship": "references",
+          "contextIds": ["slothcrons/go.mod"]
+        },
+        {
+          "path": "slothcrons/app/pkg/cronlogger/flockbot.go",
+          "position": {
+            "line": 26,
+            "character": 22
+          },
+          "relationship": "references",
+          "contextIds": ["slothcrons/go.mod"]
+        },
+        {
+          "path": "slothcrons/app/pkg/helper/helper.go",
+          "position": {
+            "line": 29,
+            "character": 22
+          },
+          "relationship": "references",
+          "contextIds": ["slothcrons/go.mod"]
+        },
+        {
+          "path": "slothcrons/app/pkg/helper/helper.go",
+          "position": {
+            "line": 128,
+            "character": 22
+          },
+          "relationship": "references",
+          "contextIds": ["slothcrons/go.mod"]
+        }
+      ],
+      "state": "complete",
+      "searchedContexts": 33,
+      "totalContexts": 33,
+      "reasons": [],
+      "targetsMatch": true,
+      "complete": true,
+      "durationMs": 874.9276669999963
+    },
+    {
+      "id": "go-cross-module-options-definition",
+      "operation": "definition",
+      "source": {
+        "path": "consumer/helper/util.go",
+        "position": {
+          "line": 7,
+          "character": 38
+        }
+      },
+      "expected": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "position": {
+            "line": 21,
+            "character": 5
+          }
+        }
+      ],
+      "actual": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "position": {
+            "line": 21,
+            "character": 5
+          },
+          "relationship": "definition",
+          "contextIds": ["consumer/go.mod"]
+        }
+      ],
+      "state": "complete",
+      "searchedContexts": 1,
+      "totalContexts": 1,
+      "reasons": [],
+      "targetsMatch": true,
+      "complete": true,
+      "durationMs": 10.123000000006869
+    },
+    {
+      "id": "go-cross-module-return-type-definition",
+      "operation": "definition",
+      "source": {
+        "path": "consumer/helper/util.go",
+        "position": {
+          "line": 6,
+          "character": 28
+        }
+      },
+      "expected": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "position": {
+            "line": 10,
+            "character": 5
+          }
+        }
+      ],
+      "actual": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "position": {
+            "line": 10,
+            "character": 5
+          },
+          "relationship": "definition",
+          "contextIds": ["consumer/go.mod"]
+        }
+      ],
+      "state": "complete",
+      "searchedContexts": 1,
+      "totalContexts": 1,
+      "reasons": [],
+      "targetsMatch": true,
+      "complete": true,
+      "durationMs": 9.263749999998254
+    },
+    {
+      "id": "go-local-variable-type-definition",
+      "operation": "typeDefinition",
+      "source": {
+        "path": "common/cmlib/gobot/gobot.go",
+        "position": {
+          "line": 31,
+          "character": 1
+        }
+      },
+      "expected": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "position": {
+            "line": 10,
+            "character": 5
+          }
+        }
+      ],
+      "actual": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "position": {
+            "line": 10,
+            "character": 5
+          },
+          "relationship": "typeDefinition",
+          "contextIds": ["common/go.mod"]
+        }
+      ],
+      "state": "complete",
+      "searchedContexts": 1,
+      "totalContexts": 1,
+      "reasons": [],
+      "targetsMatch": true,
+      "complete": true,
+      "durationMs": 18.892542000001413
+    },
+    {
+      "id": "go-struct-field-definition",
+      "operation": "definition",
+      "source": {
+        "path": "common/cmlib/gobot/gobot.go",
+        "position": {
+          "line": 28,
+          "character": 6
+        }
+      },
+      "expected": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "position": {
+            "line": 22,
+            "character": 1
+          }
+        }
+      ],
+      "actual": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "position": {
+            "line": 22,
+            "character": 1
+          },
+          "relationship": "definition",
+          "contextIds": ["common/go.mod"]
+        }
+      ],
+      "state": "complete",
+      "searchedContexts": 1,
+      "totalContexts": 1,
+      "reasons": [],
+      "targetsMatch": true,
+      "complete": true,
+      "durationMs": 21.41433299999335
+    },
+    {
+      "id": "go-private-method-all-references",
+      "operation": "references",
+      "source": {
+        "path": "common/cmlib/gobot/gobot.go",
+        "position": {
+          "line": 69,
+          "character": 14
+        }
+      },
+      "expected": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "position": {
+            "line": 61,
+            "character": 10
+          }
+        },
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "position": {
+            "line": 66,
+            "character": 10
+          }
+        }
+      ],
+      "actual": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "position": {
+            "line": 61,
+            "character": 10
+          },
+          "relationship": "references",
+          "contextIds": [
+            "gobackend/utopia/go.mod",
+            "pureplaybackend/go.mod",
+            "gobackend/fms/go.mod",
+            "slothcrons/go.mod",
+            "consumer/go.mod",
+            "common/go.mod"
+          ]
+        },
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "position": {
+            "line": 66,
+            "character": 10
+          },
+          "relationship": "references",
+          "contextIds": [
+            "gobackend/utopia/go.mod",
+            "pureplaybackend/go.mod",
+            "gobackend/fms/go.mod",
+            "slothcrons/go.mod",
+            "consumer/go.mod",
+            "common/go.mod"
+          ]
+        }
+      ],
+      "state": "complete",
+      "searchedContexts": 33,
+      "totalContexts": 33,
+      "reasons": [],
+      "targetsMatch": true,
+      "complete": true,
+      "durationMs": 209.27895900000294
+    },
+    {
+      "id": "go-direct-incoming-calls",
+      "operation": "incomingCalls",
+      "source": {
+        "path": "common/cmlib/gobot/gobot.go",
+        "position": {
+          "line": 69,
+          "character": 14
+        }
+      },
+      "expected": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "position": {
+            "line": 58,
+            "character": 14
+          }
+        },
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "position": {
+            "line": 64,
+            "character": 14
+          }
+        }
+      ],
+      "actual": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "position": {
+            "line": 58,
+            "character": 14
+          },
+          "relationship": "static caller",
+          "contextIds": [
+            "gobackend/utopia/go.mod",
+            "pureplaybackend/go.mod",
+            "gobackend/fms/go.mod",
+            "slothcrons/go.mod",
+            "consumer/go.mod",
+            "common/go.mod"
+          ]
+        },
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "position": {
+            "line": 64,
+            "character": 14
+          },
+          "relationship": "static caller",
+          "contextIds": [
+            "gobackend/utopia/go.mod",
+            "pureplaybackend/go.mod",
+            "gobackend/fms/go.mod",
+            "slothcrons/go.mod",
+            "consumer/go.mod",
+            "common/go.mod"
+          ]
+        }
+      ],
+      "state": "complete",
+      "searchedContexts": 33,
+      "totalContexts": 33,
+      "reasons": [],
+      "targetsMatch": true,
+      "complete": true,
+      "durationMs": 152.69395800000348
+    },
+    {
+      "id": "go-direct-outgoing-call",
+      "operation": "outgoingCalls",
+      "source": {
+        "path": "common/cmlib/gobot/gobot.go",
+        "position": {
+          "line": 50,
+          "character": 14
+        }
+      },
+      "expected": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "position": {
+            "line": 58,
+            "character": 14
+          }
+        }
+      ],
+      "actual": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "position": {
+            "line": 58,
+            "character": 14
+          },
+          "relationship": "static callee",
+          "contextIds": ["common/go.mod"]
+        }
+      ],
+      "state": "complete",
+      "searchedContexts": 1,
+      "totalContexts": 1,
+      "reasons": [],
+      "targetsMatch": true,
+      "complete": true,
+      "durationMs": 27.226875000007567
+    },
+    {
+      "id": "go-local-parameter-references",
+      "operation": "references",
+      "source": {
+        "path": "common/cmlib/gobot/gobot.go",
+        "position": {
+          "line": 54,
+          "character": 26
+        }
+      },
+      "expected": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "position": {
+            "line": 55,
+            "character": 14
+          }
+        }
+      ],
+      "actual": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "position": {
+            "line": 55,
+            "character": 14
+          },
+          "relationship": "references",
+          "contextIds": [
+            "gobackend/utopia/go.mod",
+            "pureplaybackend/go.mod",
+            "gobackend/fms/go.mod",
+            "slothcrons/go.mod",
+            "consumer/go.mod",
+            "common/go.mod"
+          ]
+        }
+      ],
+      "state": "complete",
+      "searchedContexts": 33,
+      "totalContexts": 33,
+      "reasons": [],
+      "targetsMatch": true,
+      "complete": true,
+      "durationMs": 144.7571670000034
+    },
+    {
+      "id": "go-interface-method-definition",
+      "operation": "definition",
+      "source": {
+        "path": "lib/cmerr/cmErrorWrapper.go",
+        "position": {
+          "line": 33,
+          "character": 37
+        }
+      },
+      "expected": [
+        {
+          "path": "lib/cmerr/cmerr.go",
+          "position": {
+            "line": 27,
+            "character": 1
+          }
+        }
+      ],
+      "actual": [
+        {
+          "path": "lib/cmerr/cmerr.go",
+          "position": {
+            "line": 27,
+            "character": 1
+          },
+          "relationship": "definition",
+          "contextIds": ["lib/go.mod"]
+        }
+      ],
+      "state": "complete",
+      "searchedContexts": 1,
+      "totalContexts": 1,
+      "reasons": [],
+      "targetsMatch": true,
+      "complete": true,
+      "durationMs": 11.330375000005006
+    },
+    {
+      "id": "go-pointer-variable-type-definition",
+      "operation": "typeDefinition",
+      "source": {
+        "path": "lib/cmerr/cmErrorWrapper.go",
+        "position": {
+          "line": 31,
+          "character": 24
+        }
+      },
+      "expected": [
+        {
+          "path": "lib/cmerr/cmErrorWrapper.go",
+          "position": {
+            "line": 6,
+            "character": 5
+          }
+        }
+      ],
+      "actual": [
+        {
+          "path": "lib/cmerr/cmErrorWrapper.go",
+          "position": {
+            "line": 6,
+            "character": 5
+          },
+          "relationship": "typeDefinition",
+          "contextIds": ["lib/go.mod"]
+        }
+      ],
+      "state": "complete",
+      "searchedContexts": 1,
+      "totalContexts": 1,
+      "reasons": [],
+      "targetsMatch": true,
+      "complete": true,
+      "durationMs": 5.689707999990787
+    }
+  ],
+  "initialization": {
+    "contexts": [
+      {
+        "id": "advertiserblocker/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/advertiserblocker",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/advertiserblocker/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "benchmarking/vogondata/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/benchmarking/vogondata",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/benchmarking/vogondata/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "clicktransfer/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/clicktransfer",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/clicktransfer/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "cmpkg/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/cmpkg",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/cmpkg/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "common/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/common",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/common/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "connections/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/connections",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/connections/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "consumer/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/consumer",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/consumer/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "creativebackstage/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/creativebackstage",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/creativebackstage/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "dchealthchecker/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/dchealthchecker",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/dchealthchecker/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "external/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/external",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/external/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "gobackend/firstresponder/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/gobackend/firstresponder",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/gobackend/firstresponder/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "gobackend/fms/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/gobackend/fms",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/gobackend/fms/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "gobackend/oscarbackend/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/gobackend/oscarbackend",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/gobackend/oscarbackend/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "gobackend/renderly-backend/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/gobackend/renderly-backend",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/gobackend/renderly-backend/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "gobackend/utopia/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/gobackend/utopia",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/gobackend/utopia/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "interceptor/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/interceptor",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/interceptor/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "interfaces/atlas/backend/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/interfaces/atlas/backend",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/interfaces/atlas/backend/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "interfaces/quizstudio/backend/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/interfaces/quizstudio/backend",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/interfaces/quizstudio/backend/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "kosmos/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/kosmos",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/kosmos/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "lib/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/lib",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/lib/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "miscapi/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/miscapi",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/miscapi/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "mnetlib/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/mnetlib",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/mnetlib/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "ola/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/ola",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/ola/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "oscar/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/oscar",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/oscar/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "phoenix/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/phoenix",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/phoenix/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "polaris/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/polaris",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/polaris/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "pureplaybackend/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/pureplaybackend",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/pureplaybackend/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "renderly/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/renderly",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/renderly/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "sloth/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/sloth",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/sloth/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "slothcrons/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/slothcrons",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/slothcrons/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "smartcacheserving/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/smartcacheserving",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/smartcacheserving/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "terminator/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/terminator",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/terminator/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      },
+      {
+        "id": "weaver/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/weaver",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/weaver/go.mod",
+        "state": "loading",
+        "reason": "queued for background indexing"
+      }
+    ],
+    "generation": 1
+  },
+  "initializeMs": 644.645583,
+  "initialQuery": {
+    "state": "partial",
+    "searchedContexts": 0,
+    "totalContexts": 1,
+    "reasons": [
+      "consumer/go.mod: indexing is still loading; retry after workspace.status reports ready"
+    ]
+  },
+  "readyStatus": {
+    "generation": 1,
+    "contexts": [
+      {
+        "id": "advertiserblocker/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/advertiserblocker",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/advertiserblocker/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "benchmarking/vogondata/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/benchmarking/vogondata",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/benchmarking/vogondata/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "clicktransfer/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/clicktransfer",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/clicktransfer/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "cmpkg/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/cmpkg",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/cmpkg/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "common/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/common",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/common/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "connections/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/connections",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/connections/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "consumer/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/consumer",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/consumer/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "creativebackstage/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/creativebackstage",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/creativebackstage/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "dchealthchecker/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/dchealthchecker",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/dchealthchecker/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "external/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/external",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/external/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "gobackend/firstresponder/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/gobackend/firstresponder",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/gobackend/firstresponder/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "gobackend/fms/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/gobackend/fms",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/gobackend/fms/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "gobackend/oscarbackend/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/gobackend/oscarbackend",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/gobackend/oscarbackend/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "gobackend/renderly-backend/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/gobackend/renderly-backend",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/gobackend/renderly-backend/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "gobackend/utopia/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/gobackend/utopia",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/gobackend/utopia/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "interceptor/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/interceptor",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/interceptor/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "interfaces/atlas/backend/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/interfaces/atlas/backend",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/interfaces/atlas/backend/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "interfaces/quizstudio/backend/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/interfaces/quizstudio/backend",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/interfaces/quizstudio/backend/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "kosmos/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/kosmos",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/kosmos/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "lib/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/lib",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/lib/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "miscapi/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/miscapi",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/miscapi/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "mnetlib/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/mnetlib",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/mnetlib/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "ola/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/ola",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/ola/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "oscar/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/oscar",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/oscar/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "phoenix/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/phoenix",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/phoenix/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "polaris/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/polaris",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/polaris/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "pureplaybackend/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/pureplaybackend",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/pureplaybackend/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "renderly/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/renderly",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/renderly/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "sloth/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/sloth",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/sloth/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "slothcrons/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/slothcrons",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/slothcrons/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "smartcacheserving/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/smartcacheserving",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/smartcacheserving/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "terminator/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/terminator",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/terminator/go.mod",
+        "state": "ready"
+      },
+      {
+        "id": "weaver/go.mod",
+        "root": "/Users/grejo.j/IdeaProjects/goserving/weaver",
+        "language": "go",
+        "configPath": "/Users/grejo.j/IdeaProjects/goserving/weaver/go.mod",
+        "state": "ready"
+      }
+    ]
+  },
+  "allContextsReadyMs": 71338.302292,
+  "changedPaths": [],
+  "sourceUnchanged": true,
+  "targetMatches": 12,
+  "completeCases": 12,
+  "passed": true,
+  "stderrTail": ""
+}

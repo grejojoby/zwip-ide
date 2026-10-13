@@ -1,0 +1,32 @@
+[
+  {
+    "language": "go",
+    "documentExtensions": ["go"],
+    "configGlobs": ["go.mod"],
+    "configurationGlobs": ["go.mod", "go.sum", "go.work", "go.work.sum"]
+  },
+  {
+    "language": "web",
+    "documentExtensions": [
+      "ts",
+      "tsx",
+      "js",
+      "jsx",
+      "mjs",
+      "cjs",
+      "mts",
+      "cts",
+      "html",
+      "htm",
+      "css"
+    ],
+    "configGlobs": ["tsconfig*.json", "jsconfig*.json"],
+    "configurationGlobs": [
+      "tsconfig*.json",
+      "jsconfig*.json",
+      "package.json",
+      "package-lock.json",
+      "next.config.*"
+    ]
+  }
+]

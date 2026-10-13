@@ -1,0 +1,248 @@
+{
+  "oracleVersion": 1,
+  "method": "Expected target positions adjudicated from tracked source declarations, imports and all matching call sites before provider execution. Physical targets only; no desktop interaction capture. All 33 tracked Go module contexts are included.",
+  "cases": [
+    {
+      "id": "go-cross-module-function-definition",
+      "operation": "definition",
+      "source": {
+        "path": "consumer/helper/util.go",
+        "needle": "NewClient(gobot.Options{",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "needle": "NewClient(o Options)",
+          "occurrence": 0
+        }
+      ]
+    },
+    {
+      "id": "go-cross-module-all-function-references",
+      "operation": "references",
+      "source": {
+        "path": "common/cmlib/gobot/gobot.go",
+        "needle": "NewClient(o Options)",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "consumer/helper/util.go",
+          "needle": "NewClient(gobot.Options{",
+          "occurrence": 0
+        },
+        {
+          "path": "gobackend/fms/app/pkg/flockbot/flockbot.go",
+          "needle": "NewClient(gobot.Options{",
+          "occurrence": 0
+        },
+        {
+          "path": "gobackend/utopia/app/pkg/utopiavogondata/helper.go",
+          "needle": "NewClient(gobot.Options{",
+          "occurrence": 0
+        },
+        {
+          "path": "gobackend/utopia/app/pkg/utopiavogondata/helper.go",
+          "needle": "NewClient(gobot.Options{",
+          "occurrence": 1
+        },
+        {
+          "path": "pureplaybackend/app/pkg/flockbot/flockbot.go",
+          "needle": "NewClient(gobot.Options{",
+          "occurrence": 0
+        },
+        {
+          "path": "slothcrons/app/pkg/cronlogger/flockbot.go",
+          "needle": "NewClient(gobot.Options{",
+          "occurrence": 0
+        },
+        {
+          "path": "slothcrons/app/pkg/cronlogger/flockbot.go",
+          "needle": "NewClient(gobot.Options{",
+          "occurrence": 1
+        },
+        {
+          "path": "slothcrons/app/pkg/helper/helper.go",
+          "needle": "NewClient(gobot.Options{",
+          "occurrence": 0
+        },
+        {
+          "path": "slothcrons/app/pkg/helper/helper.go",
+          "needle": "NewClient(gobot.Options{",
+          "occurrence": 1
+        }
+      ]
+    },
+    {
+      "id": "go-cross-module-options-definition",
+      "operation": "definition",
+      "source": {
+        "path": "consumer/helper/util.go",
+        "needle": "Options{",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "needle": "Options struct",
+          "occurrence": 0
+        }
+      ]
+    },
+    {
+      "id": "go-cross-module-return-type-definition",
+      "operation": "definition",
+      "source": {
+        "path": "consumer/helper/util.go",
+        "needle": "Bot {",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "needle": "Bot struct",
+          "occurrence": 0
+        }
+      ]
+    },
+    {
+      "id": "go-local-variable-type-definition",
+      "operation": "typeDefinition",
+      "source": {
+        "path": "common/cmlib/gobot/gobot.go",
+        "needle": "bot.AuthIdList",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "needle": "Bot struct",
+          "occurrence": 0
+        }
+      ]
+    },
+    {
+      "id": "go-struct-field-definition",
+      "operation": "definition",
+      "source": {
+        "path": "common/cmlib/gobot/gobot.go",
+        "needle": "AuthId ==",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "needle": "AuthId     string",
+          "occurrence": 0
+        }
+      ]
+    },
+    {
+      "id": "go-private-method-all-references",
+      "operation": "references",
+      "source": {
+        "path": "common/cmlib/gobot/gobot.go",
+        "needle": "send(jsonValue []byte)",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "needle": "send(jsonValue)",
+          "occurrence": 0
+        },
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "needle": "send(jsonValue)",
+          "occurrence": 1
+        }
+      ]
+    },
+    {
+      "id": "go-direct-incoming-calls",
+      "operation": "incomingCalls",
+      "source": {
+        "path": "common/cmlib/gobot/gobot.go",
+        "needle": "send(jsonValue []byte)",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "needle": "SendMessage(text",
+          "occurrence": 0
+        },
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "needle": "SendMessagewithAttachment(message",
+          "occurrence": 0
+        }
+      ]
+    },
+    {
+      "id": "go-direct-outgoing-call",
+      "operation": "outgoingCalls",
+      "source": {
+        "path": "common/cmlib/gobot/gobot.go",
+        "needle": "SendDumpedMessage()",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "needle": "SendMessage(text",
+          "occurrence": 0
+        }
+      ]
+    },
+    {
+      "id": "go-local-parameter-references",
+      "operation": "references",
+      "source": {
+        "path": "common/cmlib/gobot/gobot.go",
+        "needle": "userIds []string",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "common/cmlib/gobot/gobot.go",
+          "needle": "userIds\n",
+          "occurrence": 0
+        }
+      ]
+    },
+    {
+      "id": "go-interface-method-definition",
+      "operation": "definition",
+      "source": {
+        "path": "lib/cmerr/cmErrorWrapper.go",
+        "needle": "GetErrorBase()",
+        "occurrence": 1
+      },
+      "expected": [
+        {
+          "path": "lib/cmerr/cmerr.go",
+          "needle": "GetErrorBase() ErrBase",
+          "occurrence": 0
+        }
+      ]
+    },
+    {
+      "id": "go-pointer-variable-type-definition",
+      "operation": "typeDefinition",
+      "source": {
+        "path": "lib/cmerr/cmErrorWrapper.go",
+        "needle": "dummyErrorObj)",
+        "occurrence": 0
+      },
+      "expected": [
+        {
+          "path": "lib/cmerr/cmErrorWrapper.go",
+          "needle": "DummyError struct",
+          "occurrence": 0
+        }
+      ]
+    }
+  ]
+}

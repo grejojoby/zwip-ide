@@ -1,0 +1,14 @@
+{
+  "id": "react-next",
+  "name": "React / Next.js",
+  "version": "0.1.0",
+  "coreVersion": "^0.1.0",
+  "description": "Enables the project's configured Next.js TypeScript plugin in the Web package. React TSX editing uses the Web SDK.",
+  "kind": "feature",
+  "platform": "any",
+  "architecture": "any",
+  "dependencies": { "web": "^0.1.0" },
+  "languages": [],
+  "capabilities": ["nextProjectPlugin"],
+  "checksums": {}
+}

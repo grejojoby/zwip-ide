@@ -1,0 +1,6 @@
+{
+  "file": "internal/imports/mod.go",
+  "find": "if len(goWork) == 0 {",
+  "replace": "if goWork == \"\" || goWork == \"off\" {",
+  "reason": "GOWORK=off selects independent-module mode. Treating off as a go.work filename silently prevents vendored import resolution."
+}

@@ -1,0 +1,327 @@
+{
+  "version": 1,
+  "packages": {
+    "cargo:alloc-stdlib@0.3.0": {
+      "repository": "https://github.com/dropbox/rust-alloc-no-stdlib",
+      "commit": "0a81fd6928ea3b33c8cd484aa4575d50ffb98012",
+      "cratePath": "alloc-stdlib",
+      "files": [
+        {
+          "path": "rust-alloc-no-stdlib-0a81fd6928ea/LICENSE",
+          "url": "https://raw.githubusercontent.com/dropbox/rust-alloc-no-stdlib/0a81fd6928ea3b33c8cd484aa4575d50ffb98012/LICENSE",
+          "fullLicense": true,
+          "sha256": "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae"
+        }
+      ]
+    },
+    "cargo:block2@0.6.2": {
+      "repository": "https://github.com/madsmtm/objc2",
+      "commit": "b4167b582b2f75f9a1be75495c41b765344fd03c",
+      "cratePath": "crates/block2",
+      "files": [
+        {
+          "path": "objc2-b4167b582b2f/LICENSE.md",
+          "url": "https://raw.githubusercontent.com/madsmtm/objc2/b4167b582b2f75f9a1be75495c41b765344fd03c/LICENSE.md",
+          "fullLicense": false,
+          "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+        },
+        {
+          "path": "OSI-MIT.txt",
+          "url": "https://opensource.org/license/MIT",
+          "fullLicense": true,
+          "sha256": "21785883212d06d2c262b7e9f73f92ae7a03a7f2fe86809d7c7ad9bd6961d265",
+          "evidence": "Explicit MIT terms link in the pinned upstream LICENSE.md; exact text of its four license paragraphs, HTML entities decoded. Original template placeholders retained; no copyright holder invented.",
+          "sourceHtmlSha256": "1871b8a0526a1d9dda6f3d78cae57644b21455b7ee7d5334ad44cb5c934f08ba"
+        }
+      ]
+    },
+    "cargo:defmt-parser@1.0.0": {
+      "repository": "https://github.com/knurling-rs/defmt",
+      "commit": "4a8cdb44891ed57b8ff5a023b6bec7137c48708f",
+      "cratePath": "parser",
+      "files": [
+        {
+          "path": "defmt-4a8cdb44891e/LICENSE-MIT",
+          "url": "https://raw.githubusercontent.com/knurling-rs/defmt/4a8cdb44891ed57b8ff5a023b6bec7137c48708f/LICENSE-MIT",
+          "fullLicense": true,
+          "sha256": "2710a622a896bba67356913d4d0492cab5465f61b2ecce6d880aeb483834fb50"
+        },
+        {
+          "path": "defmt-4a8cdb44891e/LICENSE-APACHE",
+          "url": "https://raw.githubusercontent.com/knurling-rs/defmt/4a8cdb44891ed57b8ff5a023b6bec7137c48708f/LICENSE-APACHE",
+          "fullLicense": true,
+          "sha256": "8173d5c29b4f956d532781d2b86e4e30f83e6b7878dce18c919451d6ba707c90"
+        }
+      ]
+    },
+    "cargo:dispatch2@0.3.1": {
+      "repository": "https://github.com/madsmtm/objc2",
+      "commit": "8852b424193ca41602281b3d7540d7c8ed51e49a",
+      "cratePath": "crates/dispatch2",
+      "files": [
+        {
+          "path": "objc2-8852b424193c/LICENSE.md",
+          "url": "https://raw.githubusercontent.com/madsmtm/objc2/8852b424193ca41602281b3d7540d7c8ed51e49a/LICENSE.md",
+          "fullLicense": false,
+          "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+        },
+        {
+          "path": "OSI-MIT.txt",
+          "url": "https://opensource.org/license/MIT",
+          "fullLicense": true,
+          "sha256": "21785883212d06d2c262b7e9f73f92ae7a03a7f2fe86809d7c7ad9bd6961d265",
+          "evidence": "Explicit MIT terms link in the pinned upstream LICENSE.md; exact text of its four license paragraphs, HTML entities decoded. Original template placeholders retained; no copyright holder invented.",
+          "sourceHtmlSha256": "1871b8a0526a1d9dda6f3d78cae57644b21455b7ee7d5334ad44cb5c934f08ba"
+        }
+      ]
+    },
+    "cargo:objc2@0.6.5": {
+      "repository": "https://github.com/madsmtm/objc2",
+      "commit": "d7d2fa23ceaa5e6096c923b081040e5d81b3b9df",
+      "cratePath": "crates/objc2",
+      "files": [
+        {
+          "path": "objc2-d7d2fa23ceaa/LICENSE.md",
+          "url": "https://raw.githubusercontent.com/madsmtm/objc2/d7d2fa23ceaa5e6096c923b081040e5d81b3b9df/LICENSE.md",
+          "fullLicense": false,
+          "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+        },
+        {
+          "path": "OSI-MIT.txt",
+          "url": "https://opensource.org/license/MIT",
+          "fullLicense": true,
+          "sha256": "21785883212d06d2c262b7e9f73f92ae7a03a7f2fe86809d7c7ad9bd6961d265",
+          "evidence": "Explicit MIT terms link in the pinned upstream LICENSE.md; exact text of its four license paragraphs, HTML entities decoded. Original template placeholders retained; no copyright holder invented.",
+          "sourceHtmlSha256": "1871b8a0526a1d9dda6f3d78cae57644b21455b7ee7d5334ad44cb5c934f08ba"
+        }
+      ]
+    },
+    "cargo:objc2-app-kit@0.3.2": {
+      "repository": "https://github.com/madsmtm/objc2",
+      "commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "cratePath": "framework-crates/objc2-app-kit",
+      "files": [
+        {
+          "path": "objc2-7b1abfd750a2/LICENSE.md",
+          "url": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md",
+          "fullLicense": false,
+          "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+        },
+        {
+          "path": "OSI-MIT.txt",
+          "url": "https://opensource.org/license/MIT",
+          "fullLicense": true,
+          "sha256": "21785883212d06d2c262b7e9f73f92ae7a03a7f2fe86809d7c7ad9bd6961d265",
+          "evidence": "Explicit MIT terms link in the pinned upstream LICENSE.md; exact text of its four license paragraphs, HTML entities decoded. Original template placeholders retained; no copyright holder invented.",
+          "sourceHtmlSha256": "1871b8a0526a1d9dda6f3d78cae57644b21455b7ee7d5334ad44cb5c934f08ba"
+        }
+      ]
+    },
+    "cargo:objc2-core-foundation@0.3.2": {
+      "repository": "https://github.com/madsmtm/objc2",
+      "commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "cratePath": "framework-crates/objc2-core-foundation",
+      "files": [
+        {
+          "path": "objc2-7b1abfd750a2/LICENSE.md",
+          "url": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md",
+          "fullLicense": false,
+          "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+        },
+        {
+          "path": "OSI-MIT.txt",
+          "url": "https://opensource.org/license/MIT",
+          "fullLicense": true,
+          "sha256": "21785883212d06d2c262b7e9f73f92ae7a03a7f2fe86809d7c7ad9bd6961d265",
+          "evidence": "Explicit MIT terms link in the pinned upstream LICENSE.md; exact text of its four license paragraphs, HTML entities decoded. Original template placeholders retained; no copyright holder invented.",
+          "sourceHtmlSha256": "1871b8a0526a1d9dda6f3d78cae57644b21455b7ee7d5334ad44cb5c934f08ba"
+        }
+      ]
+    },
+    "cargo:objc2-core-graphics@0.3.2": {
+      "repository": "https://github.com/madsmtm/objc2",
+      "commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "cratePath": "framework-crates/objc2-core-graphics",
+      "files": [
+        {
+          "path": "objc2-7b1abfd750a2/LICENSE.md",
+          "url": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md",
+          "fullLicense": false,
+          "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+        },
+        {
+          "path": "OSI-MIT.txt",
+          "url": "https://opensource.org/license/MIT",
+          "fullLicense": true,
+          "sha256": "21785883212d06d2c262b7e9f73f92ae7a03a7f2fe86809d7c7ad9bd6961d265",
+          "evidence": "Explicit MIT terms link in the pinned upstream LICENSE.md; exact text of its four license paragraphs, HTML entities decoded. Original template placeholders retained; no copyright holder invented.",
+          "sourceHtmlSha256": "1871b8a0526a1d9dda6f3d78cae57644b21455b7ee7d5334ad44cb5c934f08ba"
+        }
+      ]
+    },
+    "cargo:objc2-encode@4.1.0": {
+      "repository": "https://github.com/madsmtm/objc2",
+      "commit": "8d214f5477365ffcbcbb7de058c86ed9a518efb7",
+      "cratePath": "crates/objc2-encode",
+      "files": [
+        {
+          "path": "objc2-8d214f547736/LICENSE.md",
+          "url": "https://raw.githubusercontent.com/madsmtm/objc2/8d214f5477365ffcbcbb7de058c86ed9a518efb7/LICENSE.md",
+          "fullLicense": false,
+          "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+        },
+        {
+          "path": "OSI-MIT.txt",
+          "url": "https://opensource.org/license/MIT",
+          "fullLicense": true,
+          "sha256": "21785883212d06d2c262b7e9f73f92ae7a03a7f2fe86809d7c7ad9bd6961d265",
+          "evidence": "Explicit MIT terms link in the pinned upstream LICENSE.md; exact text of its four license paragraphs, HTML entities decoded. Original template placeholders retained; no copyright holder invented.",
+          "sourceHtmlSha256": "1871b8a0526a1d9dda6f3d78cae57644b21455b7ee7d5334ad44cb5c934f08ba"
+        }
+      ]
+    },
+    "cargo:objc2-exception-helper@0.1.1": {
+      "repository": "https://github.com/madsmtm/objc2",
+      "commit": "8d214f5477365ffcbcbb7de058c86ed9a518efb7",
+      "cratePath": "crates/objc2-exception-helper",
+      "files": [
+        {
+          "path": "objc2-8d214f547736/LICENSE.md",
+          "url": "https://raw.githubusercontent.com/madsmtm/objc2/8d214f5477365ffcbcbb7de058c86ed9a518efb7/LICENSE.md",
+          "fullLicense": false,
+          "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+        },
+        {
+          "path": "OSI-MIT.txt",
+          "url": "https://opensource.org/license/MIT",
+          "fullLicense": true,
+          "sha256": "21785883212d06d2c262b7e9f73f92ae7a03a7f2fe86809d7c7ad9bd6961d265",
+          "evidence": "Explicit MIT terms link in the pinned upstream LICENSE.md; exact text of its four license paragraphs, HTML entities decoded. Original template placeholders retained; no copyright holder invented.",
+          "sourceHtmlSha256": "1871b8a0526a1d9dda6f3d78cae57644b21455b7ee7d5334ad44cb5c934f08ba"
+        }
+      ]
+    },
+    "cargo:objc2-foundation@0.3.2": {
+      "repository": "https://github.com/madsmtm/objc2",
+      "commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "cratePath": "framework-crates/objc2-foundation",
+      "files": [
+        {
+          "path": "objc2-7b1abfd750a2/LICENSE.md",
+          "url": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md",
+          "fullLicense": false,
+          "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+        },
+        {
+          "path": "OSI-MIT.txt",
+          "url": "https://opensource.org/license/MIT",
+          "fullLicense": true,
+          "sha256": "21785883212d06d2c262b7e9f73f92ae7a03a7f2fe86809d7c7ad9bd6961d265",
+          "evidence": "Explicit MIT terms link in the pinned upstream LICENSE.md; exact text of its four license paragraphs, HTML entities decoded. Original template placeholders retained; no copyright holder invented.",
+          "sourceHtmlSha256": "1871b8a0526a1d9dda6f3d78cae57644b21455b7ee7d5334ad44cb5c934f08ba"
+        }
+      ]
+    },
+    "cargo:objc2-io-surface@0.3.2": {
+      "repository": "https://github.com/madsmtm/objc2",
+      "commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "cratePath": "framework-crates/objc2-io-surface",
+      "files": [
+        {
+          "path": "objc2-7b1abfd750a2/LICENSE.md",
+          "url": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md",
+          "fullLicense": false,
+          "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+        },
+        {
+          "path": "OSI-MIT.txt",
+          "url": "https://opensource.org/license/MIT",
+          "fullLicense": true,
+          "sha256": "21785883212d06d2c262b7e9f73f92ae7a03a7f2fe86809d7c7ad9bd6961d265",
+          "evidence": "Explicit MIT terms link in the pinned upstream LICENSE.md; exact text of its four license paragraphs, HTML entities decoded. Original template placeholders retained; no copyright holder invented.",
+          "sourceHtmlSha256": "1871b8a0526a1d9dda6f3d78cae57644b21455b7ee7d5334ad44cb5c934f08ba"
+        }
+      ]
+    },
+    "cargo:objc2-quartz-core@0.3.2": {
+      "repository": "https://github.com/madsmtm/objc2",
+      "commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "cratePath": "framework-crates/objc2-quartz-core",
+      "files": [
+        {
+          "path": "objc2-7b1abfd750a2/LICENSE.md",
+          "url": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md",
+          "fullLicense": false,
+          "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+        },
+        {
+          "path": "OSI-MIT.txt",
+          "url": "https://opensource.org/license/MIT",
+          "fullLicense": true,
+          "sha256": "21785883212d06d2c262b7e9f73f92ae7a03a7f2fe86809d7c7ad9bd6961d265",
+          "evidence": "Explicit MIT terms link in the pinned upstream LICENSE.md; exact text of its four license paragraphs, HTML entities decoded. Original template placeholders retained; no copyright holder invented.",
+          "sourceHtmlSha256": "1871b8a0526a1d9dda6f3d78cae57644b21455b7ee7d5334ad44cb5c934f08ba"
+        }
+      ]
+    },
+    "cargo:objc2-web-kit@0.3.2": {
+      "repository": "https://github.com/madsmtm/objc2",
+      "commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "cratePath": "framework-crates/objc2-web-kit",
+      "files": [
+        {
+          "path": "objc2-7b1abfd750a2/LICENSE.md",
+          "url": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md",
+          "fullLicense": false,
+          "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+        },
+        {
+          "path": "OSI-MIT.txt",
+          "url": "https://opensource.org/license/MIT",
+          "fullLicense": true,
+          "sha256": "21785883212d06d2c262b7e9f73f92ae7a03a7f2fe86809d7c7ad9bd6961d265",
+          "evidence": "Explicit MIT terms link in the pinned upstream LICENSE.md; exact text of its four license paragraphs, HTML entities decoded. Original template placeholders retained; no copyright holder invented.",
+          "sourceHtmlSha256": "1871b8a0526a1d9dda6f3d78cae57644b21455b7ee7d5334ad44cb5c934f08ba"
+        }
+      ]
+    },
+    "cargo:selectors@0.38.0": {
+      "repository": "https://github.com/servo/stylo",
+      "commit": "572ecba2d1600e7c3d490586692a209faf703baa",
+      "cratePath": "selectors",
+      "files": [
+        {
+          "path": "stylo-572ecba2d160/lib.rs",
+          "url": "https://raw.githubusercontent.com/servo/stylo/572ecba2d1600e7c3d490586692a209faf703baa/selectors/lib.rs",
+          "fullLicense": false,
+          "sha256": "d54c6e13e9e952dac17d209171df8657e3cae93beaddace4906150cdec8d02e9"
+        },
+        {
+          "path": "stylo-572ecba2d160/MPL-2.0.txt",
+          "url": "https://www.mozilla.org/media/MPL/2.0/index.txt",
+          "fullLicense": true,
+          "sha256": "3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04"
+        }
+      ]
+    },
+    "cargo:tauri-plugin@2.7.1": {
+      "repository": "https://github.com/tauri-apps/tauri",
+      "commit": "30da1fd6e17de6107ecc850c95dfb16b5729f2dd",
+      "cratePath": "crates/tauri-plugin",
+      "files": [
+        {
+          "path": "tauri-30da1fd6e17d/LICENSE-MIT",
+          "url": "https://raw.githubusercontent.com/tauri-apps/tauri/30da1fd6e17de6107ecc850c95dfb16b5729f2dd/LICENSE-MIT",
+          "fullLicense": true,
+          "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d"
+        },
+        {
+          "path": "tauri-30da1fd6e17d/LICENSE-APACHE-2.0",
+          "url": "https://raw.githubusercontent.com/tauri-apps/tauri/30da1fd6e17de6107ecc850c95dfb16b5729f2dd/LICENSE-APACHE-2.0",
+          "fullLicense": true,
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        }
+      ]
+    }
+  }
+}

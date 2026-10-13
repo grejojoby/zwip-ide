@@ -1,0 +1,15 @@
+---
+description: Record every delivered project change in the in-app update history
+alwaysApply: true
+---
+
+# Update history
+
+- Update `src/content/updates.ts` in the same delivery as every implementation, fix, configuration or documentation change.
+- Prepend one entry per related delivery/batch. Keep earlier entries and their permanent IDs; a new change needs a fresh unique `YYYY-MM-DD-slug` ID, even when the app version is unchanged.
+- Use the actual `package.json` version, a `YYYY-MM-DD` date, and newest-first order. For entries on the same date, the latest delivery goes first; do not sort IDs alphabetically.
+- Use `added`, `improved`, `fixed`, `removed` or `maintenance` items. Write concise notes about what users can do or what changed; include relevant limitations and no secrets, internal paths or unmeasured claims.
+- Do not create duplicate entries for generated artifacts, rebuilding or the act of adding the change's own history note.
+- The popup opens once after each update. Never fold a new delivered change into an already-seen ID; that would suppress its notification.
+- Example: a new popup and its project rule belong in one `2026-10-13-update-history` entry with `added` and `maintenance` items.
+- Follow the [format and delivery checklist](../../docs/update-history.md), run relevant checks and stage new source files. Do not stage generated output.

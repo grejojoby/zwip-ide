@@ -1,0 +1,6 @@
+{
+  "provider": "web",
+  "feature": "nextProjectPlugin",
+  "requiresProjectPlugin": "next",
+  "description": "The Web provider loads the workspace's installed Next.js TypeScript plugin only while this feature package is enabled."
+}

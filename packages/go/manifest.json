@@ -1,0 +1,52 @@
+{
+  "id": "go",
+  "name": "Go Languages",
+  "version": "0.1.0",
+  "coreVersion": "0.1.0",
+  "description": "Go navigation, editing, run, tests and coverage across independent module contexts using pinned gopls and Go tools.",
+  "capabilities": [
+    "definition",
+    "typeDefinition",
+    "references",
+    "implementations",
+    "typeHierarchy",
+    "incomingCalls",
+    "outgoingCalls",
+    "completion",
+    "hover",
+    "diagnostics",
+    "format",
+    "rename",
+    "symbols",
+    "workspaceSymbols",
+    "codeActions",
+    "run",
+    "test",
+    "coverage",
+    "debug"
+  ],
+  "capabilityDetails": {
+    "buildProfiles": "Simultaneous explicit GOOS/GOARCH/tags/cgo contexts; provenance and configured-scope queries. Cross-target run/test/debug is rejected.",
+    "rename": "Complete text-edit previews only; independent implicit-method coverage and resource moves are blocked.",
+    "codeActions": ["source.organizeImports"],
+    "symbols": "Current document outline, optionally filtered by query.",
+    "workspaceSymbols": "Fuzzy symbols across included contexts; upstream truncation and package failures are explicitly partial.",
+    "run": "Saved Go packages using the configured SDK, with output polling and process-group cancellation.",
+    "test": "go test -json events, including subtests and optional statement coverage.",
+    "debug": "Pinned Delve DAP: native breakpoint, stack, locals, watch expressions, stepping, pause/resume and cleanup verified on macOS arm64 with Go 1.25.5."
+  },
+  "languages": ["go"],
+  "executable": "bin/zwip-go",
+  "args": [],
+  "checksums": {},
+  "documentExtensions": ["go"],
+  "syntax": { "abi": 1, "asset": "syntax.mjs", "extensions": ["go"] },
+  "discovery": [
+    {
+      "language": "go",
+      "documentExtensions": ["go"],
+      "configGlobs": ["go.mod"],
+      "configurationGlobs": ["go.mod", "go.sum", "go.work", "go.work.sum"]
+    }
+  ]
+}
