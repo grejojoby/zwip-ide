@@ -31,6 +31,60 @@ fn explicit_workspace_uses_its_own_ignore_boundary() {
     assert!(paths.contains(&"go.mod"));
     assert!(!paths.contains(&"ignored.go"));
     assert_eq!(workspace["contexts"].as_array().unwrap().len(), 1);
+    // Ignored files stay out of the index but are listed for the project tree.
+    let ignored: Vec<_> = workspace["ignoredFiles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|file| file["relativePath"].as_str().unwrap())
+        .collect();
+    assert_eq!(ignored, ["ignored.go"]);
+}
+
+#[test]
+fn ignored_directories_are_listed_but_skipped_directories_are_not_walked() {
+    let root = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    fs::write(root.path().join(".gitignore"), ".idea\n").unwrap();
+    for directory in [".idea/runConfigurations", ".idea/node_modules/pkg", "src"] {
+        fs::create_dir_all(root.path().join(directory)).unwrap();
+    }
+    fs::write(root.path().join(".idea/workspace.xml"), "<project/>").unwrap();
+    fs::write(root.path().join(".idea/node_modules/pkg/index.js"), "").unwrap();
+    fs::write(root.path().join("src/main.go"), "package main\n").unwrap();
+    let core = Core::new(data.path().to_owned()).unwrap();
+    let workspace = core
+        .request("workspace.open", json!({"root":root.path()}))
+        .unwrap();
+    let relative = |key: &str, field: Option<&str>| -> Vec<String> {
+        workspace[key]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| match field {
+                Some(field) => item[field].as_str().unwrap().to_owned(),
+                None => {
+                    let path = item.as_str().unwrap();
+                    let root = workspace["root"].as_str().unwrap();
+                    path[root.len() + 1..].to_owned()
+                }
+            })
+            .collect()
+    };
+    assert!(!relative("files", Some("relativePath")).contains(&".idea/workspace.xml".into()));
+    assert_eq!(
+        relative("ignoredFiles", Some("relativePath")),
+        [".idea/workspace.xml"]
+    );
+    assert_eq!(
+        relative("ignoredDirectories", None),
+        [".idea", ".idea/runConfigurations"]
+    );
+    assert_eq!(relative("directories", None), ["src"]);
+    assert_eq!(
+        relative("excludedDirectories", Some("path")),
+        [".idea/node_modules"]
+    );
 }
 
 #[test]

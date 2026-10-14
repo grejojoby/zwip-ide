@@ -1,11 +1,14 @@
 import { useMemo, useRef, useState, useEffect } from 'react';
-import type { FileEntry } from '../contracts';
-import { buildTree, flattenTree, type TreeEntry } from '../model/file-tree';
+import type { ExcludedDirectory, FileEntry } from '../contracts';
+import { buildTree, flattenTree, type TreeEntry, type TreeStatus } from '../model/file-tree';
 import { Icon } from './Icon';
 const ROW = 27;
 export function ProjectTree({
   files,
   directories,
+  ignoredFiles = [],
+  ignoredDirectories = [],
+  excludedDirectories = [],
   root,
   active,
   onOpen,
@@ -13,10 +16,13 @@ export function ProjectTree({
 }: {
   files: FileEntry[];
   directories?: string[];
+  ignoredFiles?: FileEntry[];
+  ignoredDirectories?: string[];
+  excludedDirectories?: ExcludedDirectory[];
   root: string;
   active?: string;
   onOpen(path: string): void;
-  onExclude?(relativePath: string): void;
+  onExclude?(relativePath: string, excluded: boolean): void;
 }) {
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [filter, setFilter] = useState('');
@@ -27,34 +33,57 @@ export function ProjectTree({
   const activeRelativePath = active?.startsWith(`${root}/`)
     ? active.slice(root.length + 1)
     : undefined;
+  const relative = (path: string) =>
+    path.startsWith(`${root}/`) ? path.slice(root.length + 1) : '';
   const relativeDirectories = useMemo(
-    () =>
-      (directories ?? [])
-        .filter((path) => path.startsWith(`${root}/`))
-        .map((path) => path.slice(root.length + 1)),
+    () => (directories ?? []).map(relative).filter(Boolean),
     [directories, root],
   );
-  const tree = useMemo(() => buildTree(files, relativeDirectories), [files, relativeDirectories]);
-  const entries = useMemo<TreeEntry[]>(
-    () =>
-      filter.trim()
-        ? [
-            ...relativeDirectories
-              .filter((path) => path.toLowerCase().includes(filter.toLowerCase()))
-              .map((path) => ({ id: path, name: path, depth: 0, directory: true })),
-            ...files
-              .filter((f) => f.relativePath.toLowerCase().includes(filter.toLowerCase()))
-              .map((file) => ({
-                id: file.path,
-                name: file.relativePath,
-                depth: 0,
-                directory: false,
-                file,
-              })),
-          ]
-        : flattenTree(tree, expanded),
-    [files, tree, expanded, filter, relativeDirectories],
+  const relativeIgnoredDirectories = useMemo(
+    () => ignoredDirectories.map(relative).filter(Boolean),
+    [ignoredDirectories, root],
   );
+  const statuses = useMemo(() => {
+    const result = new Map<string, TreeStatus>();
+    for (const path of relativeIgnoredDirectories) result.set(path, 'ignored');
+    for (const file of ignoredFiles) result.set(file.relativePath, 'ignored');
+    for (const item of excludedDirectories) result.set(item.path, 'excluded');
+    return result;
+  }, [relativeIgnoredDirectories, ignoredFiles, excludedDirectories]);
+  const listed = useMemo(() => [...files, ...ignoredFiles], [files, ignoredFiles]);
+  const listedDirectories = useMemo(
+    () => [
+      ...relativeDirectories,
+      ...relativeIgnoredDirectories,
+      ...excludedDirectories.map((item) => item.path),
+    ],
+    [relativeDirectories, relativeIgnoredDirectories, excludedDirectories],
+  );
+  const tree = useMemo(() => buildTree(listed, listedDirectories), [listed, listedDirectories]);
+  const entries = useMemo<TreeEntry[]>(() => {
+    const query = filter.trim().toLowerCase();
+    if (!query) return flattenTree(tree, expanded, 0, statuses);
+    const withStatus = (entry: TreeEntry): TreeEntry => {
+      const status = statuses.get(entry.id) ?? statuses.get(entry.file?.relativePath ?? '');
+      return status ? { ...entry, status } : entry;
+    };
+    return [
+      ...listedDirectories
+        .filter((path) => path.toLowerCase().includes(query))
+        .map((path) => withStatus({ id: path, name: path, depth: 0, directory: true })),
+      ...listed
+        .filter((f) => f.relativePath.toLowerCase().includes(query))
+        .map((file) =>
+          withStatus({
+            id: file.path,
+            name: file.relativePath,
+            depth: 0,
+            directory: false,
+            file,
+          }),
+        ),
+    ];
+  }, [listed, tree, expanded, filter, listedDirectories, statuses]);
   useEffect(() => {
     if (!viewport.current) return;
     const observer = new ResizeObserver(([entry]) => setHeight(entry.contentRect.height));
@@ -137,7 +166,9 @@ export function ProjectTree({
                 aria-selected={selected}
                 aria-expanded={entry.directory ? expanded.has(entry.id) : undefined}
                 data-index={first + index}
-                className={`tree-row ${selected ? 'selected' : ''}`}
+                className={['tree-row', selected && 'selected', entry.status]
+                  .filter(Boolean)
+                  .join(' ')}
                 style={{ top: (first + index) * ROW, paddingLeft: 10 + entry.depth * 14 }}
                 title={entry.id}
                 onClick={() => (entry.directory ? toggle(entry.id) : onOpen(entry.file!.path))}
@@ -170,7 +201,7 @@ export function ProjectTree({
                   }
                 }}
               >
-                {entry.directory ? (
+                {entry.directory && entry.status !== 'excluded' ? (
                   <Icon
                     name="chevron"
                     style={{
@@ -201,16 +232,29 @@ export function ProjectTree({
             if (!e.currentTarget.contains(e.relatedTarget)) setMenu(null);
           }}
         >
-          <button
-            role="menuitem"
-            ref={(element) => element?.focus()}
-            onClick={() => {
-              onExclude?.(menu.id);
-              setMenu(null);
-            }}
-          >
-            Exclude from search and indexing
-          </button>
+          {(() => {
+            const reason = excludedDirectories.find((item) => item.path === menu.id)?.reason;
+            // Built-in exclusions (dependency/build folders, worktrees) cannot be included here.
+            const fixed = reason !== undefined && reason !== 'Excluded by you';
+            return (
+              <button
+                role="menuitemcheckbox"
+                aria-checked={reason !== undefined}
+                disabled={fixed}
+                title={fixed ? reason : undefined}
+                ref={(element) => element?.focus()}
+                onClick={() => {
+                  onExclude?.(menu.id, reason === undefined);
+                  setMenu(null);
+                }}
+              >
+                <span className="menu-check" aria-hidden="true">
+                  {reason !== undefined && <Icon name="check" />}
+                </span>
+                Exclude from search and indexing
+              </button>
+            );
+          })()}
         </div>
       )}
       <div className="panel-footnote">{files.length.toLocaleString()} workspace files</div>

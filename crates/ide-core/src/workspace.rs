@@ -154,6 +154,11 @@ pub struct Workspace {
     pub files: Vec<FileEntry>,
     #[serde(default)]
     pub directories: Vec<String>,
+    /// Git-ignored files and directories: listed in the project tree, never searched or indexed.
+    #[serde(default)]
+    pub ignored_files: Vec<FileEntry>,
+    #[serde(default)]
+    pub ignored_directories: Vec<String>,
     pub contexts: Vec<BuildContext>,
     pub excluded: Vec<String>,
     #[serde(default)]
@@ -192,57 +197,49 @@ pub fn scan(
     if !root.is_dir() {
         return Err("Workspace must be a directory".into());
     }
-    let root_filter = root.clone();
-    let skipped = std::sync::Arc::new(std::sync::Mutex::new(Vec::<ExcludedDirectory>::new()));
-    let skipped_filter = skipped.clone();
     let user_excluded: HashSet<String> = exclusions.iter().cloned().collect();
-    let mut builder = WalkBuilder::new(&root);
-    builder
-        .hidden(false)
-        .require_git(false)
-        .follow_links(false)
-        .filter_entry(move |entry| {
-            if entry.depth() == 0 {
-                return true;
+    let skip = {
+        let root = root.clone();
+        move |entry: &ignore::DirEntry| -> Option<&'static str> {
+            if entry.depth() == 0 || !entry.file_type().is_some_and(|kind| kind.is_dir()) {
+                return None;
             }
             let path = entry.path();
             let name = entry.file_name().to_string_lossy();
-            if entry.file_type().is_some_and(|kind| kind.is_dir()) {
-                let reason = if matches!(
-                    name.as_ref(),
-                    ".git" | "node_modules" | "target" | "dist" | ".next" | ".cache" | "coverage"
-                ) {
-                    Some("Dependency or build directory")
-                } else if path.components().any(|c| c.as_os_str() == ".claude")
-                    && name == "worktrees"
-                {
-                    Some("Agent worktrees")
-                } else if path != root_filter && path.join(".git").is_file() {
-                    // Linked worktrees have a .git file; nested standalone repositories remain valid roots.
-                    Some("Linked worktree")
-                } else if path.strip_prefix(&root_filter).is_ok_and(|relative| {
-                    user_excluded.contains(relative.to_string_lossy().as_ref())
-                }) {
-                    Some("Excluded by you")
-                } else {
-                    None
-                };
-                if let Some(reason) = reason {
-                    if let (Ok(mut skipped), Ok(relative)) =
-                        (skipped_filter.lock(), path.strip_prefix(&root_filter))
-                    {
-                        if skipped.len() < MAX_LISTED_EXCLUSIONS {
-                            skipped.push(ExcludedDirectory {
-                                path: relative.to_string_lossy().into_owned(),
-                                reason: reason.to_owned(),
-                            });
-                        }
-                    }
-                    return false;
-                }
+            if matches!(
+                name.as_ref(),
+                ".git" | "node_modules" | "target" | "dist" | ".next" | ".cache" | "coverage"
+            ) {
+                Some("Dependency or build directory")
+            } else if path.components().any(|c| c.as_os_str() == ".claude") && name == "worktrees" {
+                Some("Agent worktrees")
+            } else if path != root && path.join(".git").is_file() {
+                // Linked worktrees have a .git file; nested standalone repositories remain valid roots.
+                Some("Linked worktree")
+            } else if path
+                .strip_prefix(&root)
+                .is_ok_and(|relative| user_excluded.contains(relative.to_string_lossy().as_ref()))
+            {
+                Some("Excluded by you")
+            } else {
+                None
             }
-            true
-        });
+        }
+    };
+    let walker = |git_ignore: bool| {
+        let mut builder = WalkBuilder::new(&root);
+        builder
+            .hidden(false)
+            .require_git(false)
+            .follow_links(false)
+            .git_ignore(git_ignore)
+            .git_global(git_ignore)
+            .git_exclude(git_ignore);
+        builder
+    };
+    let mut builder = walker(true);
+    let indexed_skip = skip.clone();
+    builder.filter_entry(move |entry| indexed_skip(entry).is_none());
     let mut files = Vec::new();
     let mut directories = Vec::new();
     let mut contexts = Vec::new();
@@ -296,6 +293,57 @@ pub fn scan(
     directories.sort();
     add_profiles(&root, &mut contexts)?;
     contexts.sort_by(|a, b| a.id.cmp(&b.id));
+    // A second walk without Git ignore rules lists what the index leaves out, for the tree.
+    let indexed_files: HashSet<&str> = files.iter().map(|file| file.path.as_str()).collect();
+    let indexed_directories: HashSet<&str> = directories.iter().map(String::as_str).collect();
+    let skipped = std::sync::Arc::new(std::sync::Mutex::new(Vec::<ExcludedDirectory>::new()));
+    let (skipped_filter, root_filter) = (skipped.clone(), root.clone());
+    let mut ignored_files = Vec::new();
+    let mut ignored_directories = Vec::new();
+    let mut complete = walker(false);
+    complete.filter_entry(move |entry| {
+        let Some(reason) = skip(entry) else {
+            return true;
+        };
+        if let (Ok(mut skipped), Ok(relative)) = (
+            skipped_filter.lock(),
+            entry.path().strip_prefix(&root_filter),
+        ) {
+            if skipped.len() < MAX_LISTED_EXCLUSIONS {
+                skipped.push(ExcludedDirectory {
+                    path: relative.to_string_lossy().into_owned(),
+                    reason: reason.to_owned(),
+                });
+            }
+        }
+        false
+    });
+    for entry in complete.build().flatten() {
+        if entry.depth() == 0 {
+            continue;
+        }
+        let path = entry.path();
+        let text = path.to_string_lossy();
+        if entry.file_type().is_some_and(|kind| kind.is_dir()) {
+            if !indexed_directories.contains(text.as_ref()) {
+                ignored_directories.push(text.into_owned());
+            }
+        } else if entry.file_type().is_some_and(|kind| kind.is_file())
+            && !indexed_files.contains(text.as_ref())
+        {
+            ignored_files.push(FileEntry {
+                path: text.into_owned(),
+                relative_path: path
+                    .strip_prefix(&root)
+                    .map_err(|e| e.to_string())?
+                    .to_string_lossy()
+                    .into_owned(),
+                size: entry.metadata().map(|m| m.len()).unwrap_or(0),
+            });
+        }
+    }
+    ignored_files.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    ignored_directories.sort();
     let mut excluded_directories = skipped.lock().map_err(|e| e.to_string())?.clone();
     excluded_directories.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(Workspace {
@@ -308,6 +356,8 @@ pub fn scan(
         generation,
         files,
         directories,
+        ignored_files,
+        ignored_directories,
         contexts,
         excluded,
         excluded_directories,

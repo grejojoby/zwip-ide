@@ -34,6 +34,9 @@ export interface WorkspaceSnapshot {
   generation: number;
   files: FileEntry[];
   directories?: string[];
+  /** Git-ignored entries: shown in the project tree, never searched or indexed. */
+  ignoredFiles?: FileEntry[];
+  ignoredDirectories?: string[];
   contexts: BuildContext[];
   excluded: string[];
   excludedDirectories?: ExcludedDirectory[];

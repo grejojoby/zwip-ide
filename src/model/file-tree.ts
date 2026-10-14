@@ -1,10 +1,13 @@
 import type { FileEntry } from '../contracts';
+/** Ignored by Git (listed, not indexed) or excluded from the walk (contents not listed). */
+export type TreeStatus = 'ignored' | 'excluded';
 export interface TreeEntry {
   id: string;
   name: string;
   depth: number;
   directory: boolean;
   file?: FileEntry;
+  status?: TreeStatus;
 }
 interface Node {
   id: string;
@@ -30,13 +33,27 @@ export function buildTree(files: FileEntry[], directories: string[] = []): Node 
   for (const file of files) insert(file.relativePath).file = file;
   return root;
 }
-export function flattenTree(root: Node, expanded: Set<string>, depth = 0): TreeEntry[] {
+export function flattenTree(
+  root: Node,
+  expanded: Set<string>,
+  depth = 0,
+  statuses = new Map<string, TreeStatus>(),
+): TreeEntry[] {
   const result: TreeEntry[] = [];
   for (const node of [...root.children.values()].sort(
     (a, b) => Number(!!a.file) - Number(!!b.file) || a.name.localeCompare(b.name),
   )) {
-    result.push({ id: node.id, name: node.name, depth, directory: !node.file, file: node.file });
-    if (!node.file && expanded.has(node.id)) result.push(...flattenTree(node, expanded, depth + 1));
+    const status = statuses.get(node.id);
+    result.push({
+      id: node.id,
+      name: node.name,
+      depth,
+      directory: !node.file,
+      file: node.file,
+      ...(status && { status }),
+    });
+    if (!node.file && expanded.has(node.id))
+      result.push(...flattenTree(node, expanded, depth + 1, statuses));
   }
   return result;
 }

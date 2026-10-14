@@ -1666,10 +1666,13 @@ export function App() {
                   <ProjectTree
                     files={workspace.files}
                     directories={workspace.directories}
+                    ignoredFiles={workspace.ignoredFiles}
+                    ignoredDirectories={workspace.ignoredDirectories}
+                    excludedDirectories={workspace.excludedDirectories}
                     root={workspace.root}
                     active={focusPath}
                     onOpen={(path) => void openFile(path)}
-                    onExclude={(path) => void setDirectoryExcluded(path, true)}
+                    onExclude={(path, excluded) => void setDirectoryExcluded(path, excluded)}
                   />
                 ) : (
                   <Suspense fallback={<p className="empty-note">Opening tools…</p>}>

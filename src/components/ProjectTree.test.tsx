@@ -61,12 +61,65 @@ describe('excluding directories from the project tree', () => {
     const onExclude = vi.fn();
     render(<ProjectTree root="/project" files={files} onOpen={() => {}} onExclude={onExclude} />);
     fireEvent.contextMenu(screen.getByRole('treeitem', { name: 'src' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Exclude from search and indexing' }));
-    expect(onExclude).toHaveBeenCalledWith('src');
+    const item = screen.getByRole('menuitemcheckbox', { name: 'Exclude from search and indexing' });
+    expect(item.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(item);
+    expect(onExclude).toHaveBeenCalledWith('src', true);
     expect(screen.queryByRole('menu')).toBeNull();
     fireEvent.click(screen.getByRole('treeitem', { name: 'src' }));
     fireEvent.click(screen.getByRole('treeitem', { name: 'deep' }));
     fireEvent.contextMenu(screen.getByRole('treeitem', { name: 'first.ts' }));
     expect(screen.queryByRole('menu')).toBeNull();
+  });
+  it('shows excluded folders dimmed with a tick, and unticking includes them again', () => {
+    const onExclude = vi.fn();
+    render(
+      <ProjectTree
+        root="/project"
+        files={files}
+        excludedDirectories={[
+          { path: 'vendor', reason: 'Excluded by you' },
+          { path: 'node_modules', reason: 'Dependency or build directory' },
+        ]}
+        onOpen={() => {}}
+        onExclude={onExclude}
+      />,
+    );
+    const vendor = screen.getByRole('treeitem', { name: 'vendor' });
+    expect(vendor.className).toContain('excluded');
+    fireEvent.contextMenu(vendor);
+    const item = screen.getByRole('menuitemcheckbox', { name: 'Exclude from search and indexing' });
+    expect(item.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(item);
+    expect(onExclude).toHaveBeenCalledWith('vendor', false);
+    fireEvent.contextMenu(screen.getByRole('treeitem', { name: 'node_modules' }));
+    const fixed = screen.getByRole('menuitemcheckbox', {
+      name: 'Exclude from search and indexing',
+    });
+    expect(fixed.getAttribute('aria-checked')).toBe('true');
+    expect((fixed as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+describe('git-ignored entries in the project tree', () => {
+  it('lists ignored folders and files with the ignored style', () => {
+    const onOpen = vi.fn();
+    render(
+      <ProjectTree
+        root="/project"
+        files={files}
+        ignoredDirectories={['/project/.idea']}
+        ignoredFiles={[
+          { path: '/project/.idea/workspace.xml', relativePath: '.idea/workspace.xml', size: 1 },
+        ]}
+        onOpen={onOpen}
+      />,
+    );
+    const idea = screen.getByRole('treeitem', { name: '.idea' });
+    expect(idea.className).toContain('ignored');
+    fireEvent.click(idea);
+    const file = screen.getByRole('treeitem', { name: 'workspace.xml' });
+    expect(file.className).toContain('ignored');
+    fireEvent.click(file);
+    expect(onOpen).toHaveBeenCalledWith('/project/.idea/workspace.xml');
   });
 });

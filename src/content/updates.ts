@@ -22,6 +22,33 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-14-ignored-and-excluded-in-project-tree',
+    version: '0.1.0',
+    date: '2026-10-14',
+    title: 'Ignored and excluded folders in the project tree',
+    summary: 'See .idea and other Git-ignored files, and which folders are excluded.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'Git-ignored files are listed',
+        description:
+          'Folders such as .idea that Git ignores now appear in olive, like IntelliJ, and open normally. They stay out of search and indexing.',
+      },
+      {
+        type: 'improved',
+        title: 'Excluded folders are visible',
+        description:
+          'Folders excluded from search and indexing appear dimmed. Their contents are not listed.',
+      },
+      {
+        type: 'improved',
+        title: 'Exclusion shows a tick',
+        description:
+          'The folder menu ticks "Exclude from search and indexing" when a folder is excluded; choosing it again includes the folder. Dependency, build and worktree folders stay excluded.',
+      },
+    ],
+  },
+  {
     id: '2026-10-14-go-package-0-1-1',
     version: '0.1.0',
     date: '2026-10-14',
