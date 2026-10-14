@@ -67,7 +67,11 @@ describe('branch popup', () => {
     fireEvent.keyDown(filter, { key: 'ArrowDown' });
     fireEvent.keyDown(filter, { key: 'ArrowDown' });
     fireEvent.keyDown(filter, { key: 'ArrowRight' });
-    expect(screen.getByRole('menu', { name: 'Actions for feature' })).toBeTruthy();
+    const menu = screen.getByRole('menu', { name: 'Actions for feature' });
+    // It flies out beside the dialog with fixed coordinates rather than taking a column inside it.
+    expect(menu.style.visibility).not.toBe('hidden');
+    expect(menu.style.left).toMatch(/px$/);
+    expect(menu.style.top).toMatch(/px$/);
     // The branch list stays visible next to the side menu.
     expect(screen.getAllByRole('option')).toHaveLength(5);
     expect(document.querySelector('[data-expanded]')?.textContent).toContain('feature');

@@ -2929,9 +2929,14 @@ button.danger {
   gap: 8px;
 }
 .branch-submenu {
-  flex: 0 0 240px;
-  padding-left: 8px;
-  border-left: 1px solid var(--border);
+  position: fixed;
+  width: 280px;
+  max-height: 60vh;
+  padding: 4px 8px 8px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px #0005;
 }
 .branch-list button[data-expanded] {
   background: var(--accent-surface);

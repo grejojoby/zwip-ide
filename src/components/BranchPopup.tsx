@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, request } from '../api';
 import type { GitSnapshot } from '../contracts';
 import { asError } from '../model/document-session';
@@ -65,6 +65,31 @@ export function BranchPopup({
   const [error, setError] = useState('');
   const [value, setValue] = useState('');
   const body = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  // The action menu flies out beside the dialog, level with its branch row, as in IntelliJ.
+  const [flyout, setFlyout] = useState<{ left: number; top: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!submenu) return setFlyout(null);
+    const place = () => {
+      const dialog = body.current?.closest('dialog')?.getBoundingClientRect();
+      const row = list.current?.querySelector('[data-expanded]')?.getBoundingClientRect();
+      if (!dialog || !row) return;
+      const width = 280;
+      const right = dialog.right + 4;
+      setFlyout({
+        left: right + width <= innerWidth ? right : Math.max(4, dialog.left - width - 4),
+        top: Math.max(4, Math.min(row.top - 30, innerHeight - 200)),
+      });
+    };
+    place();
+    const scroller = list.current;
+    scroller?.addEventListener('scroll', place);
+    window.addEventListener('resize', place);
+    return () => {
+      scroller?.removeEventListener('scroll', place);
+      window.removeEventListener('resize', place);
+    };
+  }, [submenu]);
 
   useEffect(() => {
     let active = true;
@@ -337,7 +362,7 @@ export function BranchPopup({
                   setSubmenu(null);
                 }}
               />
-              <div role="listbox" aria-label="Branches" className="branch-list">
+              <div ref={list} role="listbox" aria-label="Branches" className="branch-list">
                 <button
                   role="option"
                   aria-selected={selectedIndex === 0}
@@ -381,6 +406,7 @@ export function BranchPopup({
                 role="menu"
                 aria-label={`Actions for ${submenu.name}`}
                 className="branch-list branch-submenu"
+                style={flyout ?? { visibility: 'hidden' }}
               >
                 <h3 className="branch-heading">{submenu.name}</h3>
                 {actions.map((action, position) => (

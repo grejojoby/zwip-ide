@@ -22,6 +22,21 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-14-branch-actions-flyout',
+    version: '0.1.0',
+    date: '2026-10-14',
+    title: 'Branch actions beside the popup',
+    summary: 'The branch action menu opens outside the Git Branches popup.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'Branch action flyout',
+        description:
+          'Branch actions open in a menu beside the Git Branches popup, level with the branch, so branch names keep their full width. It opens on the left when there is no room on the right.',
+      },
+    ],
+  },
+  {
     id: '2026-10-14-multiple-windows',
     version: '0.1.0',
     date: '2026-10-14',
