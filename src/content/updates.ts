@@ -22,6 +22,48 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-13-goland-go-highlighting',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'GoLand-style Go colors',
+    summary: 'Go code now uses the Darcula colors GoLand shows for packages, types and calls.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'Distinct Go roles',
+        description:
+          'Imported packages, struct and interface types, builtin types such as string and bool, method receivers, function declarations and calls each get their own color. Struct fields and local variables stay plain, and struct tag keys read as text with green values. Package calls are recognized from the file imports, so a local variable that shadows an imported package name is still colored as a package.',
+      },
+      {
+        type: 'improved',
+        title: 'Darcula dark scheme',
+        description:
+          'The dark theme follows IntelliJ Darcula syntax colors for every language. Previews in usages, navigation results and branch diffs use the same Go colors.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-13-ide-zoom-and-code-font-size',
+    version: '0.1.0',
+    date: '2026-10-13',
+    title: 'IDE zoom and code font size',
+    summary: 'Scale the whole IDE for large screens, or just the code in the editor.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Zoom the whole IDE',
+        description:
+          '⌘+ and ⌘− zoom text, icons and layout together; ⌘0 resets. The zoom level is remembered across restarts. Available in the desktop app.',
+      },
+      {
+        type: 'added',
+        title: 'Code font size',
+        description:
+          'Pinch on the trackpad or ⌘-scroll over the editor to change the code font size. The size is remembered and applies to every open editor.',
+      },
+    ],
+  },
+  {
     id: '2026-10-13-usage-paths-and-dependency-fixes',
     version: '0.1.0',
     date: '2026-10-13',

@@ -24,20 +24,22 @@
   --diff-inserted-word: #3b5c46;
   --diff-deleted: #3a3c40;
   --diff-deleted-word: #50535a;
-  /* IntelliJ "Dark" color scheme. */
-  --syntax-text: #bcbec4;
-  --syntax-keyword: #cf8e6d;
-  --syntax-string: #6aab73;
-  --syntax-number: #2aacb8;
-  --syntax-comment: #7a7e85;
-  --syntax-doc-comment: #5f826b;
-  --syntax-function-declaration: #56a8f5;
-  --syntax-function-call: #57aaf7;
-  --syntax-field: #c77dbb;
-  --syntax-constant: #c77dbb;
-  --syntax-type: #bcbec4;
-  --syntax-annotation: #b3ae60;
-  --syntax-tag: #d5b778;
+  /* IntelliJ "Darcula" color scheme, as GoLand shows Go. */
+  --syntax-text: #a9b7c6;
+  --syntax-keyword: #cc7832;
+  --syntax-string: #6a8759;
+  --syntax-number: #6897bb;
+  --syntax-comment: #808080;
+  --syntax-doc-comment: #629755;
+  --syntax-function-declaration: #ffc66d;
+  --syntax-function-call: #b09d79;
+  --syntax-field: #9876aa;
+  --syntax-constant: #9876aa;
+  --syntax-type: #6fafbd;
+  --syntax-package: #afbf7e;
+  --syntax-receiver: #4ca6da;
+  --syntax-annotation: #bbb529;
+  --syntax-tag: #e8bf6a;
   --syntax-attribute: #bababa;
   --syntax-link: #548af7;
   --syntax-invalid: #fa6675;
@@ -77,7 +79,9 @@
   --syntax-function-call: #00627a;
   --syntax-field: #871094;
   --syntax-constant: #871094;
-  --syntax-type: #080808;
+  --syntax-type: #007e8a;
+  --syntax-package: #5f7300;
+  --syntax-receiver: #6c3fb5;
   --syntax-annotation: #9e880d;
   --syntax-tag: #0033b3;
   --syntax-attribute: #174ad4;
@@ -3117,6 +3121,22 @@ path.current {
 }
 .tok-type {
   color: var(--syntax-type);
+}
+/* Go roles from editor/go-syntax.ts; they may wrap or sit inside a grammar token span. */
+.tok-package {
+  color: var(--syntax-package);
+}
+.tok-receiver {
+  color: var(--syntax-receiver);
+}
+.tok-builtin,
+.tok-builtin .tok-type,
+.tok-builtin .tok-function-call {
+  color: var(--syntax-keyword);
+}
+.tok-struct-tag,
+.tok-struct-tag .tok-string {
+  color: var(--syntax-text);
 }
 .tok-annotation {
   color: var(--syntax-annotation);

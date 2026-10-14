@@ -25,15 +25,35 @@ export async function highlightLines(path: string, text: string): Promise<Token[
           lines[lines.length - 1].push(className ? { text: part, className } : { text: part });
       });
   };
-  let at = 0;
-  highlightTree(tree, codeHighlighter, (from, to, className) => {
-    push(at, from);
-    push(from, to, className);
-    at = to;
-  });
-  push(at, text.length);
+  const spans: Span[] = [];
+  highlightTree(tree, codeHighlighter, (from, to, className) =>
+    spans.push({ from, to, className }),
+  );
+  // Grammar roles that depend on identifier text (Go packages, builtins) come from the language.
+  const semantic = state.languageDataAt<SemanticTokens>('semanticTokens', 0)[0]?.(state) ?? [];
+  const points = [...new Set([0, text.length, ...[...spans, ...semantic].flatMap(edges)])].sort(
+    (a, b) => a - b,
+  );
+  let [span, mark] = [0, 0];
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const [from, to] = [points[index], points[index + 1]];
+    while (spans[span] && spans[span].to <= from) span += 1;
+    while (semantic[mark] && semantic[mark].to <= from) mark += 1;
+    const classes = [spans[span], semantic[mark]]
+      .filter((item) => item && item.from <= from)
+      .map((item) => item.className);
+    push(from, to, classes.join(' ') || undefined);
+  }
   return lines;
 }
+
+interface Span {
+  from: number;
+  to: number;
+  className: string;
+}
+type SemanticTokens = (state: EditorState) => Span[];
+const edges = (span: Span) => [span.from, span.to];
 
 /** Highlighted lines of `text`, or null until highlighting finishes or if it fails. */
 export function useHighlightedLines(path: string, text: string | null): Token[][] | null {
