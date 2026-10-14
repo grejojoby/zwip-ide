@@ -1464,6 +1464,11 @@ kbd {
   font-size: 10px;
   width: 24px;
 }
+.git-file > button > .file-icon {
+  width: 13px;
+  color: var(--muted);
+  margin-right: 5px;
+}
 .diff-container {
   flex: 1;
   min-width: 0;
@@ -3106,9 +3111,16 @@ button.danger {
   white-space: nowrap;
 }
 .bdiff-file {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   padding: 2px 10px;
   white-space: nowrap;
   cursor: default;
+}
+.bdiff-file .file-icon {
+  width: 13px;
+  color: var(--muted);
 }
 .bdiff-file.nested {
   padding-left: 24px;
@@ -3413,4 +3425,67 @@ path.current {
 }
 .usages-popup-dir {
   opacity: 0.75;
+}
+/* File-type icon tints: mid tones that read on both the dark and light themes. */
+.icon.file-icon[data-type='go'] {
+  color: #00a8d6;
+}
+.icon.file-icon[data-type='ts'] {
+  color: #3d7fd6;
+}
+.icon.file-icon[data-type='js'] {
+  color: #c9a227;
+}
+.icon.file-icon[data-type='rust'] {
+  color: #d0743c;
+}
+.icon.file-icon[data-type='python'] {
+  color: #4b8bbe;
+}
+.icon.file-icon[data-type='java'] {
+  color: #e76f00;
+}
+.icon.file-icon[data-type='c'] {
+  color: #6295cb;
+}
+.icon.file-icon[data-type='swift'] {
+  color: #f05138;
+}
+.icon.file-icon[data-type='ruby'] {
+  color: #cc342d;
+}
+.icon.file-icon[data-type='php'] {
+  color: #8c8fc4;
+}
+.icon.file-icon[data-type='html'] {
+  color: #e2643a;
+}
+.icon.file-icon[data-type='css'] {
+  color: #9b6ad6;
+}
+.icon.file-icon[data-type='json'],
+.icon.file-icon[data-type='http'] {
+  color: #d08c2f;
+}
+.icon.file-icon[data-type='config'] {
+  color: #8f9aa8;
+}
+.icon.file-icon[data-type='markdown'] {
+  color: #5f9ea0;
+}
+.icon.file-icon[data-type='shell'] {
+  color: #4fa863;
+}
+.icon.file-icon[data-type='sql'] {
+  color: #c38fd0;
+}
+.icon.file-icon[data-type='image'],
+.icon.file-icon[data-type='media'] {
+  color: #3fa89b;
+}
+.icon.file-icon[data-type='docker'] {
+  color: #2496ed;
+}
+.icon.file-icon[data-type='git'] {
+  color: #e05d44;
 }

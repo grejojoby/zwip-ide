@@ -20,6 +20,7 @@ import { asError } from '../model/document-session';
 import { assignmentsForMove } from '../model/changelists';
 import { changeTree } from '../model/change-tree';
 import { Modal } from './Modal';
+import { FileIcon } from './FileIcon';
 import { Icon } from './Icon';
 import { PartialDiff } from './PartialDiff';
 import { GitOperations } from './GitOperations';
@@ -340,6 +341,7 @@ export function GitPanel({
           <span className="git-status">
             {conflicts.includes(file.path) ? '!' : `${file.indexStatus}${file.worktreeStatus}`}
           </span>
+          <FileIcon path={file.path} />
           {label}
           {selected.get(file.path)?.changes && <span className="partial-label">partial</span>}
         </button>

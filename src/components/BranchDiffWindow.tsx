@@ -3,6 +3,7 @@ import { request } from '../api';
 import type { DiffHunk, DiffLine } from '../contracts';
 import { asError } from '../model/document-session';
 import { renderTokens, useHighlightedLines, type Token } from '../editor/highlight';
+import { FileIcon } from './FileIcon';
 import { Modal } from './Modal';
 
 export interface ComparedFile {
@@ -389,6 +390,7 @@ export function BranchDiffWindow({
                     title={ordered[at].path}
                     onClick={() => setSelected(at)}
                   >
+                    <FileIcon path={ordered[at].path} />
                     {ordered[at].path.split('/').pop()}
                   </div>
                 ))}

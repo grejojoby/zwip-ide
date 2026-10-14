@@ -22,6 +22,21 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-14-file-type-icons',
+    version: '0.1.0',
+    date: '2026-10-14',
+    title: 'File type icons',
+    summary: 'Files show an icon for their type in the project tree, Git views and scratches.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'File type icons',
+        description:
+          'The project tree, Git changes, the branch comparison file list and Scratches and Consoles now show a tinted icon for each file type, such as Go, TypeScript, JSON, Markdown, YAML, shell scripts, SQL, images and lock files. Unrecognised files keep the plain file icon.',
+      },
+    ],
+  },
+  {
     id: '2026-10-14-scratch-files-and-selection',
     version: '0.1.0',
     date: '2026-10-14',

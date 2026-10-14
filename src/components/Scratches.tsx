@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { scratchTypes, type ScratchType } from '../model/scratch-types';
+import { FileIcon } from './FileIcon';
 import { Icon } from './Icon';
 import { Modal } from './Modal';
 
@@ -57,7 +58,7 @@ export function NewScratchDialog({
               onMouseEnter={() => setIndex(position)}
               onClick={() => onCreate(type)}
             >
-              <Icon name="file" />
+              <FileIcon path={`scratch.${type.extension}`} />
               <span>{type.label}</span>
               <span className="muted">.{type.extension}</span>
             </button>
@@ -109,7 +110,7 @@ export function ScratchList({
         files.map((file) => (
           <div key={file.path} className={`scratch-row ${file.path === active ? 'selected' : ''}`}>
             <button title={file.path} onClick={() => onOpen(file.path)}>
-              <Icon name="file" />
+              <FileIcon path={file.name} />
               {file.name}
             </button>
             {confirming === file.path ? (

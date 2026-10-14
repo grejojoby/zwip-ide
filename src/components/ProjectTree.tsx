@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, useEffect } from 'react';
 import type { ExcludedDirectory, FileEntry } from '../contracts';
 import { buildTree, flattenTree, type TreeEntry, type TreeStatus } from '../model/file-tree';
+import { FileIcon } from './FileIcon';
 import { Icon } from './Icon';
 const ROW = 27;
 export function ProjectTree({
@@ -212,7 +213,7 @@ export function ProjectTree({
                 ) : (
                   <span className="tree-spacer" />
                 )}
-                <Icon name={entry.directory ? 'folder' : 'file'} />
+                {entry.directory ? <Icon name="folder" /> : <FileIcon path={entry.id} />}
                 <span>{entry.name}</span>
               </button>
             );
