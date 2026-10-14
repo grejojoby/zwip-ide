@@ -1518,11 +1518,18 @@ fn extract_archive(source: &Path, target: &Path) -> Result<(), String> {
             let expected = entry.size();
             let written = std::io::copy(
                 &mut entry.by_ref().take(expected + 1),
-                &mut fs::File::create(path).map_err(|e| e.to_string())?,
+                &mut fs::File::create(&path).map_err(|e| e.to_string())?,
             )
             .map_err(|e| e.to_string())?;
             if written != expected {
                 return Err("Archive entry size does not match its header".into());
+            }
+            // Keep archived executables (such as a bundled debugger) runnable; never setuid.
+            #[cfg(unix)]
+            if entry.unix_mode().is_some_and(|mode| mode & 0o111 != 0) {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&path, fs::Permissions::from_mode(0o755))
+                    .map_err(|e| e.to_string())?;
             }
         }
     }
@@ -1631,5 +1638,33 @@ mod tests {
         )
         .unwrap_err()
         .contains("Duplicate"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn extraction_keeps_archived_executable_bits() {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("tools.zip");
+        let mut writer = zip::ZipWriter::new(fs::File::create(&source).unwrap());
+        for (name, mode) in [("bin/dlv", 0o755), ("LICENSE", 0o644)] {
+            writer
+                .start_file(name, SimpleFileOptions::default().unix_permissions(mode))
+                .unwrap();
+            writer.write_all(b"x").unwrap();
+        }
+        writer.finish().unwrap();
+        let target = root.path().join("out");
+        extract_archive(&source, &target).unwrap();
+        let mode = |name: &str| {
+            fs::metadata(target.join(name))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777
+        };
+        assert_eq!(mode("bin/dlv"), 0o755);
+        assert_eq!(mode("LICENSE") & 0o111, 0);
     }
 }

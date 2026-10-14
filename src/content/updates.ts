@@ -22,6 +22,27 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-14-run-console-and-debugger-permissions',
+    version: '0.1.0',
+    date: '2026-10-14',
+    title: 'Run console progress and debugger fix',
+    summary: 'Run shows what it is doing; downloaded packages keep their tools runnable.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'Run console',
+        description:
+          'The Run output starts with the directory and command, shows elapsed time while a build or quiet server prints nothing, and ends with the exit code, as in IntelliJ.',
+      },
+      {
+        type: 'fixed',
+        title: 'Debugger permission denied',
+        description:
+          'Packages installed from the catalog now keep executable files runnable, so Go Run and Debug no longer fail with "permission denied" for the bundled debugger.',
+      },
+    ],
+  },
+  {
     id: '2026-10-14-double-shift-and-exclude-fix',
     version: '0.1.0',
     date: '2026-10-14',

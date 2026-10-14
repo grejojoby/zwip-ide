@@ -31,6 +31,8 @@ export interface RunState {
   starting: boolean;
   task: TaskResult | null;
   taskLabel: string;
+  /** What the running task executes, shown above its output like IntelliJ's console. */
+  taskCommand?: { command: string; cwd: string; startedAt: number };
   error: string;
 }
 export interface RunBackend {
@@ -287,7 +289,12 @@ export class WorkspaceRunSession {
       const task = variables.length
         ? await this.backend.runTask(command, cwd, variables)
         : await this.backend.runTask(command, cwd);
-      this.update({ task, taskLabel: label, starting: false });
+      this.update({
+        task,
+        taskLabel: label,
+        taskCommand: { command, cwd, startedAt: Date.now() },
+        starting: false,
+      });
       this.schedulePoll();
       return true;
     } catch (error) {

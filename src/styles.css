@@ -380,6 +380,10 @@ kbd {
   width: 13px;
   flex-shrink: 0;
 }
+.task-command-line,
+.task-progress {
+  color: var(--muted);
+}
 /* Editor popup from components/EditorContextMenu.tsx, laid out like IntelliJ's. */
 .editor-context-menu {
   position: fixed;

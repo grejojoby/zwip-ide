@@ -110,3 +110,23 @@ it('edits environment variables, keeps the debug target and rejects invalid line
   );
   expect(backend.runTask).not.toHaveBeenCalled();
 });
+it('shows the command, elapsed time while silent, and the exit line', async () => {
+  const backend: RunBackend = {
+    getSetting: async <T,>() =>
+      ({ version: 1, selectedId: 'go', configurations: [configuration] }) as T,
+    setSetting: async <T,>(_key: string, value: T) => value,
+    runTask: vi.fn(async () => ({ id: '1', output: '', exitCode: null, running: true })),
+    taskStatus: vi.fn(async () => ({ id: '1', output: 'served\n', exitCode: 0, running: false })),
+    stopTask: vi.fn(),
+  };
+  const session = new WorkspaceRunSession('/fixture', backend);
+  await session.load();
+  await session.runSelected();
+  const view = render(<TaskPanel session={session} state={session.getSnapshot()} />);
+  const output = () => screen.getByLabelText('Task output').textContent;
+  expect(output()).toContain('/fixture/api $ go run .');
+  expect(output()).toMatch(/Running for \d+s · no output yet/);
+  await waitFor(() => expect(backend.taskStatus).toHaveBeenCalled());
+  view.rerender(<TaskPanel session={session} state={session.getSnapshot()} />);
+  expect(output()).toContain('served\nProcess finished with exit code 0');
+});

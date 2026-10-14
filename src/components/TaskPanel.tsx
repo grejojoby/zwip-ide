@@ -88,10 +88,46 @@ export function TaskPanel({
         </button>
       </div>
       <pre ref={output} className="task-output" aria-label="Task output">
-        {state.task?.output ||
-          (state.task?.running ? 'Waiting for output…' : 'Command output appears here.')}
+        {state.task && state.taskCommand ? (
+          <>
+            <span className="task-command-line">
+              {state.taskCommand.cwd} $ {state.taskCommand.command}
+              {'\n'}
+            </span>
+            {state.task.output}
+            <TaskProgress task={state.task} startedAt={state.taskCommand.startedAt} />
+          </>
+        ) : (
+          state.task?.output || 'Command output appears here.'
+        )}
       </pre>
     </section>
+  );
+}
+
+/** Elapsed time while running, then the exit line, so silent builds or servers never look stuck. */
+function TaskProgress({
+  task,
+  startedAt,
+}: {
+  task: NonNullable<RunState['task']>;
+  startedAt: number;
+}) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (!task.running) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [task.running]);
+  const seconds = Math.max(0, Math.round((now - startedAt) / 1000));
+  const separator = task.output && !task.output.endsWith('\n') ? '\n' : '';
+  return (
+    <span className="task-progress">
+      {separator}
+      {task.running
+        ? `Running for ${seconds}s${task.output ? '' : ' · no output yet (builds and quiet servers print nothing)'}`
+        : `Process finished with exit code ${task.exitCode ?? '—'}`}
+    </span>
   );
 }
 
