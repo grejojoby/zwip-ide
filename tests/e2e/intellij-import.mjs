@@ -276,8 +276,9 @@ describe('native IntelliJ settings import', () => {
       async () => await $('[aria-label="Run selected configuration"]').isEnabled(),
     );
     await selectRunConfiguration(go.id);
-    await $('[aria-label="Prepare selected debug configuration"]').waitForDisplayed();
-    await $('[aria-label="Prepare selected debug configuration"]').click();
+    // Debug starts at once; without the Go package it reports the missing build context.
+    await $('[aria-label="Debug selected configuration"]').waitForEnabled();
+    await $('[aria-label="Debug selected configuration"]').click();
     const tools = $('[aria-label="Go tools"]');
     await tools.$('button=Debug prepared configuration').waitForDisplayed();
     assert.match(

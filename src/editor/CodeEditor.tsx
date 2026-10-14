@@ -25,6 +25,8 @@ import {
   setExecutionLine,
 } from './debug-gutters';
 import { externalDocumentChange } from './external-change';
+import { blameGutter, setBlame, type BlameLine } from './blame-gutter';
+import { stickyLines } from './sticky-lines';
 import { semanticExtensions, type SemanticCallbacks } from './semantic-extensions';
 import { defaultShortcuts, type Shortcuts } from '../model/shortcuts';
 import { syntaxColors } from './syntax-colors';
@@ -64,6 +66,11 @@ function theme(dark: boolean): Extension {
         '&.cm-focused': { outline: 'none' },
         '.cm-navigation-target': { backgroundColor: 'var(--navigation-target)' },
         '.cm-navigation-symbol': { outline: '1px solid var(--accent)', borderRadius: '2px' },
+        '.cm-blame-gutter .cm-gutterElement': {
+          color: 'var(--muted)',
+          paddingRight: '10px',
+          whiteSpace: 'nowrap',
+        },
       },
       { dark },
     ),
@@ -78,6 +85,13 @@ interface Props extends SemanticCallbacks {
   coverage?: { line: number; count: number }[];
   executionLine?: number | null;
   onBreakpoints?(lines: number[], edited?: boolean): void;
+  /** Git blame annotations shown in the gutter; null hides them. */
+  blame?: BlameLine[] | null;
+  /** Pin enclosing function headers while scrolling their bodies. */
+  stickyLines?: boolean;
+  onContextMenu?(x: number, y: number, view: EditorView): void;
+  /** Copy `path:line` for the caret line (1-based). */
+  onCopyReference?(line: number): void;
   onNavigate(operation: NavigationOperation | 'smart', position: Position): void;
   onPosition(position: Position): void;
   onFocus(): void;
@@ -92,6 +106,7 @@ export function CodeEditor(props: Props) {
   const syntax = useRef(new Compartment());
   const commandKeys = useRef(new Compartment());
   const editing = useRef(new Compartment());
+  const sticky = useRef(new Compartment());
   function editorKeys() {
     const shortcuts = callbacks.current.shortcuts ?? defaultShortcuts;
     return keymap.of(
@@ -159,6 +174,16 @@ export function CodeEditor(props: Props) {
           },
         },
         {
+          key: shortcuts.copyReference,
+          run: (view: EditorView) => {
+            if (!callbacks.current.onCopyReference) return false;
+            callbacks.current.onCopyReference(
+              view.state.doc.lineAt(view.state.selection.main.head).number,
+            );
+            return true;
+          },
+        },
+        {
           key: shortcuts.fixes,
           run: () => {
             callbacks.current.onAction?.('codeActions');
@@ -190,8 +215,10 @@ export function CodeEditor(props: Props) {
           lines.includes(line) ? lines.filter((item) => item !== line) : [...lines, line],
         );
       }),
+      blameGutter(),
       lineNumbers(),
       highlightSpecialChars(),
+      sticky.current.of(callbacks.current.stickyLines ? stickyLines() : []),
       history(),
       foldGutter(),
       drawSelection(),
@@ -220,6 +247,18 @@ export function CodeEditor(props: Props) {
       EditorView.domEventHandlers({
         focus: () => {
           callbacks.current.onFocus();
+        },
+        contextmenu: (event, view) => {
+          if (!callbacks.current.onContextMenu) return false;
+          event.preventDefault();
+          // Like IntelliJ, a right-click outside the selection moves the caret there first.
+          const offset = view.posAtCoords({ x: event.clientX, y: event.clientY });
+          const { from, to } = view.state.selection.main;
+          if (offset !== null && (offset < from || offset > to))
+            view.dispatch({ selection: { anchor: offset } });
+          view.focus();
+          callbacks.current.onContextMenu(event.clientX, event.clientY, view);
+          return true;
         },
         mousedown: (event, view) => {
           if (!event.metaKey || event.button !== 0) return false;
@@ -342,6 +381,14 @@ export function CodeEditor(props: Props) {
   useEffect(() => {
     viewRef.current?.dispatch({ effects: color.current.reconfigure(theme(props.dark)) });
   }, [props.dark]);
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: sticky.current.reconfigure(props.stickyLines ? stickyLines() : []),
+    });
+  }, [props.stickyLines]);
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: setBlame.of(props.blame ?? null) });
+  }, [props.document, props.blame]);
   useEffect(() => {
     viewRef.current?.dispatch({
       effects: [

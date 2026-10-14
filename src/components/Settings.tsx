@@ -22,6 +22,8 @@ export function Settings({
   shortcuts,
   history,
   dark,
+  stickyLines = false,
+  onStickyLines,
   workspaceRoot,
   runSession,
   excludedDirectories,
@@ -33,6 +35,8 @@ export function Settings({
   shortcuts: Shortcuts;
   history: HistoryPreferences;
   dark: boolean;
+  stickyLines?: boolean;
+  onStickyLines?(enabled: boolean): void;
   workspaceRoot?: string;
   runSession?: WorkspaceRunSession;
   excludedDirectories?: ExcludedDirectory[];
@@ -137,6 +141,16 @@ export function Settings({
                 <input type="checkbox" checked={dark} onChange={(e) => onTheme(e.target.checked)} />
                 Dark theme
               </label>
+              {onStickyLines && (
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={stickyLines}
+                    onChange={(e) => onStickyLines(e.target.checked)}
+                  />
+                  Sticky function headers while scrolling
+                </label>
+              )}
             </div>
             <div className="settings-section">
               <h3>Keyboard shortcuts</h3>

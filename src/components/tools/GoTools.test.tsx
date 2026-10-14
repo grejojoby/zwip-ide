@@ -98,3 +98,51 @@ it('does not start an obsolete prepared target when it changes while document fl
   await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/changed.*again/i));
   expect(goTool).not.toHaveBeenCalled();
 });
+it('starts debugging at once when the toolbar Debug button sends a target', async () => {
+  render(<GoTools {...props()} configuredTarget={{ ...target, start: 1 }} />);
+  await waitFor(() =>
+    expect(goTool).toHaveBeenCalledWith('debug.start', { contextId: 'api', path: target.path }),
+  );
+});
+it('imports a run configuration’s Go target, working directory, arguments and environment', async () => {
+  render(
+    <GoTools
+      {...props()}
+      configuredTarget={undefined}
+      root="/fixture"
+      runConfigurations={[
+        {
+          id: 'server',
+          name: 'Server',
+          command: 'go run ./cmd/server',
+          workingDirectory: 'api',
+          env: [{ name: 'PORT', value: '9090' }],
+          debug: {
+            provider: 'go',
+            mode: 'debug',
+            path: 'api/cmd/server',
+            workingDirectory: 'api',
+            args: ['--verbose'],
+          },
+        },
+      ]}
+    />,
+  );
+  fireEvent.change(screen.getByRole('combobox', { name: 'Import run configuration' }), {
+    target: { value: 'server' },
+  });
+  expect(screen.getByText(/Server: Go debug target/).textContent).toContain('PORT');
+  fireEvent.click(screen.getByRole('button', { name: 'Debug prepared configuration' }));
+  await waitFor(() =>
+    expect(goTool).toHaveBeenCalledWith('debug.request', {
+      sessionId: 'fixture-session',
+      command: 'launch',
+      arguments: expect.objectContaining({
+        program: '/fixture/api/cmd/server',
+        cwd: '/fixture/api',
+        args: ['--verbose'],
+        env: { PORT: '9090' },
+      }),
+    }),
+  );
+});

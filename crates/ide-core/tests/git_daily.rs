@@ -76,6 +76,8 @@ fn branches_history_blame_and_cherry_pick_use_reviewed_repository() {
     assert_eq!(blame[0]["author"], "Fixture");
     assert_eq!(blame[0]["text"], "feature");
     assert_eq!(blame[0]["line"], 1);
+    assert!(blame[0]["authorTime"].as_i64().unwrap() > 0);
+    assert!(!blame[0]["summary"].as_str().unwrap().is_empty());
     let current = core.request("git.status", json!({})).unwrap();
     assert!(core
         .request(

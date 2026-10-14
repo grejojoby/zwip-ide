@@ -12,6 +12,7 @@ export const shortcutActions = {
   format: 'Format file',
   rename: 'Rename symbol',
   fixes: 'Quick fixes',
+  copyReference: 'Copy reference (path:line)',
   breakpoint: 'Toggle breakpoint',
   branches: 'Git branches',
 } as const;
@@ -31,6 +32,7 @@ export const defaultShortcuts: Shortcuts = {
   format: 'Mod-Alt-l',
   rename: 'Shift-F6',
   fixes: 'Alt-Enter',
+  copyReference: 'Mod-Alt-Shift-c',
   breakpoint: 'Mod-F8',
   branches: 'Mod-Shift-b',
 };

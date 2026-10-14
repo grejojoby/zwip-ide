@@ -16,19 +16,29 @@ func editorRename(ctx context.Context, scopes []scopedSnapshot, source *scopedSn
 	if newName == "" {
 		return nil, fmt.Errorf("newName is required")
 	}
-	if _, userErr, err := golang.PrepareRename(ctx, source.snapshot, fh, pos); userErr != nil {
-		return nil, userErr
-	} else if err != nil {
-		return nil, err
-	}
-	definitions, err := golang.Definition(ctx, source.snapshot, fh, pos)
+	isPackage, err := golang.ZwipIsPackageName(ctx, source.snapshot, fh, pos)
 	if err != nil {
 		return nil, err
 	}
-	if len(definitions) != 1 {
-		return nil, fmt.Errorf("rename requires one resolved declaration")
+	// A package clause is its own declaration; any other name resolves to one.
+	// Upstream PrepareRename rejects package names because its package rename
+	// moves directories; the in-place rename below needs no resource moves.
+	declaration := protocol.Location{URI: fh.URI(), Range: protocol.Range{Start: pos, End: pos}}
+	if !isPackage {
+		if _, userErr, err := golang.PrepareRename(ctx, source.snapshot, fh, pos); userErr != nil {
+			return nil, userErr
+		} else if err != nil {
+			return nil, err
+		}
+		definitions, err := golang.Definition(ctx, source.snapshot, fh, pos)
+		if err != nil {
+			return nil, err
+		}
+		if len(definitions) != 1 {
+			return nil, fmt.Errorf("rename requires one resolved declaration")
+		}
+		declaration = definitions[0]
 	}
-	declaration := definitions[0]
 	declarationPath, err := canonical(declaration.URI.Path())
 	if err != nil {
 		return nil, err
@@ -98,7 +108,12 @@ func editorRename(ctx context.Context, scopes []scopedSnapshot, source *scopedSn
 		if err != nil {
 			return nil, err
 		}
-		changes, err := golang.Rename(ctx, snapshot, target, declaration.Range.Start, newName)
+		var changes []protocol.DocumentChange
+		if isPackage {
+			changes, err = golang.ZwipRenamePackageName(ctx, snapshot, target, newName)
+		} else {
+			changes, err = golang.Rename(ctx, snapshot, target, declaration.Range.Start, newName)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("rename blocked in %s: %w", scope.context.ID, err)
 		}

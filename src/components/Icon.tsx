@@ -9,6 +9,7 @@ export type IconName =
   | 'stop'
   | 'close'
   | 'check'
+  | 'bug'
   | 'split'
   | 'package'
   | 'sun'
@@ -37,6 +38,7 @@ const paths: Record<IconName, string> = {
   stop: 'M5 5h14v14H5z',
   close: 'm6 6 12 12M6 18 18 6',
   check: 'm5 12 5 5 9-10',
+  bug: 'M8 6a4 4 0 0 1 8 0M7 9h10v6a5 5 0 0 1-10 0zM12 9v11M3 12h4M17 12h4M4 7l3 2M20 7l-3 2M4 19l3-2M20 19l-3-2',
   split: 'M3 3h18v18H3zM12 3v18',
   package: 'm12 2 10 5v10l-10 5-10-5V7zM2 7l10 5 10-5M12 12v10M7 4.5l10 5V15',
   sun: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM12 1v3M12 20v3M1 12h3M20 12h3M4 4l2 2M18 18l2 2M4 20l2-2M18 6l2-2',

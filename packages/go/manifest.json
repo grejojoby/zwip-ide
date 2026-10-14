@@ -1,7 +1,7 @@
 {
   "id": "go",
   "name": "Go Languages",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "coreVersion": "0.1.0",
   "description": "Go navigation, editing, run, tests and coverage across independent module contexts using pinned gopls and Go tools.",
   "capabilities": [
@@ -27,7 +27,7 @@
   ],
   "capabilityDetails": {
     "buildProfiles": "Simultaneous explicit GOOS/GOARCH/tags/cgo contexts; provenance and configured-scope queries. Cross-target run/test/debug is rejected.",
-    "rename": "Complete text-edit previews only; independent implicit-method coverage and resource moves are blocked.",
+    "rename": "Complete text-edit previews only. Package names rename in place (directory and import path unchanged); independent implicit-method coverage and resource moves are blocked.",
     "codeActions": ["source.organizeImports"],
     "symbols": "Current document outline, optionally filtered by query.",
     "workspaceSymbols": "Fuzzy symbols across included contexts; upstream truncation and package failures are explicitly partial.",

@@ -107,6 +107,30 @@ func TestEditorRenameFederatesAndNeverMutatesFiles(t *testing.T) {
 	}
 }
 
+func TestEditorRenamePackageKeepsDirectoryAndUpdatesImporters(t *testing.T) {
+	root := t.TempDir()
+	put(t, root, "app/go.mod", "module fixture/app\n\ngo 1.25\n")
+	source := put(t, root, "app/store/store.go", "package store\nfunc Get() int { return 1 }\n")
+	external := put(t, root, "app/store/store_test.go", "package store_test\n")
+	caller := put(t, root, "app/main.go", "package app\nimport \"fixture/app/store\"\nfunc Use() int { return store.Get() }\n")
+	w := startFixture(t, root, "app")
+	q := editorQuery{ID: "rename", Operation: "rename", Path: source, Position: &position{Line: 0, Character: 9}, NewName: "cache", WorkspaceGeneration: 1}
+	result := w.editor(context.Background(), q)
+	if result.State != "complete" {
+		t.Fatalf("package rename: %+v", result)
+	}
+	got := map[string][]string{}
+	for _, edit := range result.Edits {
+		got[edit.Path] = append(got[edit.Path], edit.NewText)
+	}
+	if strings.Join(got[source], ",") != "cache" || strings.Join(got[external], ",") != "cache_test" || strings.Join(got[caller], ",") != "cache" || len(got) != 3 {
+		t.Fatalf("package rename edits: %+v", got)
+	}
+	if _, err := os.Stat(filepath.Join(root, "app/store")); err != nil {
+		t.Fatalf("package directory must stay: %v", err)
+	}
+}
+
 func TestWorkspaceChangedInvalidatesUnopenedFiles(t *testing.T) {
 	root := t.TempDir()
 	put(t, root, "app/go.mod", "module fixture/app\n\ngo 1.25\n")

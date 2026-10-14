@@ -5,6 +5,28 @@ import { asError } from '../../model/document-session';
 import { goTool } from './go-api';
 import { GoDebugger } from './GoDebugger';
 import type { CoverageReport, GoJob, GoTestEvent } from '../../model/go-types';
+import {
+  runDirectory,
+  type EnvironmentVariable,
+  type RunConfiguration,
+} from '../../model/run-configurations';
+export interface PreparedGoTarget {
+  path: string;
+  workingDirectory: string;
+  args: string[];
+  env?: EnvironmentVariable[];
+  mode: 'debug' | 'test';
+  /** Set by the toolbar Debug button: start debugging as soon as the target arrives. */
+  start?: number;
+}
+/** Settings imported from a run configuration; configurations without a Go target add env only. */
+interface Imported {
+  id: string;
+  name: string;
+  target?: PreparedGoTarget;
+  env?: EnvironmentVariable[];
+  workingDirectory?: string;
+}
 export function GoTools({
   contexts,
   path,
@@ -15,6 +37,8 @@ export function GoTools({
   onClose,
   beforeStart,
   configuredTarget,
+  runConfigurations = [],
+  root,
 }: {
   contexts: BuildContext[];
   path?: string;
@@ -24,14 +48,11 @@ export function GoTools({
   onExecution(location: { path: string; line: number } | null): void;
   onClose(): void;
   beforeStart(): Promise<void>;
-  configuredTarget?: {
-    path: string;
-    workingDirectory: string;
-    args: string[];
-    env?: { name: string; value: string }[];
-    mode: 'debug' | 'test';
-  };
+  configuredTarget?: PreparedGoTarget;
+  runConfigurations?: RunConfiguration[];
+  root?: string;
 }) {
+  const [imported, setImported] = useState<Imported | null>(null);
   const [contextId, setContextId] = useState('');
   const [scope, setScope] = useState<'file' | 'module'>('file');
   const [pattern, setPattern] = useState('');
@@ -47,9 +68,10 @@ export function GoTools({
   const activeJob = useRef<string | null>(null);
   const epoch = useRef(0);
   const starting = useRef(false);
-  const prepared = useRef(configuredTarget);
+  const preparedTarget = imported ? imported.target : configuredTarget;
+  const prepared = useRef(preparedTarget);
   const currentContexts = useRef(contexts);
-  prepared.current = configuredTarget;
+  prepared.current = preparedTarget;
   currentContexts.current = contexts;
   const goContexts = contexts.filter((context) => context.language === 'go');
   const selected =
@@ -167,6 +189,8 @@ export function GoTools({
           ? targetPath.slice(0, targetPath.lastIndexOf('/'))
           : targetPath,
         args: mode === 'test' && pattern ? ['-test.run', pattern, ...programArgs()] : programArgs(),
+        ...(imported?.workingDirectory && { cwd: imported.workingDirectory }),
+        ...(imported?.env?.length && { env: environment(imported.env) }),
       });
       setDebugMode(mode);
       setTab('debug');
@@ -219,9 +243,7 @@ export function GoTools({
         path: target.path,
         cwd: target.workingDirectory,
         args: [...target.args],
-        ...(target.env?.length && {
-          env: Object.fromEntries(target.env.map(({ name, value }) => [name, value])),
-        }),
+        ...(target.env?.length && { env: environment(target.env) }),
       });
       setDebugMode(target.mode);
       setTab('debug');
@@ -234,17 +256,54 @@ export function GoTools({
       }
     }
   }
+  useEffect(() => {
+    if (!configuredTarget?.start) return;
+    setImported(null);
+    prepared.current = configuredTarget;
+    void debugPrepared();
+  }, [configuredTarget?.start]);
+  function importConfiguration(id: string) {
+    const config = runConfigurations.find((item) => item.id === id);
+    if (!config || !root) return setImported(null);
+    try {
+      setError('');
+      setImported(
+        config.debug
+          ? {
+              id: config.id,
+              name: config.name,
+              target: {
+                path: runDirectory(root, config.debug.path),
+                workingDirectory: runDirectory(root, config.debug.workingDirectory),
+                args: config.debug.args,
+                env: config.env,
+                mode: config.debug.mode,
+              },
+            }
+          : {
+              id: config.id,
+              name: config.name,
+              env: config.env,
+              workingDirectory: runDirectory(root, config.workingDirectory),
+            },
+      );
+      setArgs(JSON.stringify(config.debug?.args ?? []));
+    } catch (e) {
+      setError(asError(e).message);
+    }
+  }
   const locked = busy || !!activeJob.current || !!debugMode;
   return (
     <section className="go-tools" aria-label="Go tools">
-      {configuredTarget && (
+      {preparedTarget && (
         <div className="inline-notice">
           <span>
-            Prepared Go {configuredTarget.mode === 'test' ? 'test' : 'debug'} target:{' '}
-            {configuredTarget.path} · working directory: {configuredTarget.workingDirectory} ·
-            arguments: {JSON.stringify(configuredTarget.args)}
-            {configuredTarget.env?.length
-              ? ` · environment: ${configuredTarget.env.map(({ name }) => name).join(', ')}`
+            {imported ? `${imported.name}: Go` : 'Prepared Go'}{' '}
+            {preparedTarget.mode === 'test' ? 'test' : 'debug'} target: {preparedTarget.path} ·
+            working directory: {preparedTarget.workingDirectory} · arguments:{' '}
+            {JSON.stringify(preparedTarget.args)}
+            {preparedTarget.env?.length
+              ? ` · environment: ${preparedTarget.env.map(({ name }) => name).join(', ')}`
               : ''}
           </span>{' '}
           <button disabled={locked} onClick={() => void debugPrepared()}>
@@ -252,7 +311,32 @@ export function GoTools({
           </button>
         </div>
       )}
+      {imported && !imported.target && (
+        <div className="inline-notice">
+          {imported.name} has no Go target; Debug uses its working directory{' '}
+          {imported.workingDirectory}
+          {imported.env?.length
+            ? ` and environment: ${imported.env.map(({ name }) => name).join(', ')}`
+            : ''}
+          .
+        </div>
+      )}
       <div className="go-run-toolbar">
+        {runConfigurations.length > 0 && (
+          <select
+            aria-label="Import run configuration"
+            value={imported?.id ?? ''}
+            disabled={locked}
+            onChange={(e) => importConfiguration(e.target.value)}
+          >
+            <option value="">Run configuration…</option>
+            {runConfigurations.map((config) => (
+              <option key={config.id} value={config.id}>
+                {config.name}
+              </option>
+            ))}
+          </select>
+        )}
         <select
           aria-label="Go module and build profile"
           value={selected?.id ?? ''}
@@ -424,3 +508,5 @@ export function GoTools({
     </section>
   );
 }
+const environment = (env: EnvironmentVariable[]) =>
+  Object.fromEntries(env.map(({ name, value }) => [name, value]));

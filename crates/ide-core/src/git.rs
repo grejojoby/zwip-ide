@@ -1573,11 +1573,16 @@ fn blame(root: &str, params: &Value) -> Result<Value, String> {
     let mut rows = Vec::new();
     let (mut commit, mut author, mut original, mut line) =
         (String::new(), String::new(), 0_u64, 0_u64);
+    let (mut time, mut summary) = (0_i64, String::new());
     for value in output.lines() {
         if let Some(text) = value.strip_prefix('\t') {
-            rows.push(json!({"line":line,"commit":commit,"author":author,"originalLine":original,"text":text}));
+            rows.push(json!({"line":line,"commit":commit,"author":author,"authorTime":time,"summary":summary,"originalLine":original,"text":text}));
         } else if let Some(name) = value.strip_prefix("author ") {
             author = name.into();
+        } else if let Some(seconds) = value.strip_prefix("author-time ") {
+            time = seconds.parse().map_err(|_| "Invalid blame author time")?;
+        } else if let Some(text) = value.strip_prefix("summary ") {
+            summary = text.into();
         } else {
             let fields: Vec<_> = value.split(' ').collect();
             if fields.len() >= 3

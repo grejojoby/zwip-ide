@@ -22,6 +22,45 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-14-intellij-editor-menu-debug-and-package-rename',
+    version: '0.1.0',
+    date: '2026-10-14',
+    title: 'Editor menu, one-click Debug and package rename',
+    summary: 'IntelliJ-style right-click menu, Debug next to Run, and more refactoring.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Editor right-click menu',
+        description:
+          'Context actions, cut/copy/paste, Copy Reference (path:line, ⌥⇧⌘C), Find Usages, Refactor › Rename, Folding, Go To, Reformat Code, Run/Debug for the selected configuration and Git › Annotate with Git Blame, grouped as in IntelliJ.',
+      },
+      {
+        type: 'added',
+        title: 'Debug next to Run',
+        description:
+          'The Debug button starts the selected run configuration’s Go target at once. It is disabled for configurations without a Go target.',
+      },
+      {
+        type: 'added',
+        title: 'Run configurations in Go tools',
+        description:
+          'Go tools can import a run configuration: its Go target, working directory, arguments and environment variables. Configurations without a Go target add their working directory and environment to Debug.',
+      },
+      {
+        type: 'added',
+        title: 'Rename Go packages',
+        description:
+          'Renaming a package clause renames the package in place, as GoLand does: package clauses, the external test package and importers update; the directory and import path stay. Requires Go package 0.1.2.',
+      },
+      {
+        type: 'added',
+        title: 'Git blame and sticky headers',
+        description:
+          'Annotate with Git Blame shows author and date beside each committed line. Settings › Appearance can pin the enclosing function header while scrolling long bodies.',
+      },
+    ],
+  },
+  {
     id: '2026-10-14-ignored-and-excluded-in-project-tree',
     version: '0.1.0',
     date: '2026-10-14',

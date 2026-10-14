@@ -18,7 +18,11 @@ import type {
   WorkspaceEditPreview,
   WorkspaceSnapshot,
 } from './contracts';
-import { EditorStore, offsetAt } from './editor/editor-store';
+import { EditorStore, offsetAt, positionAt } from './editor/editor-store';
+import type { EditorView } from '@codemirror/view';
+import { foldAll, foldCode, unfoldAll, unfoldCode } from '@codemirror/language';
+import type { BlameLine } from './editor/blame-gutter';
+import { EditorContextMenu, type MenuEntry } from './components/EditorContextMenu';
 const GoTools = lazy(() =>
   import('./components/tools/GoTools').then((module) => ({ default: module.GoTools })),
 );
@@ -89,12 +93,14 @@ import {
 } from './model/zoom';
 import { useWorkspaceTasks } from './model/use-workspace-tasks';
 import { runDirectory } from './model/run-configurations';
+import type { PreparedGoTarget } from './components/tools/GoTools';
 import {
   defaultShortcuts,
   matchesShortcut,
   normalizedShortcuts,
   shortcutLabel,
   type Shortcuts,
+  type ShortcutAction,
 } from './model/shortcuts';
 import { RenameDialog } from './components/RenameDialog';
 import { WhatsNew } from './components/WhatsNew';
@@ -136,6 +142,185 @@ export function App() {
         : `Included ${path} in search and indexing`,
     );
   }
+  const [editorMenu, setEditorMenu] = useState<{
+    x: number;
+    y: number;
+    view: EditorView;
+    path: string;
+  } | null>(null);
+  const [blame, setBlame] = useState<Record<string, BlameLine[]>>({});
+  const [stickyLines, setStickyLines] = useState(false);
+  function changeStickyLines(enabled: boolean) {
+    setStickyLines(enabled);
+    void api.setSetting('zwip.stickyLines', enabled).catch(report);
+  }
+  async function toggleBlame(path: string) {
+    if (blame[path]) {
+      setBlame(({ [path]: _hidden, ...rest }) => rest);
+      return;
+    }
+    try {
+      const lines = await request<BlameLine[]>('git.blame', { path });
+      setBlame((current) => ({ ...current, [path]: lines }));
+    } catch (e) {
+      setStatus(`Git blame: ${asError(e).message}`);
+    }
+  }
+  /** `path:line`, workspace-relative, as IntelliJ's Copy Reference gives for a line. */
+  function copyReference(path: string, line: number) {
+    const root = workspaceRef.current?.root;
+    const reference = `${root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path}:${line}`;
+    void navigator.clipboard
+      .writeText(reference)
+      .then(() => setStatus(`Copied ${reference}`))
+      .catch(report);
+  }
+  /** The editor popup, grouped and ordered like IntelliJ's EditorPopupMenu. */
+  function editorMenuEntries(view: EditorView, path: string): MenuEntry[] {
+    const key = (action: ShortcutAction) => shortcutLabel(shortcuts[action]) || undefined;
+    const at = () => positionAt(view.state, view.state.selection.main.head);
+    const selection = view.state.selection.main;
+    const editable = !view.state.readOnly;
+    const config = selectedRunConfiguration;
+    const copy = () =>
+      navigator.clipboard.writeText(view.state.sliceDoc(selection.from, selection.to));
+    return [
+      {
+        label: 'Show Context Actions',
+        shortcut: key('fixes'),
+        run: () => void editorAction('codeActions', path),
+      },
+      'separator',
+      {
+        label: 'Cut',
+        shortcut: '⌘X',
+        disabled: selection.empty || !editable,
+        run: () =>
+          void copy()
+            .then(() => view.dispatch({ changes: { from: selection.from, to: selection.to } }))
+            .catch(report),
+      },
+      {
+        label: 'Copy',
+        shortcut: '⌘C',
+        disabled: selection.empty,
+        run: () => void copy().catch(report),
+      },
+      {
+        label: 'Copy Reference',
+        shortcut: key('copyReference'),
+        run: () => copyReference(path, view.state.doc.lineAt(selection.head).number),
+      },
+      {
+        label: 'Paste',
+        shortcut: '⌘V',
+        disabled: !editable,
+        run: () =>
+          void navigator.clipboard
+            .readText()
+            .then((text) => {
+              view.dispatch(view.state.replaceSelection(text));
+              view.focus();
+            })
+            .catch(report),
+      },
+      'separator',
+      {
+        label: 'Find Usages',
+        shortcut: key('usages'),
+        run: () => void navigate('references', at(), path),
+      },
+      {
+        label: 'Refactor',
+        children: [
+          {
+            label: 'Rename…',
+            shortcut: key('rename'),
+            disabled: !editable,
+            run: () => void editorAction('rename', path),
+          },
+        ],
+      },
+      {
+        label: 'Folding',
+        children: [
+          { label: 'Expand', shortcut: '⌥⌘]', run: () => unfoldCode(view) },
+          { label: 'Collapse', shortcut: '⌥⌘[', run: () => foldCode(view) },
+          'separator',
+          { label: 'Expand All', shortcut: '⌃⌥]', run: () => unfoldAll(view) },
+          { label: 'Collapse All', shortcut: '⌃⌥[', run: () => foldAll(view) },
+        ],
+      },
+      'separator',
+      {
+        label: 'Go To',
+        children: [
+          {
+            label: 'Declaration or Usages',
+            shortcut: key('declaration'),
+            run: () => void navigate('smart', at(), path),
+          },
+          {
+            label: 'Implementation(s)',
+            shortcut: key('implementations'),
+            run: () => void navigate('implementations', at(), path),
+          },
+          { label: 'Type Declaration', run: () => void navigate('typeDefinition', at(), path) },
+        ],
+      },
+      {
+        label: 'Reformat Code',
+        shortcut: key('format'),
+        disabled: !editable,
+        run: () => void editorAction('format', path),
+      },
+      'separator',
+      {
+        label: config ? `Run '${config.name}'` : 'Run',
+        disabled: !config || !!workspaceTasks.state.task?.running,
+        run: () => {
+          setTool('run');
+          void workspaceTasks.session.runSelected();
+        },
+      },
+      {
+        label: config ? `Debug '${config.name}'` : 'Debug',
+        disabled: !config?.debug,
+        run: () => debugSelectedConfiguration(),
+      },
+      'separator',
+      {
+        label: 'Git',
+        children: [
+          {
+            label: 'Annotate with Git Blame',
+            checked: !!blame[path],
+            run: () => void toggleBlame(path),
+          },
+        ],
+      },
+    ];
+  }
+  /** Starts the selected configuration's Go debug target right away, like IntelliJ's Debug. */
+  function debugSelectedConfiguration() {
+    const config = selectedRunConfiguration;
+    const root = workspaceRef.current?.root;
+    if (!config?.debug || !root) return;
+    try {
+      setConfiguredGoTarget({
+        path: runDirectory(root, config.debug.path),
+        workingDirectory: runDirectory(root, config.debug.workingDirectory),
+        args: config.debug.args,
+        env: config.env,
+        mode: config.debug.mode,
+        start: Date.now(),
+      });
+      setGoOpen(true);
+      setTool('go');
+    } catch (e) {
+      setStatus(asError(e).message);
+    }
+  }
   const [tabs, setTabs] = useState<string[]>([]);
   const [active, setActive] = useState<string>();
   const [split, setSplit] = useState<string>();
@@ -173,13 +358,7 @@ export function App() {
   const [databaseDirty, setDatabaseDirty] = useState(false);
   const [pendingSidebar, setPendingSidebar] = useState<SidebarAction | null>(null);
   const [goOpen, setGoOpen] = useState(false);
-  const [configuredGoTarget, setConfiguredGoTarget] = useState<{
-    path: string;
-    workingDirectory: string;
-    args: string[];
-    env?: { name: string; value: string }[];
-    mode: 'debug' | 'test';
-  }>();
+  const [configuredGoTarget, setConfiguredGoTarget] = useState<PreparedGoTarget>();
   const [breakpoints, setBreakpoints] = useState<Record<string, number[]>>({});
   const [coverageLines, setCoverageLines] = useState<
     Record<string, { line: number; count: number }[]>
@@ -271,9 +450,11 @@ export function App() {
       loadPreference<string | null>('zwip.updates.lastSeen', null),
       loadPreference('zwip.uiZoom', UI_ZOOM.initial),
       loadPreference('zwip.editorFontSize', EDITOR_FONT.initial),
+      loadPreference('zwip.stickyLines', false),
     ])
-      .then(([theme, roots, keys, retention, lastSeenUpdate, zoom, fontSize]) => {
+      .then(([theme, roots, keys, retention, lastSeenUpdate, zoom, fontSize, sticky]) => {
         if (!alive) return;
+        setStickyLines(sticky);
         uiZoom.current = zoom;
         if (zoom !== UI_ZOOM.initial) void setUiZoom(zoom, false).catch(report);
         setEditorFontSize(fontSize, false);
@@ -1464,31 +1645,23 @@ export function App() {
               <Icon name="play" />
               Run
             </button>
-            {selectedRunConfiguration?.debug && (
-              <button
-                aria-label="Prepare selected debug configuration"
-                title="Review this configuration in Go tools, then start its debugger"
-                disabled={
-                  workspaceTasks.state.saving ||
-                  workspaceTasks.state.starting ||
-                  workspaceTasks.state.task?.running
-                }
-                onClick={() => {
-                  const debug = selectedRunConfiguration.debug!;
-                  setConfiguredGoTarget({
-                    path: runDirectory(workspace.root, debug.path),
-                    workingDirectory: runDirectory(workspace.root, debug.workingDirectory),
-                    args: debug.args,
-                    env: selectedRunConfiguration.env,
-                    mode: debug.mode,
-                  });
-                  setGoOpen(true);
-                  setTool('go');
-                }}
-              >
-                Debug…
-              </button>
-            )}
+            <button
+              aria-label="Debug selected configuration"
+              title={
+                selectedRunConfiguration?.debug
+                  ? `Debug '${selectedRunConfiguration.name}'`
+                  : 'Debug needs a run configuration with a Go target'
+              }
+              disabled={
+                !selectedRunConfiguration?.debug ||
+                workspaceTasks.state.saving ||
+                workspaceTasks.state.starting
+              }
+              onClick={() => debugSelectedConfiguration()}
+            >
+              <Icon name="bug" />
+              Debug
+            </button>
             <button
               className="icon-button"
               aria-label="Database tools"
@@ -1892,6 +2065,12 @@ export function App() {
                         onBreakpoints={(lines, edited) =>
                           updateBreakpoints(mainDoc.session.path, lines, edited)
                         }
+                        blame={blame[mainDoc.session.path] ?? null}
+                        stickyLines={stickyLines}
+                        onCopyReference={(line) => copyReference(mainDoc.session.path, line)}
+                        onContextMenu={(x, y, view) =>
+                          setEditorMenu({ x, y, view, path: mainDoc.session.path })
+                        }
                         document={mainDoc}
                         dark={dark}
                         readOnly={!mainDoc.session.path.startsWith(`${workspace.root}/`)}
@@ -1922,6 +2101,12 @@ export function App() {
                           }
                           onBreakpoints={(lines, edited) =>
                             updateBreakpoints(splitDoc.session.path, lines, edited)
+                          }
+                          blame={blame[splitDoc.session.path] ?? null}
+                          stickyLines={stickyLines}
+                          onCopyReference={(line) => copyReference(splitDoc.session.path, line)}
+                          onContextMenu={(x, y, view) =>
+                            setEditorMenu({ x, y, view, path: splitDoc.session.path })
                           }
                           document={splitDoc}
                           dark={dark}
@@ -2007,6 +2192,8 @@ export function App() {
                         <GoTools
                           contexts={workspace.contexts}
                           configuredTarget={configuredGoTarget}
+                          runConfigurations={workspaceTasks.state.settings.configurations}
+                          root={workspace.root}
                           path={focusPath}
                           breakpoints={breakpoints}
                           beforeStart={() => documents.flushAll()}
@@ -2384,6 +2571,8 @@ export function App() {
           onInclude={(path) => setDirectoryExcluded(path, false)}
           history={historyPreferences}
           dark={dark}
+          stickyLines={stickyLines}
+          onStickyLines={changeStickyLines}
           onTheme={setDark}
           onSave={async (keys, history) => {
             await api.setSetting('history', history);
@@ -2392,6 +2581,14 @@ export function App() {
             setHistoryPreferences(history);
           }}
           onClose={() => setShowSettings(false)}
+        />
+      )}
+      {editorMenu && (
+        <EditorContextMenu
+          x={editorMenu.x}
+          y={editorMenu.y}
+          entries={editorMenuEntries(editorMenu.view, editorMenu.path)}
+          onClose={() => setEditorMenu(null)}
         />
       )}
       {showActions && <CommandSearch commands={commands} onClose={() => setShowActions(false)} />}
