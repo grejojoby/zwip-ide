@@ -211,7 +211,10 @@ mod tests {
             sequence: AtomicU64::new(1),
         };
         cores.set_root("main", Some("/work/api".into()));
-        assert_eq!(cores.window_with("/work/api", "window-1").as_deref(), Some("main"));
+        assert_eq!(
+            cores.window_with("/work/api", "window-1").as_deref(),
+            Some("main")
+        );
         assert_eq!(cores.window_with("/work/api", "main"), None);
         cores.set_root("main", Some("/work/web".into()));
         assert_eq!(cores.window_with("/work/api", "window-1"), None);
