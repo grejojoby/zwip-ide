@@ -1391,6 +1391,13 @@ kbd {
   overflow: hidden;
   font-size: 11px;
 }
+.git-directory > button {
+  gap: 6px;
+}
+.git-directory .icon {
+  width: 13px;
+  color: var(--muted);
+}
 .git-status {
   color: var(--orange);
   font-family: Menlo, monospace;

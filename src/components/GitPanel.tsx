@@ -18,6 +18,7 @@ import type {
 } from '../contracts';
 import { asError } from '../model/document-session';
 import { assignmentsForMove } from '../model/changelists';
+import { changeTree } from '../model/change-tree';
 import { Modal } from './Modal';
 import { Icon } from './Icon';
 import { PartialDiff } from './PartialDiff';
@@ -64,6 +65,21 @@ export function GitPanel({
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  // IntelliJ's Group By › Directory (⌃P), remembered across sessions.
+  const [byDirectory, setByDirectory] = useState(false);
+  const [collapsed, setCollapsed] = useState(new Set<string>());
+  useEffect(() => {
+    void api
+      .getSetting<boolean>('zwip.git.groupByDirectory')
+      .then((value) => setByDirectory(!!value))
+      .catch(() => {});
+  }, []);
+  function toggleByDirectory() {
+    setByDirectory((current) => {
+      void api.setSetting('zwip.git.groupByDirectory', !current).catch(() => {});
+      return !current;
+    });
+  }
   const diffRequest = useRef(0);
   const report = (e: unknown) => setError(asError(e).message);
   async function refresh() {
@@ -281,8 +297,49 @@ export function GitPanel({
     snapshot?.files.filter(
       (file) => list === 'all' || lists.find((item) => item.id === list)?.paths.includes(file.path),
     ) ?? [];
+  const selectable = (items: GitSnapshot['files']) =>
+    items.filter((file) => !conflicts.includes(file.path));
+  function fileRow(file: GitSnapshot['files'][number], label: string, depth: number) {
+    return (
+      <div className="git-file" key={file.path} style={{ paddingLeft: 8 + depth * 16 }}>
+        <input
+          type="checkbox"
+          aria-label={`Include ${file.path} in commit`}
+          checked={selected.has(file.path)}
+          disabled={conflicts.includes(file.path)}
+          onChange={(e) => chooseFile(file.path, e.target.checked)}
+        />
+        <button
+          onClick={() =>
+            conflicts.includes(file.path) ? void resolve(file.path) : void showDiff(file.path)
+          }
+          title={file.path}
+        >
+          <span className="git-status">
+            {conflicts.includes(file.path) ? '!' : `${file.indexStatus}${file.worktreeStatus}`}
+          </span>
+          {label}
+          {selected.get(file.path)?.changes && <span className="partial-label">partial</span>}
+        </button>
+        {conflicts.includes(file.path) && (
+          <button className="resolve-button" onClick={() => void resolve(file.path)}>
+            Resolve
+          </button>
+        )}
+      </div>
+    );
+  }
   return (
-    <section className="git-panel" aria-label="Git changes">
+    <section
+      className="git-panel"
+      aria-label="Git changes"
+      onKeyDown={(event) => {
+        if (event.ctrlKey && !event.metaKey && !event.altKey && event.code === 'KeyP') {
+          event.preventDefault();
+          toggleByDirectory();
+        }
+      }}
+    >
       <div className="results-summary">
         <Icon name="branch" />
         <strong>{snapshot?.branch || 'Git'}</strong>
@@ -316,6 +373,14 @@ export function GitPanel({
           </select>
         </label>
         <button onClick={() => setNewList(true)}>New…</button>
+        <button
+          aria-pressed={byDirectory}
+          title="Group by directory (⌃P)"
+          onClick={toggleByDirectory}
+        >
+          <Icon name="folder" />
+          Directories
+        </button>
         {list !== 'all' && list !== 'default' && (
           <button onClick={() => void deleteList()}>Remove list</button>
         )}
@@ -358,36 +423,53 @@ export function GitPanel({
       )}
       <div className="git-content">
         <div className="git-files">
-          {files.map((file) => (
-            <div className="git-file" key={file.path}>
-              <input
-                type="checkbox"
-                aria-label={`Include ${file.path} in commit`}
-                checked={selected.has(file.path)}
-                disabled={conflicts.includes(file.path)}
-                onChange={(e) => chooseFile(file.path, e.target.checked)}
-              />
-              <button
-                onClick={() =>
-                  conflicts.includes(file.path) ? void resolve(file.path) : void showDiff(file.path)
-                }
-                title={file.path}
-              >
-                <span className="git-status">
-                  {conflicts.includes(file.path)
-                    ? '!'
-                    : `${file.indexStatus}${file.worktreeStatus}`}
-                </span>
-                {file.path}
-                {selected.get(file.path)?.changes && <span className="partial-label">partial</span>}
-              </button>
-              {conflicts.includes(file.path) && (
-                <button className="resolve-button" onClick={() => void resolve(file.path)}>
-                  Resolve
-                </button>
-              )}
-            </div>
-          ))}
+          {byDirectory
+            ? changeTree(files, collapsed).map((row) =>
+                row.kind === 'file' ? (
+                  fileRow(row.file, row.label, row.depth)
+                ) : (
+                  <div
+                    className="git-file git-directory"
+                    key={`dir:${row.path}`}
+                    style={{ paddingLeft: 8 + row.depth * 16 }}
+                  >
+                    <input
+                      type="checkbox"
+                      aria-label={`Include ${row.path} in commit`}
+                      checked={selectable(row.files).every((file) => selected.has(file.path))}
+                      disabled={!selectable(row.files).length}
+                      ref={(element) => {
+                        if (element)
+                          element.indeterminate =
+                            selectable(row.files).some((file) => selected.has(file.path)) &&
+                            !selectable(row.files).every((file) => selected.has(file.path));
+                      }}
+                      onChange={(e) => {
+                        for (const file of row.files)
+                          if (!conflicts.includes(file.path))
+                            chooseFile(file.path, e.target.checked);
+                      }}
+                    />
+                    <button
+                      aria-expanded={!collapsed.has(row.path)}
+                      title={row.path}
+                      onClick={() =>
+                        setCollapsed((current) => {
+                          const next = new Set(current);
+                          if (next.has(row.path)) next.delete(row.path);
+                          else next.add(row.path);
+                          return next;
+                        })
+                      }
+                    >
+                      <Icon name="folder" />
+                      {row.label}
+                      <span className="muted">{row.files.length}</span>
+                    </button>
+                  </div>
+                ),
+              )
+            : files.map((file) => fileRow(file, file.path, 0))}
           {snapshot && !files.length && (
             <p className="empty-note">
               {snapshot.files.length ? 'No changes in this changelist.' : 'Working tree is clean.'}

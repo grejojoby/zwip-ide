@@ -22,6 +22,21 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-14-git-changes-by-directory',
+    version: '0.1.0',
+    date: '2026-10-14',
+    title: 'Git changes grouped by directory',
+    summary: 'Show changed files in a nested directory tree, as in IntelliJ.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Group by directory',
+        description:
+          'The Directories toggle in the Git panel (⌃P) nests changed files under the directories that contain them, merging single-folder chains. Folders collapse, show their file count and can select all their files for commit. The choice is remembered.',
+      },
+    ],
+  },
+  {
     id: '2026-10-14-branch-actions-flyout',
     version: '0.1.0',
     date: '2026-10-14',
