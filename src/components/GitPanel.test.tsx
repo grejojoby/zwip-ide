@@ -5,17 +5,17 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { GitPanel, type Selection } from './GitPanel';
 
 const settings = new Map<string, unknown>();
+const repository = {
+  fingerprint: 'f1',
+  paths: ['renderly/app/cmd/app.go', 'renderly/app/pkg/fetch.go', 'README.md'],
+};
 vi.mock('../api', () => ({
   api: {
     gitStatus: async () => ({
       root: '/repo',
       branch: 'main',
-      fingerprint: 'f1',
-      files: ['renderly/app/cmd/app.go', 'renderly/app/pkg/fetch.go', 'README.md'].map((path) => ({
-        path,
-        indexStatus: ' ',
-        worktreeStatus: 'M',
-      })),
+      fingerprint: repository.fingerprint,
+      files: repository.paths.map((path) => ({ path, indexStatus: ' ', worktreeStatus: 'M' })),
     }),
     changelists: async () => [],
     gitConflicts: async () => [],
@@ -70,4 +70,18 @@ it('groups changes by directory and selects a whole directory for commit', async
   expect(screen.getByTitle('renderly/app/cmd/app.go').textContent).toContain(
     'renderly/app/cmd/app.go',
   );
+});
+
+it('reloads the change list when Git changed outside Zwip and the window regains focus', async () => {
+  render(<Harness />);
+  await screen.findByTitle('README.md');
+  // A commit from a terminal or another IDE leaves only README.md changed.
+  Object.assign(repository, { fingerprint: 'f2', paths: ['README.md'] });
+  fireEvent.focus(window);
+  await waitFor(() => expect(screen.queryByTitle('renderly/app/cmd/app.go')).toBeNull());
+  expect(screen.getByTitle('README.md')).toBeTruthy();
+  Object.assign(repository, {
+    fingerprint: 'f1',
+    paths: ['renderly/app/cmd/app.go', 'renderly/app/pkg/fetch.go', 'README.md'],
+  });
 });

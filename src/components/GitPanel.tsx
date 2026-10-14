@@ -104,6 +104,28 @@ export function GitPanel({
   useEffect(() => {
     void refresh();
   }, [generation, revision]);
+  // Commits, checkouts or stashes made outside Zwip (terminal, another IDE) change Git without
+  // touching this panel. Like IntelliJ, re-check on window focus and periodically while visible,
+  // reloading only when Git's status fingerprint changed.
+  const latest = useRef({ refresh, fingerprint: snapshot?.fingerprint });
+  latest.current = { refresh, fingerprint: snapshot?.fingerprint };
+  useEffect(() => {
+    const check = () => {
+      if (document.hidden) return;
+      void api
+        .gitStatus()
+        .then((next) => {
+          if (next.fingerprint !== latest.current.fingerprint) void latest.current.refresh();
+        })
+        .catch(() => {});
+    };
+    const timer = setInterval(check, 5000);
+    window.addEventListener('focus', check);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', check);
+    };
+  }, []);
   async function showDiff(path: string) {
     const id = ++diffRequest.current;
     try {

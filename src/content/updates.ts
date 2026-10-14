@@ -22,6 +22,21 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-14-git-panel-external-changes',
+    version: '0.1.0',
+    date: '2026-10-14',
+    title: 'Git panel follows outside changes',
+    summary: 'Commits made in a terminal or another IDE now update the Git panel.',
+    changes: [
+      {
+        type: 'fixed',
+        title: 'Stale changed files',
+        description:
+          'After a commit, checkout or stash outside Zwip, the Git panel kept listing files that no longer had changes, and opening one showed an empty diff. It now re-checks Git when the window regains focus and every few seconds while visible.',
+      },
+    ],
+  },
+  {
     id: '2026-10-14-index-whole-project',
     version: '0.1.0',
     date: '2026-10-14',
