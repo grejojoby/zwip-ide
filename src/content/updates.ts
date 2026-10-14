@@ -22,6 +22,21 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-14-go-package-0-1-1',
+    version: '0.1.0',
+    date: '2026-10-14',
+    title: 'Go package 0.1.1',
+    summary: 'The Go package now ships the GoLand-style Go colors.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'Update from Packages',
+        description:
+          'Go package 0.1.1 carries the new package, type, receiver and builtin colors. Installed 0.1.0 packages show "Update to 0.1.1" in Packages, and "Previous version" returns to 0.1.0.',
+      },
+    ],
+  },
+  {
     id: '2026-10-13-goland-go-highlighting',
     version: '0.1.0',
     date: '2026-10-13',

@@ -1,7 +1,7 @@
 {
   "id": "go",
   "name": "Go Languages",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "coreVersion": "0.1.0",
   "description": "Go navigation, editing, run, tests and coverage across independent module contexts using pinned gopls and Go tools.",
   "capabilities": [
