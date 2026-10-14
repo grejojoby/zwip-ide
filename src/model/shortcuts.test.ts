@@ -2,10 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   canonicalShortcut,
   defaultShortcuts,
+  doubleTapRecognizer,
   matchesShortcut,
   normalizedShortcuts,
   shortcutConflicts,
   shortcutFromEvent,
+  shortcutLabel,
   validShortcut,
 } from './shortcuts';
 describe('macOS shortcuts', () => {
@@ -114,5 +116,46 @@ describe('macOS shortcuts', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+  it('recognizes a double-tapped lone modifier and labels it', () => {
+    const tap = doubleTapRecognizer();
+    const shift = (type: 'keydown' | 'keyup', timeStamp: number, extra = {}) =>
+      tap({
+        type,
+        key: 'Shift',
+        repeat: false,
+        timeStamp,
+        metaKey: false,
+        ctrlKey: false,
+        altKey: false,
+        shiftKey: type === 'keydown',
+        ...extra,
+      });
+    expect(shift('keydown', 0)).toBeNull();
+    expect(shift('keyup', 50)).toBeNull();
+    expect(shift('keydown', 150)).toBeNull();
+    expect(shift('keyup', 200)).toBe('Shift Shift');
+    // Too slow, or another key in between, does not count.
+    shift('keydown', 1000);
+    shift('keyup', 1050);
+    shift('keydown', 1600);
+    expect(shift('keyup', 1650)).toBeNull();
+    shift('keydown', 3000);
+    shift('keyup', 3050);
+    tap({
+      type: 'keydown',
+      key: 'a',
+      repeat: false,
+      timeStamp: 3100,
+      metaKey: false,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+    });
+    shift('keydown', 3150);
+    expect(shift('keyup', 3200)).toBeNull();
+    expect(canonicalShortcut('shift shift')).toBe('Shift Shift');
+    expect(shortcutLabel('Shift Shift')).toBe('⇧⇧');
+    expect(normalizedShortcuts({ files: 'Shift Shift' }).files).toBe('Shift Shift');
   });
 });

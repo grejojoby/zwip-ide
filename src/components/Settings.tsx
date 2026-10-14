@@ -3,6 +3,8 @@ import { Modal } from './Modal';
 import { IntelliJImport } from './IntelliJImport';
 import {
   defaultShortcuts,
+  doubleTapRecognizer,
+  globalShortcutActions,
   shortcutActions,
   shortcutConflicts,
   shortcutFromEvent,
@@ -58,9 +60,24 @@ export function Settings({
   // a key handler on the button itself would never run in the desktop app.
   useEffect(() => {
     if (!capturing) return;
+    const tap = doubleTapRecognizer();
     const record = (event: KeyboardEvent) => {
       event.preventDefault();
       event.stopPropagation();
+      const doubled = tap(event);
+      if (event.type === 'keyup') {
+        if (!doubled) return;
+        if (!globalShortcutActions.includes(capturing)) {
+          setError(
+            'Double-tap shortcuts work for window actions such as Go to file, not editor actions.',
+          );
+          return;
+        }
+        setDraft((current) => ({ ...current, [capturing]: doubled }));
+        setCapturing(null);
+        setError('');
+        return;
+      }
       if (event.key === 'Escape') {
         setCapturing(null);
         return;
@@ -89,9 +106,11 @@ export function Settings({
       if (!(event.target as Element | null)?.closest('.shortcut-list button')) setCapturing(null);
     };
     window.addEventListener('keydown', record, true);
+    window.addEventListener('keyup', record, true);
     window.addEventListener('mousedown', cancel, true);
     return () => {
       window.removeEventListener('keydown', record, true);
+      window.removeEventListener('keyup', record, true);
       window.removeEventListener('mousedown', cancel, true);
     };
   }, [capturing]);

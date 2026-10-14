@@ -225,6 +225,9 @@ export function ProjectTree({
           role="menu"
           className="tree-context-menu"
           style={{ left: menu.x, top: menu.y }}
+          // WebKit does not focus a clicked button, so the mousedown would blur the item and
+          // close the menu before its click arrives. Keep focus where it is.
+          onMouseDown={(e) => e.preventDefault()}
           onKeyDown={(e) => {
             if (e.key === 'Escape') setMenu(null);
           }}

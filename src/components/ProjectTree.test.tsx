@@ -63,6 +63,9 @@ describe('excluding directories from the project tree', () => {
     fireEvent.contextMenu(screen.getByRole('treeitem', { name: 'src' }));
     const item = screen.getByRole('menuitemcheckbox', { name: 'Exclude from search and indexing' });
     expect(item.getAttribute('aria-checked')).toBe('false');
+    // WebKit: a mousedown must not move focus, or the menu closes before the click.
+    expect(fireEvent.mouseDown(item)).toBe(false);
+    expect(screen.getByRole('menu')).toBeTruthy();
     fireEvent.click(item);
     expect(onExclude).toHaveBeenCalledWith('src', true);
     expect(screen.queryByRole('menu')).toBeNull();

@@ -55,9 +55,30 @@ const namedKeys = [
   'ArrowRight',
 ];
 
+const tapModifiers = ['Mod', 'Ctrl', 'Alt', 'Shift'];
+/** Double-tapping a lone modifier, like IntelliJ's double Shift. Written "Shift Shift". */
+const doubleTap = /^(meta|mod|ctrl|alt|shift) \1$/i;
+/** Actions handled by the window, where double-tap shortcuts work; others live in the editor. */
+export const globalShortcutActions: ShortcutAction[] = [
+  'save',
+  'files',
+  'symbols',
+  'actions',
+  'search',
+  'back',
+  'forward',
+  'branches',
+];
+export const isDoubleTap = (value: string) => doubleTap.test(value);
+
 /** Single-stroke syntax shared with CodeMirror; Mod and Meta both mean Command on macOS. */
 export function canonicalShortcut(value: string): string | null {
   if (value === '') return '';
+  const tap = value.match(doubleTap)?.[1].toLowerCase();
+  if (tap) {
+    const name = tap === 'meta' ? 'Mod' : tapModifiers.find((item) => item.toLowerCase() === tap)!;
+    return `${name} ${name}`;
+  }
   // A final hyphen is the literal key, as in CodeMirror's "Mod--".
   const parts = value.split(/-(?!$)/);
   const rawKey = parts.pop() ?? '';
@@ -89,8 +110,14 @@ export function normalizedShortcuts(value: Partial<Shortcuts> | null | undefined
     ]),
   ) as Shortcuts;
 }
+const modifierSymbols: Record<string, string> = { Mod: '⌘', Ctrl: '⌃', Alt: '⌥', Shift: '⇧' };
 export function shortcutLabel(value: string): string {
-  return (canonicalShortcut(value) ?? value)
+  const canonical = canonicalShortcut(value) ?? value;
+  if (isDoubleTap(canonical)) {
+    const symbol = modifierSymbols[canonical.split(' ')[0]];
+    return `${symbol}${symbol}`;
+  }
+  return canonical
     .replace('Mod-', '⌘')
     .replace('Ctrl-', '⌃')
     .replace('Alt-', '⌥')
@@ -114,6 +141,48 @@ export function matchesShortcut(event: KeyboardEvent, shortcut: string): boolean
   const recorded = shortcutFromEvent(event);
   const canonical = canonicalShortcut(shortcut);
   return !!canonical && recorded !== null && canonicalShortcut(recorded) === canonical;
+}
+const eventModifiers: Record<string, string> = {
+  Meta: 'Mod',
+  Control: 'Ctrl',
+  Alt: 'Alt',
+  Shift: 'Shift',
+};
+/**
+ * Feed every keydown and keyup; returns "Shift Shift" (etc.) when a lone modifier is tapped twice
+ * within `interval` ms with no other key in between.
+ */
+export function doubleTapRecognizer(interval = 400) {
+  let held: string | null = null;
+  let last: { name: string; at: number } | null = null;
+  return (
+    event: Pick<
+      KeyboardEvent,
+      'type' | 'key' | 'repeat' | 'timeStamp' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'
+    >,
+  ): string | null => {
+    const name = eventModifiers[event.key];
+    const others =
+      Number(event.metaKey) + Number(event.ctrlKey) + Number(event.altKey) + Number(event.shiftKey);
+    if (event.type === 'keydown') {
+      if (event.repeat) return null;
+      // Only a modifier pressed on its own can start or continue a tap.
+      held = name && others === 1 ? name : null;
+      if (!held) last = null;
+      return null;
+    }
+    if (event.type !== 'keyup' || !name || name !== held) {
+      held = null;
+      return null;
+    }
+    held = null;
+    if (last?.name === name && event.timeStamp - last.at <= interval) {
+      last = null;
+      return `${name} ${name}`;
+    }
+    last = { name, at: event.timeStamp };
+    return null;
+  };
 }
 export function shortcutConflicts(shortcuts: Shortcuts): string[] {
   const keys = new Map<string, string>();

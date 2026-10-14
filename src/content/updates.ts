@@ -22,6 +22,27 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-14-double-shift-and-exclude-fix',
+    version: '0.1.0',
+    date: '2026-10-14',
+    title: 'Double Shift shortcuts and folder exclusion fix',
+    summary: 'Record ⇧⇧ for Go to file, and Exclude from search works again.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Double-tap shortcuts',
+        description:
+          'Settings can record a double-tapped Shift, Option, Control or Command, such as ⇧⇧ for Go to file. They work for window actions; editor actions still need a key combination.',
+      },
+      {
+        type: 'fixed',
+        title: 'Exclude from search and indexing',
+        description:
+          'Choosing it in the folder menu now excludes the folder and dims it; the menu closed before the click registered. Failures now show in the status bar.',
+      },
+    ],
+  },
+  {
     id: '2026-10-14-intellij-editor-menu-debug-and-package-rename',
     version: '0.1.0',
     date: '2026-10-14',

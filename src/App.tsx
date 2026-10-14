@@ -95,8 +95,10 @@ import { useWorkspaceTasks } from './model/use-workspace-tasks';
 import { runDirectory } from './model/run-configurations';
 import type { PreparedGoTarget } from './components/tools/GoTools';
 import {
+  canonicalShortcut,
   defaultShortcuts,
-  matchesShortcut,
+  doubleTapRecognizer,
+  matchesShortcut as matchesKeystroke,
   normalizedShortcuts,
   shortcutLabel,
   type Shortcuts,
@@ -133,7 +135,12 @@ export function App() {
   const workspaceRef = useRef(workspace);
   workspaceRef.current = workspace;
   async function setDirectoryExcluded(path: string, excluded: boolean) {
-    const next = await api.setDirectoryExcluded(path, excluded);
+    setStatus(excluded ? `Excluding ${path}…` : `Including ${path}…`);
+    const next = await api.setDirectoryExcluded(path, excluded).catch((e: unknown) => {
+      setStatus(`Could not update ${path}: ${asError(e).message}`);
+      return null;
+    });
+    if (!next) return;
     workspaceRef.current = next;
     setWorkspace(next);
     setStatus(
@@ -1398,10 +1405,16 @@ export function App() {
   const actionsRef = useRef({ save, goHistory, shortcuts });
   actionsRef.current = { save, goHistory, shortcuts };
   useEffect(() => {
+    const tap = doubleTapRecognizer();
     const key = (event: KeyboardEvent) => {
+      // Double-tap shortcuts complete on the second keyup; others match a keydown.
+      const doubled = tap(event);
+      if (event.type === 'keyup' && !doubled) return;
       if (event.defaultPrevented || document.querySelector('dialog[open]')) return;
       const actions = actionsRef.current;
       const keys = actions.shortcuts;
+      const matchesShortcut = (event: KeyboardEvent, shortcut: string) =>
+        doubled ? canonicalShortcut(shortcut) === doubled : matchesKeystroke(event, shortcut);
       if (matchesShortcut(event, keys.save)) {
         event.preventDefault();
         void actions.save();
@@ -1429,7 +1442,11 @@ export function App() {
       }
     };
     window.addEventListener('keydown', key);
-    return () => window.removeEventListener('keydown', key);
+    window.addEventListener('keyup', key);
+    return () => {
+      window.removeEventListener('keydown', key);
+      window.removeEventListener('keyup', key);
+    };
   }, []);
   useEffect(() => {
     if (usagesPopup || navigating) return;
