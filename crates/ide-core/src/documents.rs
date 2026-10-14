@@ -65,6 +65,9 @@ impl Documents {
     pub fn new(data: &Path) -> Result<Self, String> {
         fs::create_dir_all(data).map_err(|e| e.to_string())?;
         let db = Connection::open(data.join("workspace.sqlite")).map_err(|e| e.to_string())?;
+        // Each IDE window has its own core and connection to this shared store.
+        db.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| e.to_string())?;
         db.execute_batch("PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS recovery(path TEXT PRIMARY KEY, content TEXT NOT NULL, disk_hash TEXT NOT NULL, revision INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS history(id INTEGER PRIMARY KEY, path TEXT NOT NULL, timestamp INTEGER NOT NULL, content TEXT NOT NULL); CREATE INDEX IF NOT EXISTS history_path ON history(path, timestamp); CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);").map_err(|e|e.to_string())?;
         Ok(Self {
             sync_backups: HashMap::new(),

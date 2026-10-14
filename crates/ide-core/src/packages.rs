@@ -337,6 +337,9 @@ impl PackageHost {
         let root = data.join("packages");
         fs::create_dir_all(&root).map_err(|e| e.to_string())?;
         let db = Connection::open(data.join("packages.sqlite")).map_err(|e| e.to_string())?;
+        // Each IDE window has its own core and connection to this shared store.
+        db.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| e.to_string())?;
         db.execute_batch("CREATE TABLE IF NOT EXISTS packages(id TEXT PRIMARY KEY, version TEXT NOT NULL, directory TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0); CREATE TABLE IF NOT EXISTS package_versions(id TEXT NOT NULL,version TEXT NOT NULL,directory TEXT NOT NULL,manifest_hash TEXT NOT NULL,archive_hash TEXT,PRIMARY KEY(id,version)); CREATE TABLE IF NOT EXISTS package_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);").map_err(|e|e.to_string())?;
         let columns = {
             let mut statement = db

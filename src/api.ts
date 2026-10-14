@@ -36,6 +36,8 @@ export function request<T>(method: string, params: Record<string, unknown> = {})
     return result;
   });
 }
+/** Opens another IDE window with its own workspace; `root` opens that project in it. */
+export const newWindow = (root?: string) => invoke<void>('new_window', { root: root ?? null });
 export const api = {
   /** `revealEnvironment` includes credential-like run environment values the user confirmed. */
   previewIntelliJ: (path: string, projectRoot?: string, revealEnvironment = false) =>

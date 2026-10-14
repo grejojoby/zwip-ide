@@ -3,7 +3,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
 // Already in the main bundle: the syntax runtime shares it with downloaded grammars.
 import { closeCompletion } from '@codemirror/autocomplete';
-import { api, request } from './api';
+import { api, newWindow, request } from './api';
 import type {
   EditorOperation,
   EditorResult,
@@ -470,6 +470,12 @@ export function App() {
         setShortcuts(normalizedShortcuts(keys));
         setHistoryPreferences(retention);
         setGlobalPreferencesReady(true);
+        // A window opened for a project ("Open in new window") loads it once.
+        const startRoot = new URLSearchParams(location.search).get('root');
+        if (startRoot) {
+          window.history.replaceState(null, '', location.pathname);
+          void loadWorkspace(startRoot);
+        }
         if (!updatesDismissed.current && lastSeenUpdate !== updates[0].id) setHasNewUpdates(true);
       })
       .catch(report);
@@ -701,15 +707,16 @@ export function App() {
       lifecycleBusy.current = false;
     }
   }
-  async function chooseWorkspace() {
-    if (lifecycleBusy.current) return;
+  async function chooseWorkspace(inNewWindow = false) {
+    if (lifecycleBusy.current && !inNewWindow) return;
     try {
       const root = await open({
         directory: true,
         multiple: false,
-        title: 'Open project workspace',
+        title: inNewWindow ? 'Open project in new window' : 'Open project workspace',
       });
-      if (root) await loadWorkspace(root);
+      if (root && inNewWindow) await newWindow(root);
+      else if (root) await loadWorkspace(root);
     } catch (e) {
       report(e);
     }
@@ -1461,6 +1468,17 @@ export function App() {
   const commands: ActionCommand[] = [
     { id: 'open', label: 'Open project…', run: () => void chooseWorkspace() },
     {
+      id: 'open-new-window',
+      label: 'Open project in new window…',
+      run: () => void chooseWorkspace(true),
+    },
+    {
+      id: 'new-window',
+      label: 'New window',
+      shortcut: '⇧⌘N',
+      run: () => void newWindow().catch(report),
+    },
+    {
       id: 'files',
       label: 'Go to file',
       shortcut: shortcutLabel(shortcuts.files),
@@ -1749,7 +1767,14 @@ export function App() {
               <div className="recent-projects">
                 <h2>Recent projects</h2>
                 {recentRoots.map((root) => (
-                  <button key={root} disabled={opening} onClick={() => void loadWorkspace(root)}>
+                  <button
+                    key={root}
+                    disabled={opening}
+                    title="⌘-click opens it in a new window"
+                    onClick={(event) =>
+                      void (event.metaKey ? newWindow(root).catch(report) : loadWorkspace(root))
+                    }
+                  >
                     <Icon name="folder" />
                     <span>
                       <strong>{root.split('/').pop()}</strong>

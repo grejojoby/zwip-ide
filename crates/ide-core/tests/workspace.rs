@@ -703,3 +703,56 @@ fn user_excluded_directories_leave_the_index_and_persist_until_restored() {
         .unwrap();
     assert_eq!(paths(&restored), ["keep.txt", "vendor/lib/a.txt"]);
 }
+
+#[test]
+fn window_cores_share_stores_and_keep_separate_workspaces() {
+    let data = tempfile::tempdir().unwrap();
+    let (first_root, second_root) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    fs::write(first_root.path().join("a.go"), "package a\n").unwrap();
+    fs::write(second_root.path().join("b.go"), "package b\n").unwrap();
+    let first = std::sync::Arc::new(Core::new(data.path().to_owned()).unwrap());
+    let second = std::sync::Arc::new(Core::new(data.path().to_owned()).unwrap());
+    let opened_first = first
+        .request("workspace.open", json!({"root":first_root.path()}))
+        .unwrap();
+    let opened_second = second
+        .request("workspace.open", json!({"root":second_root.path()}))
+        .unwrap();
+    // Concurrent writes from two windows wait for each other instead of failing as locked.
+    let writers: Vec<_> = [first.clone(), second.clone()]
+        .into_iter()
+        .enumerate()
+        .map(|(window, core)| {
+            std::thread::spawn(move || {
+                for index in 0..50 {
+                    core.request(
+                        "settings.set",
+                        json!({"key":format!("window{window}.{index}"),"value":index}),
+                    )
+                    .unwrap();
+                }
+            })
+        })
+        .collect();
+    for writer in writers {
+        writer.join().unwrap();
+    }
+    assert_eq!(
+        first
+            .request("settings.get", json!({"key":"window1.49"}))
+            .unwrap(),
+        49
+    );
+    // Each window keeps its own workspace after the other opens one.
+    let names = |workspace: &serde_json::Value| -> Vec<String> {
+        workspace["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|file| file["relativePath"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    assert_eq!(names(&opened_first), ["a.go"]);
+    assert_eq!(names(&opened_second), ["b.go"]);
+    assert_ne!(opened_first["root"], opened_second["root"]);
+}

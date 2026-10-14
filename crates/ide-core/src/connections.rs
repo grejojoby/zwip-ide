@@ -46,6 +46,9 @@ fn duplicate(db: &Connection, item: &ImportConnection) -> Result<bool, String> {
 impl Connections {
     pub fn new(data: &Path) -> Result<Self, String> {
         let db = Connection::open(data.join("connections.sqlite")).map_err(|e| e.to_string())?;
+        // Each IDE window has its own core and connection to this shared store.
+        db.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| e.to_string())?;
         db.execute_batch("CREATE TABLE IF NOT EXISTS connections(id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, config TEXT NOT NULL)").map_err(|e|e.to_string())?;
         db.execute_batch("CREATE TABLE IF NOT EXISTS connection_imports(identity TEXT PRIMARY KEY,connection_id TEXT NOT NULL UNIQUE)").map_err(|_|"Cannot initialize connection import metadata")?;
         Ok(Self { db })

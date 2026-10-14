@@ -22,6 +22,27 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-14-multiple-windows',
+    version: '0.1.0',
+    date: '2026-10-14',
+    title: 'Multiple windows',
+    summary: 'Open each project in its own window.',
+    changes: [
+      {
+        type: 'added',
+        title: 'New window',
+        description:
+          'File › New Window (⇧⌘N), "Open project in new window…" in Find Action, or ⌘-click a recent project. Each window has its own project, language tools and run tasks. Installing or updating a package restarts its language tools only in the window where you made the change; reopen the project in other windows to use it there.',
+      },
+      {
+        type: 'improved',
+        title: 'One window per project',
+        description:
+          'Opening a project that is already open in another window brings that window forward instead. Settings… opens in the window you are using.',
+      },
+    ],
+  },
+  {
     id: '2026-10-14-run-console-and-debugger-permissions',
     version: '0.1.0',
     date: '2026-10-14',
