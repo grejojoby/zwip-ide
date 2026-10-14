@@ -26,6 +26,8 @@ export function Settings({
   dark,
   stickyLines = false,
   onStickyLines,
+  indexOnOpen = true,
+  onIndexOnOpen,
   workspaceRoot,
   runSession,
   excludedDirectories,
@@ -39,6 +41,8 @@ export function Settings({
   dark: boolean;
   stickyLines?: boolean;
   onStickyLines?(enabled: boolean): void;
+  indexOnOpen?: boolean;
+  onIndexOnOpen?(enabled: boolean): void;
   workspaceRoot?: string;
   runSession?: WorkspaceRunSession;
   excludedDirectories?: ExcludedDirectory[];
@@ -171,6 +175,23 @@ export function Settings({
                 </label>
               )}
             </div>
+            {onIndexOnOpen && (
+              <div className="settings-section">
+                <h3>Indexing</h3>
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={indexOnOpen}
+                    onChange={(e) => onIndexOnOpen(e.target.checked)}
+                  />
+                  Index the whole project when it opens
+                </label>
+                <p className="muted">
+                  Loads every module and type-checks its packages in the background, so navigation
+                  and search are ready before you open files. Results are cached across restarts.
+                </p>
+              </div>
+            )}
             <div className="settings-section">
               <h3>Keyboard shortcuts</h3>
               <p className="muted">

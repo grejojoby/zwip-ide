@@ -146,6 +146,9 @@ func serveWithContext(lifetime context.Context, input io.Reader, output io.Write
 			send(request.ID, map[string]any{"contexts": contexts, "generation": params.Generation}, err, -32001)
 		case "workspace.status":
 			send(request.ID, worker.status(), nil, 0)
+		case "workspace.index":
+			worker.indexWorkspace()
+			send(request.ID, worker.status(), nil, 0)
 		case "document.update":
 			var params documentUpdate
 			if err := json.Unmarshal(request.Params, &params); err != nil {

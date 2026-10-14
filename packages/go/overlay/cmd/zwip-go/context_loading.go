@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"golang.org/x/tools/gopls/internal/cache"
+	"golang.org/x/tools/gopls/internal/cache/metadata"
 	"golang.org/x/tools/gopls/internal/protocol"
 	"golang.org/x/tools/gopls/internal/settings"
 )
@@ -95,6 +96,9 @@ func (w *worker) loadContexts(loading *contextInitialization) {
 						w.contexts[index].State, w.contexts[index].Reason = "failed", err.Error()
 					} else {
 						w.contexts[index].State, w.contexts[index].Reason = "ready", ""
+						if w.warm {
+							go w.warmContext(loading, index)
+						}
 					}
 				}
 				w.mu.Unlock()
@@ -136,4 +140,73 @@ func loadGoContext(ctx context.Context, session *cache.Session, c buildContext, 
 		return view, err.MainError
 	}
 	return view, nil
+}
+
+// indexWorkspace warms every ready context now and each remaining one when it loads.
+func (w *worker) indexWorkspace() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	loading := w.initialization
+	if w.warm {
+		return
+	}
+	w.warm = true
+	if loading == nil {
+		return
+	}
+	for index, c := range w.contexts {
+		if c.State == "ready" && w.views[c.ID] != nil {
+			go w.warmContext(loading, index)
+		}
+	}
+}
+
+const warmBatch = 16
+
+// warmContext type-checks the context's workspace packages in small batches, reporting
+// progress. Type-checking writes export data and cross-references to the gopls file
+// cache, which persists across restarts. Errors only stop the warm-up; queries still work.
+func (w *worker) warmContext(loading *contextInitialization, index int) {
+	w.mu.Lock()
+	if w.initialization != loading {
+		w.mu.Unlock()
+		return
+	}
+	view := w.views[w.contexts[index].ID]
+	w.mu.Unlock()
+	if view == nil {
+		return
+	}
+	snapshot, release, err := view.Snapshot()
+	if err != nil {
+		return
+	}
+	defer release()
+	metas, err := snapshot.WorkspaceMetadata(loading.ctx)
+	if err != nil {
+		return
+	}
+	ids := make([]metadata.PackageID, 0, len(metas))
+	for _, meta := range metas {
+		ids = append(ids, meta.ID)
+	}
+	progress := func(done int) bool {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		if w.initialization != loading || loading.ctx.Err() != nil {
+			return false
+		}
+		w.contexts[index].Indexed, w.contexts[index].Packages = done, len(ids)
+		return true
+	}
+	for start := 0; start < len(ids); start += warmBatch {
+		if !progress(start) {
+			return
+		}
+		end := min(start+warmBatch, len(ids))
+		if _, err := snapshot.TypeCheck(loading.ctx, ids[start:end]...); err != nil && loading.ctx.Err() != nil {
+			return
+		}
+	}
+	progress(len(ids))
 }

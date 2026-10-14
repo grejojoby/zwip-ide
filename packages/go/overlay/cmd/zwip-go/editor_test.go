@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestEditorFormattingHoverSymbolsAndDiagnostics(t *testing.T) {
@@ -219,5 +220,28 @@ func TestEditorOrganizeVendoredImport(t *testing.T) {
 	}
 	if result.State != "complete" || !found {
 		t.Fatalf("vendored import not resolved: %+v", result)
+	}
+}
+
+func TestWorkspaceIndexTypeChecksEveryPackageInTheBackground(t *testing.T) {
+	root := t.TempDir()
+	put(t, root, "app/go.mod", "module fixture/app\n\ngo 1.25\n")
+	put(t, root, "app/main.go", "package app\nimport \"fixture/app/store\"\nfunc Use() int { return store.Get() }\n")
+	put(t, root, "app/store/store.go", "package store\nfunc Get() int { return 1 }\n")
+	w := startFixture(t, root, "app")
+	if got := w.status().Contexts[0]; got.Packages != 0 {
+		t.Fatalf("warm-up ran before workspace.index: %+v", got)
+	}
+	w.indexWorkspace()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		got := w.status().Contexts[0]
+		if got.Packages == 2 && got.Indexed == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("background indexing did not finish: %+v", got)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }

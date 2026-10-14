@@ -756,3 +756,25 @@ fn window_cores_share_stores_and_keep_separate_workspaces() {
     assert_eq!(names(&opened_second), ["b.go"]);
     assert_ne!(opened_first["root"], opened_second["root"]);
 }
+
+#[test]
+fn indexing_reports_languages_without_an_installed_provider() {
+    let root = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    fs::write(
+        root.path().join("go.mod"),
+        "module fixture/index\ngo 1.25.0\n",
+    )
+    .unwrap();
+    fs::write(root.path().join("main.go"), "package main\n").unwrap();
+    let core = Core::new(data.path().to_owned()).unwrap();
+    core.request("workspace.open", json!({"root":root.path()}))
+        .unwrap();
+    let reply = core.request("workspace.index", json!({})).unwrap();
+    assert_eq!(reply["started"], json!([]));
+    assert_eq!(reply["unavailable"][0]["language"], "go");
+    assert!(!reply["unavailable"][0]["reason"]
+        .as_str()
+        .unwrap()
+        .is_empty());
+}

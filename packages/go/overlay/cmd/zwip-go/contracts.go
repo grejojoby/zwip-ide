@@ -6,12 +6,15 @@ type position = protocol.Position
 type sourceRange = protocol.Range
 
 type buildContext struct {
-	ID               string         `json:"id"`
-	Root             string         `json:"root"`
-	Language         string         `json:"language"`
-	ConfigPath       string         `json:"configPath"`
-	State            string         `json:"state"`
-	Reason           string         `json:"reason,omitempty"`
+	ID         string `json:"id"`
+	Root       string `json:"root"`
+	Language   string `json:"language"`
+	ConfigPath string `json:"configPath"`
+	State      string `json:"state"`
+	Reason     string `json:"reason,omitempty"`
+	// Background type-checking progress after "workspace.index"; both zero until it starts.
+	Indexed          int            `json:"indexed,omitempty"`
+	Packages         int            `json:"packages,omitempty"`
 	GoWork           string         `json:"goWork,omitempty"`
 	ProfileID        string         `json:"profileId,omitempty"`
 	Settings         map[string]any `json:"settings,omitempty"`

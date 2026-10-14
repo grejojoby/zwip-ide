@@ -32,6 +32,9 @@ type worker struct {
 	protection     *sumProtection
 	initialization *contextInitialization
 	views          map[string]*cache.View
+	// Set by "workspace.index": type-check every package of each ready context so gopls
+	// fills its persistent cache up front instead of on first use.
+	warm bool
 }
 
 func newWorker() *worker {

@@ -22,6 +22,27 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-14-index-whole-project',
+    version: '0.1.0',
+    date: '2026-10-14',
+    title: 'Index the whole project at once',
+    summary: 'Every module and package is indexed when a project opens, not as files open.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Whole-project indexing',
+        description:
+          'Opening a project starts its language tools for every module straight away. Go package 0.1.3 then type-checks all packages in the background and stores the results in its cache, which survives restarts. The status bar shows "Indexing packages" progress, per module when clicked.',
+      },
+      {
+        type: 'added',
+        title: 'Indexing setting',
+        description:
+          'Settings › Indexing › "Index the whole project when it opens" is on by default; turn it off to index only as files are used. Languages without an installed package are named in the status bar.',
+      },
+    ],
+  },
+  {
     id: '2026-10-14-git-changes-by-directory',
     version: '0.1.0',
     date: '2026-10-14',

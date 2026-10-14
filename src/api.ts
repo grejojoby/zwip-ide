@@ -72,6 +72,12 @@ export const api = {
     request<import('./contracts').Connection[]>('connection.delete', { id }),
   getSetting: <T>(key: string) => request<T | null>('settings.get', { key }),
   setSetting: <T>(key: string, value: T) => request<T>('settings.set', { key, value }),
+  /** Starts language providers for every module now and asks them to pre-build caches. */
+  indexWorkspace: () =>
+    request<{
+      started: { language: string; warming: boolean }[];
+      unavailable: { language: string; reason: string }[];
+    }>('workspace.index'),
   openWorkspace: (root: string) => request<WorkspaceSnapshot>('workspace.open', { root }),
   refreshWorkspace: () => request<WorkspaceSnapshot>('workspace.refresh'),
   rescanWorkspace: (reanalyze: boolean) =>

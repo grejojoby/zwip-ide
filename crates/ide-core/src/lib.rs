@@ -310,6 +310,7 @@ impl Core {
                 Ok(json!({"paths":paths,"configurationChanged":configuration_changed}))
             }
             "workspace.status" => self.workspace_status(),
+            "workspace.index" => self.index_workspace(),
             "workspace.scanProgress" => {
                 Ok(json!({"files": self.scanned_files.load(Ordering::Relaxed)}))
             }
@@ -750,6 +751,34 @@ impl Core {
             .lock()
             .map_err(|e| e.to_string())?
             .accept_mutation(&mut plan, result, generation)
+    }
+    /// Starts every language provider the workspace needs and asks each to index all of its
+    /// contexts now, rather than when the first file opens. Missing packages are reported.
+    fn index_workspace(&self) -> Result<Value, String> {
+        let workspace = self.current()?;
+        let mut languages: Vec<&str> = workspace
+            .contexts
+            .iter()
+            .map(|context| context.language.as_str())
+            .collect();
+        languages.sort();
+        languages.dedup();
+        let mut started = Vec::new();
+        let mut unavailable = Vec::new();
+        for language in languages {
+            match self.language_worker(language, &workspace) {
+                // Starting the provider loads every context; "workspace.index" additionally
+                // pre-builds caches where the provider supports it (Go type-checks packages).
+                Ok(worker) => started.push(json!({
+                    "language": language,
+                    "warming": worker
+                        .probe("workspace.index", json!({}), std::time::Duration::from_secs(5))
+                        .is_ok(),
+                })),
+                Err(reason) => unavailable.push(json!({"language":language,"reason":reason})),
+            }
+        }
+        Ok(json!({"started":started,"unavailable":unavailable}))
     }
     fn language_worker(
         &self,

@@ -59,4 +59,28 @@ describe('IndexingStatus', () => {
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
   });
+  it('shows background package indexing once every module has loaded', () => {
+    const view = render(
+      <IndexingStatus
+        scannedFiles={null}
+        root="/w"
+        contexts={[
+          { ...context('a', 'ready'), indexed: 40, packages: 100 },
+          { ...context('b', 'ready'), indexed: 10, packages: 20 },
+        ]}
+      />,
+    );
+    expect(screen.getByRole('progressbar', { name: 'Indexing packages' }).textContent).toContain(
+      'Indexing packages 50/120',
+    );
+    fireEvent.click(screen.getByRole('progressbar', { name: 'Indexing packages' }));
+    expect(screen.getByText('40/100 packages')).toBeTruthy();
+    view.rerender(
+      <IndexingStatus
+        scannedFiles={null}
+        contexts={[{ ...context('a', 'ready'), indexed: 100, packages: 100 }]}
+      />,
+    );
+    expect(screen.queryByRole('progressbar')).toBeNull();
+  });
 });

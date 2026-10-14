@@ -43,7 +43,7 @@ const CodeEditor = lazy(() =>
 import { asError } from './model/document-session';
 import { isCurrentResult, NavigationHistory, shouldFindUsages } from './model/navigation';
 import { withNavigationProgress } from './model/navigation-progress';
-import { mergeContextUpdates } from './model/build-contexts';
+import { mergeContextUpdates, warming } from './model/build-contexts';
 import { Icon } from './components/Icon';
 import { BranchPopup } from './components/BranchPopup';
 import { IntelliJImport } from './components/IntelliJImport';
@@ -157,6 +157,26 @@ export function App() {
   } | null>(null);
   const [blame, setBlame] = useState<Record<string, BlameLine[]>>({});
   const [stickyLines, setStickyLines] = useState(false);
+  // Index every module and package when a project opens, instead of when files are opened.
+  const [indexOnOpen, setIndexOnOpen] = useState(true);
+  const indexOnOpenRef = useRef(true);
+  function changeIndexOnOpen(enabled: boolean) {
+    setIndexOnOpen(enabled);
+    indexOnOpenRef.current = enabled;
+    void api.setSetting('zwip.indexOnOpen', enabled).catch(report);
+    if (enabled && workspaceRef.current) indexWorkspace();
+  }
+  function indexWorkspace() {
+    void api
+      .indexWorkspace()
+      .then(({ unavailable }) => {
+        if (unavailable.length)
+          setStatus(
+            `Not indexed: ${unavailable.map((item) => item.language).join(', ')} (install or enable its package)`,
+          );
+      })
+      .catch(() => {});
+  }
   function changeStickyLines(enabled: boolean) {
     setStickyLines(enabled);
     void api.setSetting('zwip.stickyLines', enabled).catch(report);
@@ -458,10 +478,13 @@ export function App() {
       loadPreference('zwip.uiZoom', UI_ZOOM.initial),
       loadPreference('zwip.editorFontSize', EDITOR_FONT.initial),
       loadPreference('zwip.stickyLines', false),
+      loadPreference('zwip.indexOnOpen', true),
     ])
-      .then(([theme, roots, keys, retention, lastSeenUpdate, zoom, fontSize, sticky]) => {
+      .then(([theme, roots, keys, retention, lastSeenUpdate, zoom, fontSize, sticky, index]) => {
         if (!alive) return;
         setStickyLines(sticky);
+        setIndexOnOpen(index);
+        indexOnOpenRef.current = index;
         uiZoom.current = zoom;
         if (zoom !== UI_ZOOM.initial) void setUiZoom(zoom, false).catch(report);
         setEditorFontSize(fontSize, false);
@@ -523,7 +546,7 @@ export function App() {
       let loading = false;
       try {
         const reply = await api.workspaceStatus();
-        loading = reply.contexts.some((context) => context.state === 'loading');
+        loading = reply.contexts.some((context) => context.state === 'loading' || warming(context));
         if (active && reply.contexts.length)
           setWorkspace((current) => {
             if (!current || current.generation !== reply.generation) return current;
@@ -632,6 +655,7 @@ export function App() {
       setTerminalOpen(false);
       setWorkspace(next);
       workspaceRef.current = next;
+      if (indexOnOpenRef.current) indexWorkspace();
       setTabs([]);
       setActive(undefined);
       setDiffTabs([]);
@@ -2615,6 +2639,8 @@ export function App() {
           dark={dark}
           stickyLines={stickyLines}
           onStickyLines={changeStickyLines}
+          indexOnOpen={indexOnOpen}
+          onIndexOnOpen={changeIndexOnOpen}
           onTheme={setDark}
           onSave={async (keys, history) => {
             await api.setSetting('history', history);

@@ -23,3 +23,7 @@ export function sourceContexts(path: string, contexts: BuildContext[]): BuildCon
   const depth = Math.max(0, ...candidates.map((context) => context.root.replace(/\/$/, '').length));
   return candidates.filter((context) => context.root.replace(/\/$/, '').length === depth);
 }
+
+/** True while a context's packages are still being indexed in the background. */
+export const warming = (context: BuildContext) =>
+  !!context.packages && (context.indexed ?? 0) < context.packages;

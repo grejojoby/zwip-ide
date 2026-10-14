@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { BuildContext } from '../contracts';
+import { warming } from '../model/build-contexts';
 
 /** Files indexed so far while a workspace scan runs; null when no scan is running. */
 export function useScanProgress(scanning: boolean): number | null {
@@ -78,7 +79,12 @@ export function IndexingStatus({
       </span>
     );
   const done = contexts.filter((context) => context.state !== 'loading').length;
-  if (done === contexts.length) return null;
+  // Once every module has loaded, background package indexing (if any) is the remaining work.
+  const packages = contexts.filter(warming);
+  const total = packages.reduce((sum, context) => sum + (context.packages ?? 0), 0);
+  const indexed = packages.reduce((sum, context) => sum + (context.indexed ?? 0), 0);
+  const modulesDone = done === contexts.length;
+  if (modulesDone && !packages.length) return null;
   const sorted = [...contexts].sort(
     (a, b) =>
       stateOrder[a.state] - stateOrder[b.state] ||
@@ -90,16 +96,25 @@ export function IndexingStatus({
         type="button"
         className="indexing-status"
         role="progressbar"
-        aria-label="Indexing build contexts"
+        aria-label={modulesDone ? 'Indexing packages' : 'Indexing build contexts'}
         aria-valuemin={0}
-        aria-valuemax={contexts.length}
-        aria-valuenow={done}
+        aria-valuemax={modulesDone ? total : contexts.length}
+        aria-valuenow={modulesDone ? indexed : done}
         aria-expanded={open}
         title="Show indexing progress per module"
         onClick={() => setOpen((value) => !value)}
       >
-        <progress value={done} max={contexts.length} />
-        Indexing {done}/{contexts.length}
+        {modulesDone ? (
+          <>
+            <progress value={indexed} max={total} />
+            Indexing packages {indexed.toLocaleString()}/{total.toLocaleString()}
+          </>
+        ) : (
+          <>
+            <progress value={done} max={contexts.length} />
+            Indexing {done}/{contexts.length}
+          </>
+        )}
       </button>
       {open && (
         <div
@@ -123,6 +138,11 @@ export function IndexingStatus({
                 <span className="indexing-panel-name" title={context.configPath}>
                   {contextLabel(context, root)}
                 </span>
+                {!!context.packages && (
+                  <span className="indexing-panel-reason">
+                    {context.indexed ?? 0}/{context.packages} packages
+                  </span>
+                )}
                 {context.reason && (
                   <span className="indexing-panel-reason" title={context.reason}>
                     {context.reason}

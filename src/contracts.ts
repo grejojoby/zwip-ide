@@ -22,6 +22,9 @@ export interface BuildContext {
   settings?: Record<string, unknown>;
   state: 'ready' | 'loading' | 'failed' | 'unavailable';
   reason?: string;
+  /** Background package indexing after `workspace.index` (Go): packages checked of the total. */
+  indexed?: number;
+  packages?: number;
 }
 export interface ExcludedDirectory {
   /** Workspace-relative directory path. */

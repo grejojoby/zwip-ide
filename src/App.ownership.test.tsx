@@ -20,6 +20,7 @@ vi.mock('./api', () => ({
   request: vi.fn(),
   api: {
     openWorkspace: vi.fn(),
+    indexWorkspace: vi.fn(async () => ({ started: [], unavailable: [] })),
     openDocument: vi.fn(),
     changeDocument: vi.fn(),
     closeDocument: vi.fn(),
