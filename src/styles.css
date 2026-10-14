@@ -14,6 +14,7 @@
   --accent-surface: #314666;
   --selection: #35547b;
   --active-line: #272a30;
+  --selection-match: #344134;
   --hover: #30333a;
   --green: #80bd95;
   --red: #ed9999;
@@ -59,6 +60,7 @@
   --accent-surface: #dce8fa;
   --selection: #cbdcf9;
   --active-line: #f0f3f8;
+  --selection-match: #e4e4ff;
   --hover: #e5e8ee;
   --green: #267444;
   --red: #b83434;
@@ -383,6 +385,64 @@ kbd {
 .task-command-line,
 .task-progress {
   color: var(--muted);
+}
+/* Scratch files from components/Scratches.tsx. */
+.scratch-list {
+  border-top: 1px solid var(--border);
+  max-height: 30%;
+  overflow: auto;
+  flex-shrink: 0;
+}
+.scratch-heading {
+  display: flex;
+  align-items: center;
+}
+.scratch-heading > button:first-child {
+  flex: 1;
+  justify-content: flex-start;
+  gap: 6px;
+}
+.scratch-row {
+  display: flex;
+  align-items: center;
+  padding-left: 22px;
+}
+.scratch-row.selected {
+  background: var(--accent-surface);
+}
+.scratch-row > button:first-child {
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-start;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.scratch-row .icon,
+.scratch-heading .icon {
+  width: 13px;
+  color: var(--muted);
+}
+.scratch-row .scratch-delete {
+  visibility: hidden;
+}
+.scratch-row:hover .scratch-delete,
+.scratch-row .scratch-delete:focus {
+  visibility: visible;
+}
+.scratch-types {
+  display: flex;
+  flex-direction: column;
+  max-height: 50vh;
+  overflow: auto;
+  margin-top: 8px;
+}
+.scratch-types button {
+  justify-content: flex-start;
+  gap: 8px;
+}
+.scratch-types button.selected {
+  background: var(--accent-surface);
 }
 /* Editor popup from components/EditorContextMenu.tsx, laid out like IntelliJ's. */
 .editor-context-menu {

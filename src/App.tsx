@@ -23,6 +23,8 @@ import type { EditorView } from '@codemirror/view';
 import { foldAll, foldCode, unfoldAll, unfoldCode } from '@codemirror/language';
 import type { BlameLine } from './editor/blame-gutter';
 import { EditorContextMenu, type MenuEntry } from './components/EditorContextMenu';
+import { NewScratchDialog, ScratchList, type ScratchFile } from './components/Scratches';
+import type { ScratchType } from './model/scratch-types';
 const GoTools = lazy(() =>
   import('./components/tools/GoTools').then((module) => ({ default: module.GoTools })),
 );
@@ -157,6 +159,37 @@ export function App() {
   } | null>(null);
   const [blame, setBlame] = useState<Record<string, BlameLine[]>>({});
   const [stickyLines, setStickyLines] = useState(false);
+  // IntelliJ-style scratch files, kept in the app data directory and shared by every project.
+  const [scratches, setScratches] = useState<{ dir: string; files: ScratchFile[] }>({
+    dir: '',
+    files: [],
+  });
+  const [showNewScratch, setShowNewScratch] = useState(false);
+  const isScratch = (path: string) => !!scratches.dir && path.startsWith(`${scratches.dir}/`);
+  function refreshScratches() {
+    void api.scratches().then(setScratches).catch(report);
+  }
+  async function createScratch(type: ScratchType) {
+    setShowNewScratch(false);
+    try {
+      const { path } = await api.createScratch(type.extension, type.template);
+      setScratches(await api.scratches());
+      await openFile(path);
+    } catch (e) {
+      report(e);
+    }
+  }
+  async function deleteScratch(path: string) {
+    try {
+      // Close its tab first; a buffer that cannot be released keeps the file.
+      if (tabs.includes(path) || split === path) await removeTab(path);
+      if (documents.documents.has(path)) return;
+      await api.deleteScratch(path);
+      refreshScratches();
+    } catch (e) {
+      report(e);
+    }
+  }
   // Index every module and package when a project opens, instead of when files are opened.
   const [indexOnOpen, setIndexOnOpen] = useState(true);
   const indexOnOpenRef = useRef(true);
@@ -656,6 +689,7 @@ export function App() {
       setWorkspace(next);
       workspaceRef.current = next;
       if (indexOnOpenRef.current) indexWorkspace();
+      refreshScratches();
       setTabs([]);
       setActive(undefined);
       setDiffTabs([]);
@@ -1449,6 +1483,9 @@ export function App() {
       if (matchesShortcut(event, keys.save)) {
         event.preventDefault();
         void actions.save();
+      } else if (matchesShortcut(event, keys.scratch)) {
+        event.preventDefault();
+        if (workspaceRef.current) setShowNewScratch(true);
       } else if (matchesShortcut(event, keys.files)) {
         event.preventDefault();
         setShowFiles(true);
@@ -1497,9 +1534,14 @@ export function App() {
       run: () => void chooseWorkspace(true),
     },
     {
+      id: 'new-scratch',
+      label: 'New scratch file…',
+      shortcut: shortcutLabel(shortcuts.scratch),
+      run: () => setShowNewScratch(true),
+    },
+    {
       id: 'new-window',
       label: 'New window',
-      shortcut: '⇧⌘N',
       run: () => void newWindow().catch(report),
     },
     {
@@ -1913,7 +1955,17 @@ export function App() {
                     onOpen={(path) => void openFile(path)}
                     onExclude={(path, excluded) => void setDirectoryExcluded(path, excluded)}
                   />
-                ) : (
+                ) : null}
+                {item === 'project' && (
+                  <ScratchList
+                    files={scratches.files}
+                    active={focusPath}
+                    onOpen={(path) => void openFile(path)}
+                    onDelete={(path) => void deleteScratch(path)}
+                    onNew={() => setShowNewScratch(true)}
+                  />
+                )}
+                {item === 'project' ? null : (
                   <Suspense fallback={<p className="empty-note">Opening tools…</p>}>
                     {item === 'git' ? (
                       <GitPanel
@@ -2139,7 +2191,10 @@ export function App() {
                         }
                         document={mainDoc}
                         dark={dark}
-                        readOnly={!mainDoc.session.path.startsWith(`${workspace.root}/`)}
+                        readOnly={
+                          !mainDoc.session.path.startsWith(`${workspace.root}/`) &&
+                          !isScratch(mainDoc.session.path)
+                        }
                         onNavigate={(operation, at) => void navigate(operation, at, active)}
                         onPosition={setPosition}
                         onFocus={() => setFocusPane('main')}
@@ -2176,7 +2231,10 @@ export function App() {
                           }
                           document={splitDoc}
                           dark={dark}
-                          readOnly={!splitDoc.session.path.startsWith(`${workspace.root}/`)}
+                          readOnly={
+                            !splitDoc.session.path.startsWith(`${workspace.root}/`) &&
+                            !isScratch(splitDoc.session.path)
+                          }
                           onNavigate={(operation, at) => void navigate(operation, at, split)}
                           onPosition={setPosition}
                           onFocus={() => setFocusPane('split')}
@@ -2649,6 +2707,12 @@ export function App() {
             setHistoryPreferences(history);
           }}
           onClose={() => setShowSettings(false)}
+        />
+      )}
+      {showNewScratch && (
+        <NewScratchDialog
+          onCreate={(type) => void createScratch(type)}
+          onClose={() => setShowNewScratch(false)}
         />
       )}
       {editorMenu && (

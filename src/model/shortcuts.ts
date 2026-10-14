@@ -13,6 +13,7 @@ export const shortcutActions = {
   rename: 'Rename symbol',
   fixes: 'Quick fixes',
   copyReference: 'Copy reference (path:line)',
+  scratch: 'New scratch file',
   breakpoint: 'Toggle breakpoint',
   branches: 'Git branches',
 } as const;
@@ -33,6 +34,7 @@ export const defaultShortcuts: Shortcuts = {
   rename: 'Shift-F6',
   fixes: 'Alt-Enter',
   copyReference: 'Mod-Alt-Shift-c',
+  scratch: 'Mod-Shift-n',
   breakpoint: 'Mod-F8',
   branches: 'Mod-Shift-b',
 };
@@ -68,6 +70,7 @@ export const globalShortcutActions: ShortcutAction[] = [
   'back',
   'forward',
   'branches',
+  'scratch',
 ];
 export const isDoubleTap = (value: string) => doubleTap.test(value);
 

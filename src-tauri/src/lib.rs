@@ -155,7 +155,7 @@ pub fn run() {
             // The standard macOS menu, plus Settings… after About and New Window in the File menu.
             let menu = Menu::default(app.handle())?;
             let settings = MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
-            let new_window = MenuItem::with_id(app, "new-window", "New Window", true, Some("CmdOrCtrl+Shift+N"))?;
+            let new_window = MenuItem::with_id(app, "new-window", "New Window", true, None::<&str>)?;
             let mut submenus = menu.items()?.into_iter().filter_map(|item| match item {
                 MenuItemKind::Submenu(submenu) => Some(submenu),
                 _ => None,

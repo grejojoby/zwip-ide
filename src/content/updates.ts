@@ -22,6 +22,33 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-14-scratch-files-and-selection',
+    version: '0.1.0',
+    date: '2026-10-14',
+    title: 'Scratch files and visible selections',
+    summary: 'IntelliJ-style scratch files, and selected text is highlighted again.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Scratch files',
+        description:
+          'New Scratch File (⇧⌘N) creates a scratch file for Go, JSON, Markdown, text, SQL, YAML, shell, TypeScript, JavaScript, Python, HTML, CSS, XML, TOML or HTTP. Scratches live outside your projects, are shared by every project and appear under "Scratches and Consoles" below the project tree. Language tools such as navigation do not cover scratch files.',
+      },
+      {
+        type: 'fixed',
+        title: 'Selection highlight',
+        description:
+          'Selected text on the caret’s line was hidden behind the current-line highlight. Selections now show on every line, and other occurrences of the selected text are marked.',
+      },
+      {
+        type: 'improved',
+        title: 'New Window shortcut',
+        description:
+          '⇧⌘N now creates a scratch file, as in IntelliJ. File › New Window has no shortcut.',
+      },
+    ],
+  },
+  {
     id: '2026-10-14-git-panel-external-changes',
     version: '0.1.0',
     date: '2026-10-14',

@@ -72,6 +72,14 @@ export const api = {
     request<import('./contracts').Connection[]>('connection.delete', { id }),
   getSetting: <T>(key: string) => request<T | null>('settings.get', { key }),
   setSetting: <T>(key: string, value: T) => request<T>('settings.set', { key, value }),
+  scratches: () =>
+    request<{
+      dir: string;
+      files: { path: string; name: string; size: number; modified: number }[];
+    }>('scratch.list'),
+  createScratch: (extension: string, content: string) =>
+    request<{ path: string }>('scratch.create', { extension, content }),
+  deleteScratch: (path: string) => request<null>('scratch.delete', { path }),
   /** Starts language providers for every module now and asks them to pre-build caches. */
   indexWorkspace: () =>
     request<{

@@ -21,10 +21,11 @@ const supportedActions: Record<string, ShortcutAction> = {
   RenameElement: 'rename',
   ShowIntentionActions: 'fixes',
   CopyReference: 'copyReference',
+  NewScratchFile: 'scratch',
   ToggleLineBreakpoint: 'breakpoint',
 };
 
-// Resolved keyboard defaults for these 15 actions, verified read-only in IU223.8836.41:
+// Resolved keyboard defaults for these 16 actions, verified read-only in IU223.8836.41:
 // app.jar keymaps/Mac OS X 10.5+.xml SHA256 af6d1085602abde2b77c86251f851e94e08516a24a682c8b9f2a99dcf7b4a111
 // app.jar keymaps/$default.xml SHA256 a0cb43d8100cc8cd9e1a8e7f1bfe12ff4010e2c151e8ea7725be91d9c814a03b
 // MacOSDefaultKeymap converts Ctrl/Meta for inherited stock shortcuts, not custom overrides:
@@ -46,6 +47,8 @@ const stockKeyboardBindings: [string, string[]][] = [
   ['ShowIntentionActions', ['alt ENTER']],
   // $default.xml "control alt shift C", converted to Meta by the macOS stock keymap.
   ['CopyReference', ['meta alt shift C']],
+  // Mac OS X 10.5+.xml overrides NewScratchFile to "meta shift N".
+  ['NewScratchFile', ['meta shift N']],
   ['ToggleLineBreakpoint', ['meta F8']],
 ];
 const macDefaults: IntelliJKeymapAction[] = stockKeyboardBindings.map(([id, strokes]) => ({

@@ -6,6 +6,7 @@ mod git;
 mod intellij_import;
 mod packages;
 mod recovery;
+mod scratch;
 mod semantic;
 mod tasks;
 mod terminal;
@@ -38,6 +39,7 @@ pub struct Core {
     documents: Mutex<Documents>,
     generation: AtomicU64,
     data: PathBuf,
+    scratches: scratch::Scratches,
     packages: Mutex<packages::PackageHost>,
     canceled: Mutex<HashMap<String, semantic::Cancellation>>,
     tasks: tasks::Tasks,
@@ -78,6 +80,7 @@ impl Core {
             workspace: Mutex::new(None),
             documents: Mutex::new(documents),
             generation: AtomicU64::new(0),
+            scratches: scratch::Scratches::new(&data),
             data,
         })
     }
@@ -310,6 +313,15 @@ impl Core {
                 Ok(json!({"paths":paths,"configurationChanged":configuration_changed}))
             }
             "workspace.status" => self.workspace_status(),
+            "scratch.list" => self.scratches.list(),
+            "scratch.create" => self.scratches.create(
+                string(&params, "extension")?,
+                params["content"].as_str().unwrap_or(""),
+            ),
+            "scratch.delete" => {
+                self.scratches.delete(string(&params, "path")?)?;
+                Ok(Value::Null)
+            }
             "workspace.index" => self.index_workspace(),
             "workspace.scanProgress" => {
                 Ok(json!({"files": self.scanned_files.load(Ordering::Relaxed)}))
@@ -404,7 +416,9 @@ impl Core {
                 // Existing mirrors remain editable after external deletion. Saves
                 // still compare the disk baseline and cannot recreate implicitly.
                 let path = PathBuf::from(document_key(string(&params, "path")?));
-                Documents::ensure_writable(&path, &workspace.root)?;
+                if !self.scratches.contains(&path) {
+                    Documents::ensure_writable(&path, &workspace.root)?;
+                }
                 let path = path.to_string_lossy().into_owned();
                 let revision = params["revision"]
                     .as_u64()

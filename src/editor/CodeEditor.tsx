@@ -56,7 +56,14 @@ function theme(dark: boolean): Extension {
           paddingRight: '8px',
         },
         '.cm-lineNumbers .cm-gutterElement': { minWidth: '3em' },
-        '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: 'var(--active-line)' },
+        '.cm-activeLineGutter': { backgroundColor: 'var(--active-line)' },
+        // The selection layer sits behind the text lines; an opaque current-line background
+        // would hide the selection on the caret's line.
+        '.cm-activeLine': {
+          backgroundColor: 'color-mix(in srgb, var(--active-line) 60%, transparent)',
+        },
+        // Other occurrences of the selected text, as IntelliJ marks them.
+        '.cm-selectionMatch': { backgroundColor: 'var(--selection-match)' },
         '.cm-cursor': { borderLeftColor: 'var(--text)' },
         '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': {
           backgroundColor: 'var(--selection)',

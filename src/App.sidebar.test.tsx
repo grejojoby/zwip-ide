@@ -78,6 +78,7 @@ vi.mock('./api', () => ({
   api: {
     openWorkspace: vi.fn(),
     indexWorkspace: vi.fn(async () => ({ started: [], unavailable: [] })),
+    scratches: vi.fn(async () => ({ dir: '/scratches', files: [] })),
     openDocument: vi.fn(),
     changeDocument: vi.fn(),
     closeDocument: vi.fn(),

@@ -778,3 +778,39 @@ fn indexing_reports_languages_without_an_installed_provider() {
         .unwrap()
         .is_empty());
 }
+
+#[test]
+fn scratch_files_outside_the_workspace_are_editable_and_saved() {
+    let root = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    fs::write(root.path().join("main.go"), "package main\n").unwrap();
+    let core = Core::new(data.path().to_owned()).unwrap();
+    core.request("workspace.open", json!({"root":root.path()}))
+        .unwrap();
+    let created = core
+        .request("scratch.create", json!({"extension":"json","content":"{}"}))
+        .unwrap();
+    let path = created["path"].as_str().unwrap().to_owned();
+    core.request("document.open", json!({"path":path})).unwrap();
+    core.request(
+        "document.change",
+        json!({"path":path,"revision":1,"changes":[{"from":0,"to":2,"insert":"{\"a\":1}"}]}),
+    )
+    .unwrap();
+    core.request("document.save", json!({"path":path,"revision":2}))
+        .unwrap();
+    assert_eq!(fs::read_to_string(&path).unwrap(), "{\"a\":1}");
+    let listed = core.request("scratch.list", json!({})).unwrap();
+    assert_eq!(listed["files"][0]["name"], "scratch.json");
+    // Other files outside the workspace stay read-only.
+    let outside = data.path().join("other.json");
+    fs::write(&outside, "{}").unwrap();
+    core.request("document.open", json!({"path":outside}))
+        .unwrap();
+    assert!(core
+        .request(
+            "document.change",
+            json!({"path":outside,"revision":1,"changes":[{"from":0,"to":0,"insert":" "}]}),
+        )
+        .is_err());
+}
