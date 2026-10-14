@@ -22,6 +22,21 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-14-project-tree-reveal-once',
+    version: '0.1.0',
+    date: '2026-10-14',
+    title: 'Project tree stays where you scroll',
+    summary: 'Expanding a folder no longer jumps the project tree back to the open file.',
+    changes: [
+      {
+        type: 'fixed',
+        title: 'Open file revealed once',
+        description:
+          'The project tree scrolls to a file when it is opened, then leaves the scroll position alone. Expanding another folder no longer jumps back to the open file.',
+      },
+    ],
+  },
+  {
     id: '2026-10-14-file-type-icons',
     version: '0.1.0',
     date: '2026-10-14',

@@ -49,6 +49,25 @@ describe('active source in project tree', () => {
       'true',
     );
   });
+  it('reveals the active file once, not again when another folder is expanded', () => {
+    const many = [
+      ...Array.from({ length: 60 }, (_, index) => `a/file${index}.ts`),
+      'b/other.ts',
+      'z/target.ts',
+    ].map((relativePath) => ({ path: `/project/${relativePath}`, relativePath, size: 1 }));
+    const view = render(
+      <ProjectTree root="/project" files={many} active="/project/z/target.ts" onOpen={() => {}} />,
+    );
+    const tree = screen.getByRole('tree');
+    // Expanding "a" pushes the active file far below the viewport; the tree must stay put.
+    fireEvent.click(screen.getByRole('treeitem', { name: 'a' }));
+    expect(tree.scrollTop).toBe(0);
+    // Opening another file still reveals it.
+    view.rerender(
+      <ProjectTree root="/project" files={many} active="/project/a/file59.ts" onOpen={() => {}} />,
+    );
+    expect(tree.scrollTop).toBeGreaterThan(0);
+  });
   it('does not mark directories selected when no file is active', () => {
     render(<ProjectTree root="/project" files={files} onOpen={() => {}} />);
     expect(screen.getByRole('treeitem', { name: 'src' }).getAttribute('aria-selected')).toBe(

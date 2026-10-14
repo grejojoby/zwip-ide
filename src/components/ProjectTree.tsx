@@ -103,10 +103,18 @@ export function ProjectTree({
       ancestors.every((path) => current.has(path)) ? current : new Set([...current, ...ancestors]),
     );
   }, [activeRelativePath]);
+  // Reveal a file once when it becomes active, not again whenever the rows change (expanding a
+  // folder must not jump back to it). The reveal waits until its ancestors are expanded.
+  const reveal = useRef(active);
   useEffect(() => {
-    const target = entries.findIndex((entry) => entry.file?.path === active);
+    reveal.current = active;
+  }, [active]);
+  useEffect(() => {
+    if (!reveal.current) return;
+    const target = entries.findIndex((entry) => entry.file?.path === reveal.current);
     const element = viewport.current;
     if (!element || target < 0) return;
+    reveal.current = undefined;
     const top = target * ROW;
     if (top < element.scrollTop || top + ROW > element.scrollTop + height) {
       element.scrollTop = Math.max(0, top - Math.max(0, height - ROW) / 2);
