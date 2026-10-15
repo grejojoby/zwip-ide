@@ -228,6 +228,7 @@ describe('sidebar panel ownership', () => {
     await waitFor(() => expect(visits).toBe(1));
     vi.mocked(open).mockResolvedValue('/other-fixture');
     fireEvent.click(screen.getByRole('button', { name: /sidebar-fixture/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'This window' }));
     await screen.findByRole('button', { name: /other-fixture/ });
     await waitFor(() => expect(railButton('right', 'git').disabled).toBe(false));
     storage.set(layoutKey, {
@@ -237,6 +238,7 @@ describe('sidebar panel ownership', () => {
     });
     vi.mocked(open).mockResolvedValue(root);
     fireEvent.click(screen.getByRole('button', { name: /other-fixture/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'This window' }));
     await screen.findByLabelText('Git commit draft');
     expect(panel('git').dataset.sidebarSide).toBe('left');
     await act(async () => {

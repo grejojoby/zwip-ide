@@ -84,11 +84,13 @@ impl Documents {
         if metadata.len() > 16 * 1024 * 1024 {
             return Err("File exceeds the 16 MiB editable-file limit".into());
         }
-        let content =
-            fs::read_to_string(&path).map_err(|e| format!("Cannot open as UTF-8 text: {e}"))?;
-        if content.contains('\0') {
+        let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+        // Check NUL first so binary files report as binary, not as bad UTF-8.
+        if bytes.contains(&0) {
             return Err("Binary files cannot be opened in the text editor".into());
         }
+        let content = String::from_utf8(bytes)
+            .map_err(|e| format!("Cannot open as UTF-8 text: {}", e.utf8_error()))?;
         let mut doc = Document {
             path: path.clone(),
             disk_hash: hash(content.as_bytes()),

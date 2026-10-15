@@ -395,7 +395,7 @@ describe('native desktop workspace', () => {
     await $('button=Close session').click();
   });
 
-  it('Cmd-clicks a usage to its declaration and a declaration to docked usages', async () => {
+  it('Cmd-clicks to a declaration and opens each usages search in a popup until docked', async () => {
     await browser.execute(() => {
       const transport = window.__TAURI_INTERNALS__;
       const invoke = transport.invoke.bind(transport);
@@ -428,13 +428,29 @@ describe('native desktop workspace', () => {
     await cmdClickText('Editor for consumer.ts', 'Worker', 1);
     await $('[aria-label="Editor for types.ts"]').waitForDisplayed({ timeout: 20000 });
     await cmdClickText('Editor for types.ts', 'Worker');
-    const results = $('.results-panel');
+    const results = $('[role="dialog"][aria-label="Usages of Worker"]');
     await results.waitForDisplayed({ timeout: 20000 });
     await browser.waitUntil(async () => (await results.getText()).includes('consumer.ts'), {
       timeout: 20000,
     });
-    assert.match(await results.getText(), /complete/);
+    await results.$('[aria-label="Dock to bottom panel"]').click();
+    await $('.results-panel').waitForDisplayed();
+    await browser.waitUntil(
+      async () => (await $('.results-panel').getText()).includes('complete'),
+      {
+        timeout: 20000,
+      },
+    );
+    assert.match(await $('.results-panel').getText(), /complete/);
+    await cmdClickText('Editor for types.ts', 'Worker');
+    const nextResults = $('[role="dialog"][aria-label="Usages of Worker"]');
+    await nextResults.waitForDisplayed({ timeout: 20000 });
+    await browser.waitUntil(async () => (await nextResults.getText()).includes('consumer.ts'), {
+      timeout: 20000,
+    });
+    assert.equal(await $('.results-panel').isExisting(), false);
     await screenshot('cmd-click-usages');
+    await nextResults.$('[aria-label="Close usages"]').click();
   });
 
   it('browses SQLite, reviews a row edit, and executes a query through the UI', async () => {

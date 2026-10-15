@@ -5,6 +5,7 @@ mod files;
 mod git;
 mod intellij_import;
 mod packages;
+mod query_console;
 mod recovery;
 mod scratch;
 mod semantic;
@@ -40,6 +41,7 @@ pub struct Core {
     generation: AtomicU64,
     data: PathBuf,
     scratches: scratch::Scratches,
+    query_consoles: query_console::QueryConsoles,
     packages: Mutex<packages::PackageHost>,
     canceled: Mutex<HashMap<String, semantic::Cancellation>>,
     tasks: tasks::Tasks,
@@ -81,6 +83,7 @@ impl Core {
             documents: Mutex::new(documents),
             generation: AtomicU64::new(0),
             scratches: scratch::Scratches::new(&data),
+            query_consoles: query_console::QueryConsoles::new(&data),
             data,
         })
     }
@@ -322,6 +325,13 @@ impl Core {
                 self.scratches.delete(string(&params, "path")?)?;
                 Ok(Value::Null)
             }
+            "queryConsole.get" => self.query_consoles.get(string(&params, "connectionId")?),
+            "queryConsole.save" => self.query_consoles.save(
+                string(&params, "connectionId")?,
+                params["content"]
+                    .as_str()
+                    .ok_or("Missing console content")?,
+            ),
             "workspace.index" => self.index_workspace(),
             "workspace.scanProgress" => {
                 Ok(json!({"files": self.scanned_files.load(Ordering::Relaxed)}))
@@ -590,11 +600,16 @@ impl Core {
                 .lock()
                 .map_err(|e| e.to_string())?
                 .save(&params),
-            "connection.delete" => self
-                .connections
-                .lock()
-                .map_err(|e| e.to_string())?
-                .delete(string(&params, "id")?),
+            "connection.delete" => {
+                let id = string(&params, "id")?;
+                let connections = self
+                    .connections
+                    .lock()
+                    .map_err(|e| e.to_string())?
+                    .delete(id)?;
+                self.query_consoles.remove(id)?;
+                Ok(connections)
+            }
             "tool.request" => {
                 let workspace = self.current()?;
                 let package = string(&params, "packageId")?;

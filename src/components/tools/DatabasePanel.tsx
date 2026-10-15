@@ -4,7 +4,13 @@ import { Modal } from '../Modal';
 import { ConnectionDialog } from './ConnectionDialog';
 import { RedisBrowser } from './RedisBrowser';
 import { SqlBrowser } from './SqlBrowser';
-import { connectionApi, toolRequest, type Connection } from './tool-api';
+import { api } from '../../api';
+import { connectionApi, SELECTED_CONNECTION_KEY, toolRequest, type Connection } from './tool-api';
+function chooseSelected(items: Connection[], current: string, saved: string | null) {
+  if (current && items.some((item) => item.id === current)) return current;
+  if (saved && items.some((item) => item.id === saved)) return saved;
+  return '';
+}
 export function DatabasePanel({ onDirty }: { onDirty(dirty: boolean): void }) {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [selected, setSelected] = useState('');
@@ -25,10 +31,11 @@ export function DatabasePanel({ onDirty }: { onDirty(dirty: boolean): void }) {
     let requestGeneration = 0;
     const refresh = () => {
       const request = ++requestGeneration;
-      connectionApi
-        .list()
-        .then((items) => {
-          if (current && request === requestGeneration) setConnections(items);
+      Promise.all([connectionApi.list(), api.getSetting<string>(SELECTED_CONNECTION_KEY)])
+        .then(([items, saved]) => {
+          if (!current || request !== requestGeneration) return;
+          setConnections(items);
+          setSelected((value) => chooseSelected(items, value, saved));
         })
         .catch((e) => {
           if (current && request === requestGeneration) setError(asError(e).message);
@@ -42,6 +49,11 @@ export function DatabasePanel({ onDirty }: { onDirty(dirty: boolean): void }) {
       onDirtyRef.current(false);
     };
   }, []);
+  function selectConnection(id: string) {
+    setSelected(id);
+    setError('');
+    void api.setSetting(SELECTED_CONNECTION_KEY, id).catch((e) => setError(asError(e).message));
+  }
   const connection = connections.find((item) => item.id === selected);
   async function saved(items: Connection[], id: string) {
     try {
@@ -53,7 +65,7 @@ export function DatabasePanel({ onDirty }: { onDirty(dirty: boolean): void }) {
       /* An unavailable worker has no connection to release. */
     }
     setConnections(items);
-    setSelected(id);
+    selectConnection(id);
     setGeneration((value) => value + 1);
     setEditing(null);
     setError('');
@@ -71,8 +83,8 @@ export function DatabasePanel({ onDirty }: { onDirty(dirty: boolean): void }) {
         /* Connection metadata can be removed while a worker is unavailable. */
       }
       const items = await connectionApi.delete(connection.id);
-      setSelected('');
       setConnections(items);
+      selectConnection('');
       setDeleting(false);
     } catch (e) {
       setError(asError(e).message);
@@ -87,10 +99,7 @@ export function DatabasePanel({ onDirty }: { onDirty(dirty: boolean): void }) {
           aria-label="Saved database connection"
           disabled={dirty}
           value={selected}
-          onChange={(e) => {
-            setSelected(e.target.value);
-            setError('');
-          }}
+          onChange={(e) => selectConnection(e.target.value)}
         >
           <option value="">Choose a connection…</option>
           {connections.map((item) => (

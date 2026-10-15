@@ -10,31 +10,40 @@ export function SqlConsole({
   kind,
   tables,
   columns,
+  initialContent = '',
   onExecute,
   onRead,
+  onChange,
 }: {
   kind: Connection['kind'];
   tables: SqlTable[];
   columns: Record<string, SqlColumn[]>;
+  initialContent?: string;
   onExecute(): void;
   onRead(read: () => string): void;
+  onChange?(content: string): void;
 }) {
   const parent = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const language = useRef(new Compartment());
-  const callbacks = useRef({ onExecute, onRead });
-  callbacks.current = { onExecute, onRead };
+  const initial = useRef(initialContent);
+  const callbacks = useRef({ onExecute, onRead, onChange });
+  callbacks.current = { onExecute, onRead, onChange };
   useEffect(() => {
     if (!parent.current) return;
     const editor = new EditorView({
       parent: parent.current,
       state: EditorState.create({
+        doc: initial.current,
         extensions: [
           lineNumbers(),
           history(),
           autocompletion(),
           language.current.of([]),
           syntaxColors(),
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged) callbacks.current.onChange?.(update.state.doc.toString());
+          }),
           keymap.of([
             {
               key: 'Mod-Enter',

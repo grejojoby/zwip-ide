@@ -22,6 +22,94 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-15-simpler-project-heading',
+    version: '0.1.0',
+    date: '2026-10-15',
+    title: 'Simpler project heading',
+    summary: 'The Project sidebar heading no longer repeats the project name.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'Less repetition',
+        description:
+          'Removed the redundant project name beside the Project sidebar heading. The project name remains in the dropdown above.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-15-usages-modal-navigation',
+    version: '0.1.0',
+    date: '2026-10-15',
+    title: 'Consistent usages popups',
+    summary: 'Every usages search opens in a popup, with docking applied only to that search.',
+    changes: [
+      {
+        type: 'fixed',
+        title: 'Popup by default',
+        description:
+          'New usages searches open in a popup even after docking an earlier search or navigating from a code preview. Missing caret coordinates no longer send results to the bottom panel. The loading popup appears while pending edits are synchronized, and closing or docking it returns focus to the source editor.',
+      },
+      {
+        type: 'fixed',
+        title: 'Declaration-to-usages navigation',
+        description:
+          'Invoking declaration/usages with the caret immediately after a declaration name now finds its usages instead of jumping back to the same declaration. Incomplete searches continue to show coverage and provider reasons.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-15-database-consoles-across-projects',
+    version: '0.1.0',
+    date: '2026-10-15',
+    title: 'SQL consoles stay across projects',
+    summary:
+      'The last database connection and its query console are kept in the IDE, not in a project.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Persisted SQL consoles',
+        description:
+          'Each saved SQL connection keeps a console.sql file in the application data directory, matching IntelliJ’s consoles/db layout. The text is restored when you reopen that connection in another project, and is removed with the connection. Redis has no query console.',
+      },
+      {
+        type: 'improved',
+        title: 'Last connection restored',
+        description:
+          'The Database tool window reselects the last chosen connection across projects. Connection profiles were already stored in the application data directory, not in the project.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-15-open-project-window-choice',
+    version: '0.1.0',
+    date: '2026-10-15',
+    title: 'Choose where a project opens',
+    summary: 'Opening a project asks whether to use this window or a new one.',
+    changes: [
+      {
+        type: 'added',
+        title: 'This window or new window',
+        description:
+          'After you pick a folder with Open project, a prompt offers this window or a new window. It appears only when a project is already open; the welcome screen still opens projects directly.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-15-binary-file-message',
+    version: '0.1.0',
+    date: '2026-10-15',
+    title: 'Clearer message for binary files',
+    summary: 'Opening a binary file such as .DS_Store now says it is binary.',
+    changes: [
+      {
+        type: 'fixed',
+        title: 'Binary files no longer reported as bad UTF-8',
+        description:
+          'Binary files that contain NUL bytes now show "Binary files cannot be opened in the text editor" instead of a UTF-8 decoding error. Text files in other encodings still cannot be opened.',
+      },
+    ],
+  },
+  {
     id: '2026-10-14-project-tree-reveal-once',
     version: '0.1.0',
     date: '2026-10-14',

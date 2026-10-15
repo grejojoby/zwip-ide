@@ -10,7 +10,9 @@ export function containsPosition(
     location.path === path &&
     (position.line > start.line ||
       (position.line === start.line && position.character >= start.character)) &&
-    (position.line < end.line || (position.line === end.line && position.character < end.character))
+    // A keyboard invocation can place the caret just after the declaration's name.
+    (position.line < end.line ||
+      (position.line === end.line && position.character <= end.character))
   );
 }
 

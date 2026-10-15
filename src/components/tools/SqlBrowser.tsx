@@ -3,7 +3,7 @@ import type { Connection, SqlColumn, SqlPage, SqlQueryPage, SqlTable } from '../
 import { asError } from '../../model/document-session';
 import { Modal } from '../Modal';
 import { SqlConsole } from './SqlConsole';
-import { toolRequest } from './tool-api';
+import { queryConsoleApi, toolRequest } from './tool-api';
 import { cellText, parseCell } from './sql-values';
 type Row = Record<string, unknown>;
 export function SqlBrowser({
@@ -22,6 +22,7 @@ export function SqlBrowser({
   const [filter, setFilter] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [consoleContent, setConsoleContent] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Map<number, Row>>(new Map());
   const [cell, setCell] = useState<{ row: number; column: SqlColumn } | null>(null);
   const [review, setReview] = useState(false);
@@ -29,14 +30,34 @@ export function SqlBrowser({
   const requestId = useRef(0);
   const runningQuery = useRef<string | null>(null);
   const readSql = useRef<() => string>(() => '');
+  const pendingConsole = useRef<string | null>(null);
+  const saveTimer = useRef(0);
   const busyRef = useRef(false);
   busyRef.current = busy;
   const connectionId = connection.id;
   useEffect(() => {
     ++epoch.current;
+    const mounted = epoch.current;
+    setConsoleContent(null);
+    pendingConsole.current = null;
     void loadSchema();
+    queryConsoleApi
+      .get(connectionId)
+      .then((result) => {
+        if (epoch.current === mounted) setConsoleContent(result.content);
+      })
+      .catch((e) => {
+        if (epoch.current === mounted) {
+          setConsoleContent('');
+          setError(asError(e).message);
+        }
+      });
     return () => {
       ++epoch.current;
+      window.clearTimeout(saveTimer.current);
+      const pending = pendingConsole.current;
+      pendingConsole.current = null;
+      if (pending !== null) void queryConsoleApi.save(connectionId, pending).catch(() => {});
       if (runningQuery.current)
         void toolRequest('sql', 'cancel', { queryId: runningQuery.current }).catch(() => {});
       void toolRequest('sql', 'disconnect', { connectionId }).catch(() => {});
@@ -45,6 +66,19 @@ export function SqlBrowser({
   useEffect(() => {
     onDirty(drafts.size > 0);
   }, [drafts.size, onDirty]);
+  function persistConsole(content: string) {
+    pendingConsole.current = content;
+    window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      const pending = pendingConsole.current;
+      if (pending === null) return;
+      pendingConsole.current = null;
+      const mounted = epoch.current;
+      void queryConsoleApi.save(connectionId, pending).catch((e) => {
+        if (epoch.current === mounted) setError(asError(e).message);
+      });
+    }, 400);
+  }
   async function run<T>(operation: () => Promise<T>, apply: (value: T) => void) {
     const mounted = epoch.current;
     const id = ++requestId.current;
@@ -206,15 +240,19 @@ export function SqlBrowser({
         <summary>
           SQL console <span>⌘Enter executes selection or query</span>
         </summary>
-        <SqlConsole
-          kind={connection.kind}
-          tables={tables}
-          columns={columns}
-          onRead={(read) => {
-            readSql.current = read;
-          }}
-          onExecute={() => void execute()}
-        />
+        {consoleContent !== null && (
+          <SqlConsole
+            kind={connection.kind}
+            tables={tables}
+            columns={columns}
+            initialContent={consoleContent}
+            onRead={(read) => {
+              readSql.current = read;
+            }}
+            onExecute={() => void execute()}
+            onChange={persistConsole}
+          />
+        )}
         <div className="tool-section-title">
           <button className="primary" disabled={busy} onClick={() => void execute()}>
             Execute

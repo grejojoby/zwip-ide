@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
-import { api } from './api';
+import { api, newWindow } from './api';
 import { open } from '@tauri-apps/plugin-dialog';
 import { EditorStore, type OpenEditor } from './editor/editor-store';
 import type { WorkspaceSnapshot } from './contracts';
@@ -18,6 +18,7 @@ vi.mock('./editor/CodeEditor', () => ({
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn() }));
 vi.mock('./api', () => ({
   request: vi.fn(),
+  newWindow: vi.fn(async () => undefined),
   api: {
     openWorkspace: vi.fn(),
     indexWorkspace: vi.fn(async () => ({ started: [], unavailable: [] })),
@@ -151,6 +152,7 @@ describe('workspace and tab ownership', () => {
     });
     vi.mocked(open).mockResolvedValue('/second');
     fireEvent.click(screen.getByRole('button', { name: /first/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'This window' }));
     const barrier = await screen.findByRole('dialog', { name: 'Opening workspace' });
     expect(api.openWorkspace).toHaveBeenCalledTimes(1);
     fireEvent(barrier, new Event('cancel', { bubbles: true, cancelable: true }));
@@ -170,6 +172,7 @@ describe('workspace and tab ownership', () => {
     vi.mocked(api.openWorkspace).mockReturnValueOnce(reply.promise);
     vi.mocked(open).mockResolvedValue('/second');
     fireEvent.click(screen.getByRole('button', { name: /first/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'This window' }));
     const barrier = await screen.findByRole('dialog', { name: 'Opening workspace' });
     expect(barrier.querySelector('button')).toBeNull();
     expect(screen.getByRole('tab', { name: 'file.txt' })).toBeTruthy();
@@ -177,5 +180,14 @@ describe('workspace and tab ownership', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(screen.getByRole('button', { name: /second/ })).toBeTruthy();
     expect(screen.queryByRole('tab', { name: 'file.txt' })).toBeNull();
+  });
+  it('opens the chosen project in a new window without replacing this workspace', async () => {
+    await openInitialFile();
+    vi.mocked(open).mockResolvedValue('/second');
+    fireEvent.click(screen.getByRole('button', { name: /first/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'New window' }));
+    await waitFor(() => expect(newWindow).toHaveBeenCalledWith('/second'));
+    expect(api.openWorkspace).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('tab', { name: 'file.txt' })).toBeTruthy();
   });
 });

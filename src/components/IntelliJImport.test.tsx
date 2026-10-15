@@ -110,6 +110,7 @@ describe('IntelliJ import review', () => {
       const method = (args as { method: string }).method;
       methods.push(method);
       if (method === 'connection.list') return imported ? [connection] : [];
+      if (method === 'settings.get') return null;
       if (method === 'intellij.preview') return preview();
       if (method === 'intellij.importConnections') {
         imported = true;
@@ -128,9 +129,11 @@ describe('IntelliJ import review', () => {
     );
     expect(methods).toEqual([
       'connection.list',
+      'settings.get',
       'intellij.preview',
       'intellij.importConnections',
       'connection.list',
+      'settings.get',
     ]);
   });
   it('only previews first, disables unsupported entries, and saves selected connections without connecting', async () => {

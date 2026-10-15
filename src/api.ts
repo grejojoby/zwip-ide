@@ -70,6 +70,10 @@ export const api = {
     request<import('./contracts').Connection[]>('connection.save', { ...connection, password }),
   deleteConnection: (id: string) =>
     request<import('./contracts').Connection[]>('connection.delete', { id }),
+  queryConsole: (connectionId: string) =>
+    request<{ content: string }>('queryConsole.get', { connectionId }),
+  saveQueryConsole: (connectionId: string, content: string) =>
+    request<{ content: string }>('queryConsole.save', { connectionId, content }),
   getSetting: <T>(key: string) => request<T | null>('settings.get', { key }),
   setSetting: <T>(key: string, value: T) => request<T>('settings.set', { key, value }),
   scratches: () =>

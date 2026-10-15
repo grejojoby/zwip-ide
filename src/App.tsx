@@ -3,6 +3,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
 // Already in the main bundle: the syntax runtime shares it with downloaded grammars.
 import { closeCompletion } from '@codemirror/autocomplete';
+import { EditorState } from '@codemirror/state';
 import { api, newWindow, request } from './api';
 import type {
   EditorOperation,
@@ -444,10 +445,14 @@ export function App() {
   const updatesDismissed = useRef(false);
   const [closePath, setClosePath] = useState<string>();
   const [pendingRoot, setPendingRoot] = useState<string>();
+  const [chosenRoot, setChosenRoot] = useState<string>();
   const [targets, setTargets] = useState<SourceLocation[] | null>(null);
-  const [usagesPopup, setUsagesPopup] = useState<{ anchor: PopupAnchor; symbol: string } | null>(
-    null,
-  );
+  const [usagesPopup, setUsagesPopup] = useState<{
+    id: string;
+    anchor: PopupAnchor;
+    symbol: string;
+    editor?: EditorView;
+  } | null>(null);
   // Files the usage preview opened without a tab; released once the popup and its navigation end.
   const previewDocuments = useRef(new Set<string>());
   const [batch, setBatch] = useState<NavigationBatch | null>(null);
@@ -662,6 +667,7 @@ export function App() {
     setOpening(true);
     cancelNavigation();
     setTargets(null);
+    setUsagesPopup(null);
     searchId.current += 1;
     setSearching(false);
     setError('');
@@ -774,6 +780,7 @@ export function App() {
         title: inNewWindow ? 'Open project in new window' : 'Open project workspace',
       });
       if (root && inNewWindow) await newWindow(root);
+      else if (root && workspace) setChosenRoot(root);
       else if (root) await loadWorkspace(root);
     } catch (e) {
       report(e);
@@ -1012,21 +1019,30 @@ export function App() {
     setBatch(null);
     setUsagesPopup(null);
     const generation = workspaceRef.current.generation;
-    // Usages open in a popup under the caret line unless the docked panel already shows them.
+    // Capture the invocation before an async flush or popup focus changes the editor.
+    const view = [...doc.views].find((item) => item.hasFocus) ?? [...doc.views][0];
+    const state = view?.state ?? doc.state ?? EditorState.create({ doc: doc.initial });
+    const offset = offsetAt(state, at);
+    const coords = view?.coordsAtPos(offset);
+    const bounds = view?.dom.getBoundingClientRect();
+    const word = state.wordAt(offset);
+    const popup = {
+      id,
+      editor: view,
+      anchor: coords ?? {
+        left: bounds?.left ?? Math.max(12, (window.innerWidth - 760) / 2),
+        top: bounds?.top ?? window.innerHeight / 3,
+        bottom: bounds?.top ?? window.innerHeight / 3,
+      },
+      symbol: word ? state.sliceDoc(word.from, word.to) : 'symbol',
+    };
     let popupShown = false;
     const showUsagesPopup = () => {
-      const view = [...doc.views].find((item) => item.hasFocus) ?? [...doc.views][0];
-      if (tool === 'usages' || !view) return false;
-      const offset = offsetAt(view.state, at);
-      const coords = view.coordsAtPos(offset);
-      if (!coords) return false;
-      const word = view.state.wordAt(offset);
-      setUsagesPopup({
-        anchor: { left: coords.left, top: coords.top, bottom: coords.bottom },
-        symbol: word ? view.state.sliceDoc(word.from, word.to) : 'symbol',
-      });
-      return true;
+      popupShown = true;
+      setUsagesPopup(popup);
+      setTool((current) => (current === 'usages' ? null : current));
     };
+    if (operation === 'references') showUsagesPopup();
     try {
       const revision = await doc.session.flush();
       const version = doc.session.version;
@@ -1051,7 +1067,9 @@ export function App() {
       const run = (requestedOperation: NavigationOperation) => {
         setNavigationOperation(requestedOperation);
         setNavigationTitle(titles[requestedOperation]);
-        if (requestedOperation === 'references' && showUsagesPopup()) popupShown = true;
+        if (requestedOperation === 'references') {
+          if (!popupShown) showUsagesPopup();
+        }
         // Declarations and implementations open the tool only when there is no single target.
         else if (!['definition', 'typeDefinition', 'implementations'].includes(requestedOperation))
           setTool('usages');
@@ -1902,7 +1920,7 @@ export function App() {
                   <strong>{sidebarLabels[item]}</strong>
                   {item === 'project' ? (
                     <>
-                      <span>{workspace.name}</span>
+                      <div className="spacer" />
                       <FileActions
                         root={workspace.root}
                         activePath={focusPath}
@@ -2744,6 +2762,7 @@ export function App() {
       )}
       {usagesPopup && (
         <UsagesPopup
+          key={usagesPopup.id}
           anchor={usagesPopup.anchor}
           symbol={usagesPopup.symbol}
           workspaceRoot={workspace?.root}
@@ -2770,8 +2789,12 @@ export function App() {
           onDock={() => {
             setUsagesPopup(null);
             setTool('usages');
+            usagesPopup.editor?.focus();
           }}
-          onClose={() => setUsagesPopup(null)}
+          onClose={() => {
+            setUsagesPopup(null);
+            usagesPopup.editor?.focus();
+          }}
         />
       )}
       {closePath && (
@@ -2793,6 +2816,36 @@ export function App() {
               }}
             >
               Save and close
+            </button>
+          </div>
+        </Modal>
+      )}
+      {chosenRoot && (
+        <Modal title="Open project" onClose={() => setChosenRoot(undefined)}>
+          <div className="modal-body">
+            <p>Open {chosenRoot.split('/').pop()} in this window or a new window?</p>
+          </div>
+          <div className="modal-actions">
+            <button onClick={() => setChosenRoot(undefined)}>Cancel</button>
+            <button
+              onClick={() => {
+                const root = chosenRoot;
+                setChosenRoot(undefined);
+                void newWindow(root).catch(report);
+              }}
+            >
+              New window
+            </button>
+            <button
+              className="primary"
+              data-autofocus
+              onClick={() => {
+                const root = chosenRoot;
+                setChosenRoot(undefined);
+                void loadWorkspace(root);
+              }}
+            >
+              This window
             </button>
           </div>
         </Modal>

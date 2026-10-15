@@ -23,6 +23,10 @@ describe('Semantic navigation', () => {
       }),
     ).toBe(false);
   });
+  it('finds usages when the caret is immediately after the declaration name', () => {
+    expect(shouldFindUsages([location], '/a.ts', location.range.end)).toBe(true);
+    expect(shouldFindUsages([location], '/a.ts', { line: 2, character: 11 })).toBe(false);
+  });
   it('rejects results from obsolete documents, workspaces, and query IDs', () => {
     const batch: NavigationBatch = {
       id: 'current',
