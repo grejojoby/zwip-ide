@@ -274,7 +274,7 @@ export interface TaskResult {
 
 export interface Connection {
   id: string;
-  kind: 'mysql' | 'postgres' | 'sqlite' | 'redis';
+  kind: 'mysql' | 'postgres' | 'sqlite' | 'mssql' | 'redis';
   name: string;
   config: {
     host?: string;
@@ -283,6 +283,7 @@ export interface Connection {
     username?: string;
     path?: string;
     tls?: boolean;
+    trustServerCertificate?: boolean;
   };
 }
 export interface SqlColumn {
@@ -296,6 +297,20 @@ export interface SqlTable {
   name: string;
   type: 'table' | 'view';
 }
+export interface SqlProcedure {
+  schema: string;
+  name: string;
+}
+export interface SqlProcedureDetails extends SqlProcedure {
+  description: string | null;
+  definition: string | null;
+  parameters: {
+    name: string;
+    type: string;
+    output: boolean;
+    description: string | null;
+  }[];
+}
 export interface SqlPage {
   rows: Record<string, unknown>[];
   columns: SqlColumn[];
@@ -306,6 +321,7 @@ export interface SqlPage {
   truncated: boolean;
 }
 export interface SqlQueryPage {
+  resultSet?: number;
   queryId?: string;
   rows: Record<string, unknown>[];
   columns: string[];

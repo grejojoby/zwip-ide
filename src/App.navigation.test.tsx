@@ -30,7 +30,7 @@ vi.mock('./api', () => ({
 }));
 const root = '/navigation';
 const path = `${root}/main.ts`;
-const source = 'function Run() {}\nRun();\n';
+const source = 'function Run() {}\nRun();\nRun();\n';
 const usage: SourceLocation = {
   path,
   range: { start: { line: 1, character: 0 }, end: { line: 1, character: 3 } },
@@ -39,7 +39,11 @@ const usage: SourceLocation = {
   contextIds: ['ctx'],
   relationship: 'reference',
 };
-function reply(query: NavigationQuery, locations = [usage]): NavigationBatch {
+const secondUsage: SourceLocation = {
+  ...usage,
+  range: { start: { line: 2, character: 0 }, end: { line: 2, character: 3 } },
+};
+function reply(query: NavigationQuery, locations = [usage, secondUsage]): NavigationBatch {
   return {
     ...query,
     state: 'complete',
@@ -107,19 +111,81 @@ function findUsages(view: EditorView) {
 }
 async function completedPopup() {
   const popup = await screen.findByRole('dialog', { name: 'Usages of Run' });
-  await within(popup).findByText('1 usage', { exact: false });
+  await within(popup).findByText('2 usages', { exact: false });
   return popup;
 }
 describe('usages navigation', () => {
-  it('keeps a single usage in the popup and only opens it when selected', async () => {
+  it('jumps directly to a single complete usage without opening a popup', async () => {
     const view = await openEditor();
+    vi.mocked(api.navigate).mockImplementation(async (query) => reply(query, [usage]));
     findUsages(view);
-    const popup = await completedPopup();
-    expect(screen.queryByRole('region', { name: 'Usages' })).toBeNull();
-    expect(view.state.selection.main.head).toBe(9);
-    fireEvent.keyDown(within(popup).getByRole('listbox'), { key: 'Enter' });
+    expect(screen.queryByRole('dialog', { name: 'Usages of Run' })).toBeNull();
     await waitFor(() => expect(view.state.selection.main.head).toBe(source.indexOf('Run();')));
     expect(screen.queryByRole('dialog', { name: 'Usages of Run' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Usages' })).toBeNull();
+    expect(document.activeElement).toBe(view.contentDOM);
+  });
+  it('jumps directly to a single definition', async () => {
+    const view = await openEditor();
+    const declaration = {
+      ...usage,
+      relationship: 'definition',
+      range: { start: { line: 0, character: 9 }, end: { line: 0, character: 12 } },
+    };
+    vi.mocked(api.navigate).mockImplementation(async (query) => reply(query, [declaration]));
+    act(() => view.dispatch({ selection: { anchor: source.indexOf('Run();') } }));
+    vi.spyOn(EditorView.prototype, 'posAtCoords').mockReturnValue(source.indexOf('Run();') + 1);
+    fireEvent.mouseDown(view.contentDOM, { metaKey: true, button: 0 });
+    await waitFor(() => expect(view.state.selection.main.head).toBe(9));
+    expect(api.navigate).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog', { name: 'Usages of Run' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Usages' })).toBeNull();
+  });
+  it('opens the file and line of a single usage in another file', async () => {
+    await openEditor();
+    const destination = `${root}/helper.ts`;
+    vi.mocked(api.navigate).mockImplementation(async (query) =>
+      reply(query, [{ ...usage, path: destination }]),
+    );
+    const sourceEditor = EditorView.findFromDOM(screen.getByLabelText('Editor for main.ts'))!;
+    findUsages(sourceEditor);
+    const host = await screen.findByLabelText('Editor for helper.ts');
+    const target = EditorView.findFromDOM(host)!;
+    await waitFor(() => expect(target.state.selection.main.head).toBe(source.indexOf('Run();')));
+    expect(screen.queryByRole('dialog', { name: 'Usages of Run' })).toBeNull();
+  });
+  it('jumps from a declaration to its only usage', async () => {
+    const view = await openEditor();
+    const declaration = {
+      ...usage,
+      relationship: 'definition',
+      range: { start: { line: 0, character: 9 }, end: { line: 0, character: 12 } },
+    };
+    vi.mocked(api.navigate).mockImplementation(async (query) =>
+      reply(query, query.operation === 'definition' ? [declaration] : [usage]),
+    );
+    vi.spyOn(EditorView.prototype, 'posAtCoords').mockReturnValue(12);
+    fireEvent.mouseDown(view.contentDOM, { metaKey: true, button: 0 });
+    await waitFor(() => expect(view.state.selection.main.head).toBe(source.indexOf('Run();')));
+    expect(vi.mocked(api.navigate).mock.calls.map(([query]) => query.operation)).toEqual([
+      'definition',
+      'references',
+    ]);
+    expect(screen.queryByRole('dialog', { name: 'Usages of Run' })).toBeNull();
+  });
+  it('keeps the target chooser for multiple definitions', async () => {
+    const view = await openEditor();
+    vi.mocked(api.navigate).mockImplementation(async (query) =>
+      reply(query, [
+        { ...usage, path: `${root}/first.ts`, relationship: 'definition' },
+        { ...usage, path: `${root}/second.ts`, relationship: 'definition' },
+      ]),
+    );
+    vi.spyOn(EditorView.prototype, 'posAtCoords').mockReturnValue(source.indexOf('Run();') + 1);
+    fireEvent.mouseDown(view.contentDOM, { metaKey: true, button: 0 });
+    const chooser = await screen.findByRole('dialog', { name: 'Choose a target' });
+    expect(within(chooser).getAllByRole('option')).toHaveLength(2);
+    expect(view.state.selection.main.head).toBe(9);
   });
   it('docks only the selected search and opens the next search in a popup', async () => {
     const view = await openEditor();
@@ -150,7 +216,7 @@ describe('usages navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Dock to bottom panel' }));
     expect(document.activeElement).toBe(view.contentDOM);
   });
-  it('shows loading before pending document changes finish flushing', async () => {
+  it('waits for pending edits before choosing whether to open a popup', async () => {
     const view = await openEditor();
     let acknowledge!: () => void;
     vi.mocked(api.changeDocument).mockImplementation(
@@ -162,8 +228,7 @@ describe('usages navigation', () => {
     act(() => view.dispatch({ changes: { from: source.length, insert: ' ' } }));
     await waitFor(() => expect(api.changeDocument).toHaveBeenCalled());
     findUsages(view);
-    const popup = screen.getByRole('dialog', { name: 'Usages of Run' });
-    expect(within(popup).getByText('Searching…', { exact: false })).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: 'Usages of Run' })).toBeNull();
     expect(api.navigate).not.toHaveBeenCalled();
     await act(async () => acknowledge());
     await completedPopup();
@@ -180,7 +245,7 @@ describe('usages navigation', () => {
       },
     };
     vi.mocked(api.navigate).mockImplementation(async (query) =>
-      reply(query, query.operation === 'definition' ? [declaration] : [usage]),
+      reply(query, query.operation === 'definition' ? [declaration] : [usage, secondUsage]),
     );
     vi.spyOn(EditorView.prototype, 'posAtCoords').mockReturnValue(12);
     fireEvent.mouseDown(view.contentDOM, { metaKey: true, button: 0 });
@@ -190,21 +255,21 @@ describe('usages navigation', () => {
       'references',
     ]);
   });
-  it('keeps docking a pending search after its result arrives', async () => {
+  it('waits for a pending single-result search and then jumps without a popup', async () => {
     const view = await openEditor();
     let finish!: () => void;
     vi.mocked(api.navigate).mockImplementation(
       (query) =>
         new Promise((resolve) => {
-          finish = () => resolve(reply(query));
+          finish = () => resolve(reply(query, [usage]));
         }),
     );
     findUsages(view);
     await waitFor(() => expect(api.navigate).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole('button', { name: 'Dock to bottom panel' }));
+    expect(screen.queryByRole('dialog', { name: 'Usages of Run' })).toBeNull();
+    expect(view.state.selection.main.head).toBe(9);
     await act(async () => finish());
-    const dock = screen.getByRole('region', { name: 'Usages' });
-    expect(within(dock).getByText('1 result', { exact: false })).toBeTruthy();
+    await waitFor(() => expect(view.state.selection.main.head).toBe(source.indexOf('Run();')));
     expect(screen.queryByRole('dialog', { name: 'Usages of Run' })).toBeNull();
   });
   it('starts a fresh usages popup from a declaration in a preview without an editor tab', async () => {
@@ -222,7 +287,12 @@ describe('usages navigation', () => {
     vi.mocked(api.navigate).mockImplementation(async (query) =>
       reply(
         query,
-        query.operation === 'definition' ? [declaration] : [{ ...usage, path: previewPath }],
+        query.operation === 'definition'
+          ? [declaration]
+          : [
+              { ...usage, path: previewPath },
+              { ...secondUsage, path: previewPath },
+            ],
       ),
     );
     findUsages(view);
@@ -243,21 +313,24 @@ describe('usages navigation', () => {
       }),
     );
   });
-  it('keeps incomplete coverage and provider reasons visible in the popup', async () => {
-    const view = await openEditor();
-    vi.mocked(api.navigate).mockImplementation(async (query) => ({
-      ...reply(query, []),
-      state: 'partial',
-      searchedContexts: 0,
-      reasons: ['The source context is still indexing.'],
-    }));
-    findUsages(view);
-    const popup = await screen.findByRole('dialog', { name: 'Usages of Run' });
-    await within(popup).findByText('The source context is still indexing.');
-    expect(within(popup).getByText('partial')).toBeTruthy();
-    expect(within(popup).queryByText('No usages in the searched contexts.')).toBeNull();
-    expect(screen.queryByRole('region', { name: 'Usages' })).toBeNull();
-  });
+  it.each([{ locations: [] }, { locations: [usage] }])(
+    'keeps incomplete coverage visible even with zero or one result: %j',
+    async ({ locations }) => {
+      const view = await openEditor();
+      vi.mocked(api.navigate).mockImplementation(async (query) => ({
+        ...reply(query, locations),
+        state: 'partial',
+        searchedContexts: 0,
+        reasons: ['The source context is still indexing.'],
+      }));
+      findUsages(view);
+      const popup = await screen.findByRole('dialog', { name: 'Usages of Run' });
+      await within(popup).findByText('The source context is still indexing.');
+      expect(within(popup).getByText('partial')).toBeTruthy();
+      expect(within(popup).queryByText('No usages in the searched contexts.')).toBeNull();
+      expect(screen.queryByRole('region', { name: 'Usages' })).toBeNull();
+    },
+  );
   it('ignores a canceled search that finishes after the newer search', async () => {
     const view = await openEditor();
     let finishOld!: () => void;

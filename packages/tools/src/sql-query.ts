@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import pg from 'pg';
 import Cursor from 'pg-cursor';
 import mysql from 'mysql2';
+import { mssqlQuery } from './sql-mssql';
 import type { Readable } from 'node:stream';
 import { config, mysqlConfig, pgConfig, queryColumns, RowPage, type Row } from './sql-driver';
 import { resultPreview } from './result-preview';
@@ -10,6 +11,10 @@ let close: (() => void | Promise<void>) | undefined;
 let busy = false;
 process.on('message', async (message: unknown) => {
   const p = message as { id: number; method: string; config: unknown; sql: string; limit: number };
+  if (p.method === 'cancel') {
+    await close?.();
+    process.exit();
+  }
   if (busy) {
     process.send?.({ id: p.id, error: 'Query page already running.' });
     return;
@@ -50,6 +55,10 @@ process.on('message', async (message: unknown) => {
             return { ...rows.result(), columns, done };
           };
         }
+      } else if (c.kind === 'mssql') {
+        const query = await mssqlQuery(c, p.sql, limit);
+        close = query.close;
+        next = query.next;
       } else if (c.kind === 'postgres') {
         const client = new pg.Client(pgConfig(c));
         client.on('error', () => {});

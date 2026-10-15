@@ -1015,9 +1015,11 @@ export function App() {
     requestId.current = id;
     setNavigating(true);
     setError('');
+    setStatus(`${titles[operation === 'smart' ? 'definition' : operation]} · searching…`);
     setTargets(null);
     setBatch(null);
     setUsagesPopup(null);
+    setTool((current) => (current === 'usages' ? null : current));
     const generation = workspaceRef.current.generation;
     // Capture the invocation before an async flush or popup focus changes the editor.
     const view = [...doc.views].find((item) => item.hasFocus) ?? [...doc.views][0];
@@ -1036,13 +1038,10 @@ export function App() {
       },
       symbol: word ? state.sliceDoc(word.from, word.to) : 'symbol',
     };
-    let popupShown = false;
     const showUsagesPopup = () => {
-      popupShown = true;
       setUsagesPopup(popup);
       setTool((current) => (current === 'usages' ? null : current));
     };
-    if (operation === 'references') showUsagesPopup();
     try {
       const revision = await doc.session.flush();
       const version = doc.session.version;
@@ -1067,11 +1066,12 @@ export function App() {
       const run = (requestedOperation: NavigationOperation) => {
         setNavigationOperation(requestedOperation);
         setNavigationTitle(titles[requestedOperation]);
-        if (requestedOperation === 'references') {
-          if (!popupShown) showUsagesPopup();
-        }
-        // Declarations and implementations open the tool only when there is no single target.
-        else if (!['definition', 'typeDefinition', 'implementations'].includes(requestedOperation))
+        // Choose between a direct jump and a chooser only after the final result.
+        if (
+          !['references', 'definition', 'typeDefinition', 'implementations'].includes(
+            requestedOperation,
+          )
+        )
           setTool('usages');
         return withNavigationProgress(
           () => api.navigate({ ...query, operation: requestedOperation }),
@@ -1103,7 +1103,7 @@ export function App() {
       setNavigationOperation(actual);
       setNavigationTitle(titles[actual]);
       if (
-        (actual === 'definition' || actual === 'typeDefinition' || actual === 'implementations') &&
+        ['references', 'definition', 'typeDefinition', 'implementations'].includes(actual) &&
         result.state === 'complete' &&
         result.locations.length === 1
       ) {
@@ -1117,13 +1117,15 @@ export function App() {
           location.contextIds[0],
           location.range.end,
         );
+      } else if (actual === 'references') {
+        showUsagesPopup();
       } else if (
         (actual === 'definition' || actual === 'typeDefinition' || actual === 'implementations') &&
         result.locations.length > 1
       ) {
         setTargets(result.locations);
         setTool('usages');
-      } else if (!popupShown) setTool('usages');
+      } else setTool('usages');
       setStatus(
         `${titles[actual]} · ${result.state} · ${result.searchedContexts}/${result.totalContexts} contexts`,
       );

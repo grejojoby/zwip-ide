@@ -11,10 +11,27 @@ import {
   safeRows,
   tableName,
   type Config,
+  type Column,
   type Driver,
   type Row,
 } from './sql-driver';
 import { object, string, type Params } from './transport';
+// Other SQL Server types can lose precision in driver decoding or cannot be
+// compared with equality; keep those tables read-only in the grid.
+const mssqlEditableTypes = new Set([
+  'bit',
+  'tinyint',
+  'smallint',
+  'int',
+  'bigint',
+  'char',
+  'varchar',
+  'nchar',
+  'nvarchar',
+  'uniqueidentifier',
+]);
+const editableColumns = (c: Config, metadata: Column[]) =>
+  c.kind !== 'mssql' || metadata.every((column) => mssqlEditableTypes.has(column.type));
 type Query = {
   id: string;
   config: Config;
@@ -68,7 +85,17 @@ export class SqlService {
       }
       query.pending.clear();
       try {
-        if (query.backendId && Number.isSafeInteger(query.backendId)) {
+        if (query.config.kind === 'mssql' && query.child.connected) {
+          // TDS attention cancels this request without requiring KILL permission.
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(resolve, 2000);
+            query.child.once('exit', () => {
+              clearTimeout(timer);
+              resolve();
+            });
+            query.child.send({ method: 'cancel' }, () => {});
+          });
+        } else if (query.backendId && Number.isSafeInteger(query.backendId)) {
           await this.withDriver(query.config, async (driver) => {
             if (query.config.kind === 'postgres')
               await driver.query('SELECT pg_cancel_backend($1)', [query.backendId]);
@@ -99,9 +126,11 @@ export class SqlService {
     const schema =
       typeof p.schema === 'string'
         ? p.schema
-        : c.kind === 'postgres'
-          ? 'public'
-          : (c.database ?? '');
+        : c.kind === 'mssql'
+          ? 'dbo'
+          : c.kind === 'postgres'
+            ? 'public'
+            : (c.database ?? '');
     if (method === 'query') {
       const id = string(p, 'queryId');
       if (this.queries.has(id)) throw new Error('Query id is already running.');
@@ -188,6 +217,12 @@ export class SqlService {
               [c.database],
             )
           ).rows;
+        else if (c.kind === 'mssql')
+          rows = (
+            await driver.query(
+              "SELECT s.name [schema], o.name, CASE o.type WHEN 'V' THEN 'view' ELSE 'table' END type FROM sys.objects o JOIN sys.schemas s ON s.schema_id=o.schema_id WHERE o.type IN ('U','V') AND o.is_ms_shipped=0 ORDER BY s.name,o.name",
+            )
+          ).rows;
         else
           rows = (
             await driver.query(
@@ -200,6 +235,55 @@ export class SqlService {
           type: String(row.type).toLowerCase().includes('view') ? 'view' : 'table',
         }));
       }
+      if (method === 'procedures' || method === 'procedureDetails') {
+        if (c.kind !== 'mssql') throw new Error('Stored procedure inspection requires SQL Server.');
+        if (method === 'procedures')
+          return (
+            await driver.query(
+              'SELECT s.name [schema], p.name FROM sys.procedures p JOIN sys.schemas s ON s.schema_id=p.schema_id WHERE p.is_ms_shipped=0 ORDER BY s.name,p.name',
+            )
+          ).rows;
+        const name = string(p, 'procedure');
+        const procedure = (
+          await driver.query(
+            `SELECT p.object_id id,s.name [schema],p.name,
+            CONVERT(nvarchar(max),ep.value) description,m.definition
+           FROM sys.procedures p JOIN sys.schemas s ON s.schema_id=p.schema_id
+           LEFT JOIN sys.sql_modules m ON m.object_id=p.object_id
+           LEFT JOIN sys.extended_properties ep ON ep.class=1 AND ep.major_id=p.object_id AND ep.minor_id=0 AND ep.name=N'MS_Description'
+           WHERE s.name=@p1 AND p.name=@p2`,
+            [schema, name],
+          )
+        ).rows[0];
+        if (!procedure)
+          throw new Error('Stored procedure was not found or is not visible to this login.');
+        const parameters = (
+          await driver.query(
+            `SELECT a.name,
+            QUOTENAME(SCHEMA_NAME(t.schema_id))+'.'+QUOTENAME(t.name)+
+            CASE WHEN t.name IN ('varchar','char','varbinary','binary','nvarchar','nchar') THEN '('+CASE WHEN a.max_length=-1 THEN 'max' ELSE CONVERT(varchar(10),CASE WHEN t.name IN ('nvarchar','nchar') THEN a.max_length/2 ELSE a.max_length END) END+')'
+              WHEN t.name IN ('decimal','numeric') THEN '('+CONVERT(varchar(10),a.precision)+','+CONVERT(varchar(10),a.scale)+')'
+              WHEN t.name IN ('time','datetime2','datetimeoffset') THEN '('+CONVERT(varchar(10),a.scale)+')' ELSE '' END type,
+            a.is_output output,CONVERT(nvarchar(max),ep.value) description
+           FROM sys.parameters a JOIN sys.types t ON t.user_type_id=a.user_type_id
+           LEFT JOIN sys.extended_properties ep ON ep.class=2 AND ep.major_id=a.object_id AND ep.minor_id=a.parameter_id AND ep.name=N'MS_Description'
+           WHERE a.object_id=@p1 AND a.parameter_id>0 ORDER BY a.parameter_id`,
+            [procedure.id],
+          )
+        ).rows;
+        if (
+          typeof procedure.definition === 'string' &&
+          Buffer.byteLength(procedure.definition) > 1024 * 1024
+        )
+          throw new Error('Stored procedure definition exceeds the 1 MiB viewer limit.');
+        return {
+          schema: procedure.schema,
+          name: procedure.name,
+          description: procedure.description ?? null,
+          definition: procedure.definition ?? null,
+          parameters,
+        };
+      }
       const table = string(p, 'table');
       const metadata = await columns(driver, c, schema, table);
       if (!metadata.length) throw new Error('Table was not found or has no visible columns.');
@@ -210,11 +294,12 @@ export class SqlService {
         const pk = metadata.filter((col) => col.primaryKey).map((col) => col.name);
         const rows = (
           await driver.query(
-            `SELECT * FROM ${tableName(schema, table, c.kind)}${pk.length ? ' ORDER BY ' + pk.map((name) => quote(name, c.kind)).join(',') : ''} LIMIT ${limit + 1} OFFSET ${offset}`,
+            `SELECT * FROM ${tableName(schema, table, c.kind)}${c.kind === 'mssql' ? ' ORDER BY ' + (pk.length ? pk.map((name) => quote(name, c.kind)).join(',') : '(SELECT NULL)') + ` OFFSET ${offset} ROWS FETCH NEXT ${limit + 1} ROWS ONLY` : (pk.length ? ' ORDER BY ' + pk.map((name) => quote(name, c.kind)).join(',') : '') + ` LIMIT ${limit + 1} OFFSET ${offset}`}`,
           )
         ).rows;
         const result = safeRows(rows.slice(0, limit));
         const editable =
+          editableColumns(c, metadata) &&
           pk.length > 0 &&
           !result.truncated &&
           result.rows.every((row) =>
@@ -232,6 +317,10 @@ export class SqlService {
         };
       }
       if (method === 'applyEdits') {
+        if (!editableColumns(c, metadata))
+          throw new Error(
+            'This SQL Server table contains types that cannot be safely edited in the grid. Use the SQL console.',
+          );
         const changes = p.changes;
         if (!Array.isArray(changes) || !changes.length || changes.length > 100)
           throw new Error('Apply between 1 and 100 row changes.');
@@ -263,10 +352,15 @@ export class SqlService {
             const assignments = changed.map(
               (name) => `${quote(name, c.kind)}=${bind(after[name])}`,
             );
-            const where = names.map(
-              (name) =>
-                `${quote(name, c.kind)} ${c.kind === 'postgres' ? 'IS NOT DISTINCT FROM' : c.kind === 'mysql' ? '<=>' : 'IS'} ${bind(before[name])}`,
-            );
+            const where = names.map((name) => {
+              const column = quote(name, c.kind);
+              const value = bind(before[name]);
+              if (c.kind === 'mssql')
+                return `(${column}=${value} OR (${column} IS NULL AND ${value} IS NULL))`;
+              const operator =
+                c.kind === 'postgres' ? 'IS NOT DISTINCT FROM' : c.kind === 'mysql' ? '<=>' : 'IS';
+              return `${column} ${operator} ${value}`;
+            });
             const result = await driver.query(
               `UPDATE ${tableName(schema, table, c.kind)} SET ${assignments.join(',')} WHERE ${where.join(' AND ')}`,
               values,

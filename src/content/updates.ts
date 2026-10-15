@@ -22,6 +22,70 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-15-imported-query-archive',
+    version: '0.1.0',
+    date: '2026-10-15',
+    title: 'Imported queries and history',
+    summary: 'Browse preserved IntelliJ SQL files from the Database panel.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Query archive viewer',
+        description:
+          'Filter imported consoles, scratches, project queries, and original history files, including unmapped connections. Copy selected SQL into a connection console to run it. Importing or viewing an archive never executes SQL.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-15-direct-single-navigation',
+    version: '0.1.0',
+    date: '2026-10-15',
+    title: 'Jump directly to a single match',
+    summary: 'A single usage or definition opens directly at its source line.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'No chooser for one complete result',
+        description:
+          'Complete usages and definition searches with one match jump straight to that location. The usages popup waits for results so it does not flash before a direct jump. Multiple matches and incomplete searches keep their result and coverage views.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-15-sql-server-and-procedure-details',
+    version: '0.1.0',
+    date: '2026-10-15',
+    title: 'SQL Server and stored procedures',
+    summary:
+      'Connect to Microsoft SQL Server, execute selected SQL, and inspect stored procedures.',
+    changes: [
+      {
+        type: 'maintenance',
+        title: 'SQL package attribution',
+        description:
+          'Dependency notices resolve compiled distributions back to their package roots so their license texts remain included.',
+      },
+      {
+        type: 'added',
+        title: 'Microsoft SQL Server connections',
+        description:
+          'SQL authentication, configurable TLS, table/view browsing, paged queries, and cancellation are available through SQL databases 0.2.0. Tables containing types unsuitable for safe grid editing remain read only.',
+      },
+      {
+        type: 'improved',
+        title: 'Execute selected SQL',
+        description:
+          'Cmd+Enter and Ctrl+Enter take priority in the SQL console and execute the selected text. With no selection, they execute the entire console.',
+      },
+      {
+        type: 'added',
+        title: 'Stored procedure details',
+        description:
+          'The SQL Server Stored procedures dialog shows documentation, SQL definitions, and parameter types and comments. Metadata depends on login permissions; encrypted or CLR procedure definitions may be unavailable.',
+      },
+    ],
+  },
+  {
     id: '2026-10-15-simpler-project-heading',
     version: '0.1.0',
     date: '2026-10-15',

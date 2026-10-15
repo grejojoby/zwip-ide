@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Connection, SqlColumn, SqlPage, SqlQueryPage, SqlTable } from '../../contracts';
 import { asError } from '../../model/document-session';
 import { Modal } from '../Modal';
+import { StoredProcedures } from './StoredProcedures';
 import { SqlConsole } from './SqlConsole';
 import { queryConsoleApi, toolRequest } from './tool-api';
 import { cellText, parseCell } from './sql-values';
@@ -26,6 +27,7 @@ export function SqlBrowser({
   const [drafts, setDrafts] = useState<Map<number, Row>>(new Map());
   const [cell, setCell] = useState<{ row: number; column: SqlColumn } | null>(null);
   const [review, setReview] = useState(false);
+  const [showProcedures, setShowProcedures] = useState(false);
   const epoch = useRef(0);
   const requestId = useRef(0);
   const runningQuery = useRef<string | null>(null);
@@ -236,6 +238,14 @@ export function SqlBrowser({
           Refresh schema
         </button>
       </div>
+      {connection.kind === 'mssql' && (
+        <div className="tool-section-title">
+          <button onClick={() => setShowProcedures(true)}>Stored procedures…</button>
+        </div>
+      )}
+      {showProcedures && (
+        <StoredProcedures connectionId={connectionId} onClose={() => setShowProcedures(false)} />
+      )}
       <details className="sql-query-box" open>
         <summary>
           SQL console <span>⌘Enter executes selection or query</span>
@@ -398,6 +408,7 @@ export function SqlBrowser({
       {mode === 'query' && queryPage && (
         <div className="tool-section-title">
           <span>
+            {queryPage.resultSet ? `Result set ${queryPage.resultSet} · ` : ''}
             {queryPage.rows.length} rows · {queryPage.done ? 'Complete' : 'More rows available'}
             {queryPage.truncated ? ' · preview truncated; some values or fields omitted' : ''}
           </span>

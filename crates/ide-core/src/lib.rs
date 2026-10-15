@@ -5,6 +5,7 @@ mod files;
 mod git;
 mod intellij_import;
 mod packages;
+mod query_archive;
 mod query_console;
 mod recovery;
 mod scratch;
@@ -325,6 +326,8 @@ impl Core {
                 self.scratches.delete(string(&params, "path")?)?;
                 Ok(Value::Null)
             }
+            "queryArchive.list" => query_archive::list(&self.data),
+            "queryArchive.get" => query_archive::get(&self.data, string(&params, "id")?),
             "queryConsole.get" => self.query_consoles.get(string(&params, "connectionId")?),
             "queryConsole.save" => self.query_consoles.save(
                 string(&params, "connectionId")?,

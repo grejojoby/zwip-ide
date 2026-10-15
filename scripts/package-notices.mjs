@@ -10,19 +10,18 @@ export async function packageNotices(output, metafiles) {
   const packages = new Map();
   for (const file of metafiles.flatMap((meta) => Object.keys(meta.inputs))) {
     if (!file.includes('node_modules/')) continue;
-    let directory = dirname(resolve(file));
-    while (directory.includes('node_modules')) {
-      try {
-        const manifest = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
-        if (manifest.name && manifest.version) {
-          packages.set(`${manifest.name}@${manifest.version}`, directory);
-          break;
-        }
-      } catch {
-        /* Bundled source may be several levels below its package root. */
-      }
-      directory = dirname(directory);
-    }
+    // Compiled distributions can repeat the package identity in nested
+    // package.json files. Attribution belongs to the node_modules package root.
+    const marker = 'node_modules/';
+    const boundary = file.lastIndexOf(marker) + marker.length;
+    const parts = file.slice(boundary).split('/');
+    const directory = resolve(
+      file.slice(0, boundary),
+      ...parts.slice(0, parts[0].startsWith('@') ? 2 : 1),
+    );
+    const manifest = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
+    if (manifest.name && manifest.version)
+      packages.set(`${manifest.name}@${manifest.version}`, directory);
   }
   const sections = [];
   for (const [name, directory] of [...packages].sort(([a], [b]) => a.localeCompare(b))) {

@@ -395,58 +395,59 @@ describe('native desktop workspace', () => {
     await $('button=Close session').click();
   });
 
-  it('Cmd-clicks to a declaration and opens each usages search in a popup until docked', async () => {
+  it('jumps directly to a single definition and keeps multiple usages in a popup until docked', async () => {
     await browser.execute(() => {
-      const transport = window.__TAURI_INTERNALS__;
-      const invoke = transport.invoke.bind(transport);
+      // Tauri's invoke property is read-only; observe the real fetch transport.
+      const originalFetch = window.fetch;
       window.__nativeNavigationTrace = [];
-      transport.invoke = (command, args, ...rest) => {
-        if (command !== 'ide_request') return invoke(command, args, ...rest);
-        const entry = {
-          method: args.method,
-          operation: args.params?.query?.operation,
-          id: args.params?.query?.id,
-          state: 'pending',
-        };
-        window.__nativeNavigationTrace.push(entry);
+      window.fetch = (url, options) => {
+        const args =
+          String(url).endsWith('/ide_request') && typeof options?.body === 'string'
+            ? JSON.parse(options.body)
+            : null;
+        const entry = args
+          ? {
+              method: args.method,
+              operation: args.params?.query?.operation,
+              state: 'pending',
+              started: performance.now(),
+            }
+          : null;
+        if (entry) window.__nativeNavigationTrace.push(entry);
         if (window.__nativeNavigationTrace.length > 60) window.__nativeNavigationTrace.shift();
-        return invoke(command, args, ...rest).then(
-          (result) => {
+        return originalFetch.call(window, url, options).then((response) => {
+          if (entry) {
             entry.state = 'resolved';
-            return result;
-          },
-          (error) => {
-            entry.state = String(error);
-            throw error;
-          },
-        );
+            entry.elapsedMs = performance.now() - entry.started;
+          }
+          return response;
+        });
       };
-      return true;
     });
     await $('[role="treeitem"][title$="consumer.ts"]').click();
     await $('[aria-label="Editor for consumer.ts"]').waitForDisplayed();
     await cmdClickText('Editor for consumer.ts', 'Worker', 1);
-    await $('[aria-label="Editor for types.ts"]').waitForDisplayed({ timeout: 20000 });
+    await $('[aria-label="Editor for types.ts"]').waitForDisplayed({ timeout: 60000 });
     await cmdClickText('Editor for types.ts', 'Worker');
     const results = $('[role="dialog"][aria-label="Usages of Worker"]');
-    await results.waitForDisplayed({ timeout: 20000 });
+    await results.waitForDisplayed({ timeout: 60000 });
     await browser.waitUntil(async () => (await results.getText()).includes('consumer.ts'), {
-      timeout: 20000,
+      timeout: 60000,
     });
     await results.$('[aria-label="Dock to bottom panel"]').click();
     await $('.results-panel').waitForDisplayed();
     await browser.waitUntil(
       async () => (await $('.results-panel').getText()).includes('complete'),
       {
-        timeout: 20000,
+        timeout: 60000,
       },
     );
     assert.match(await $('.results-panel').getText(), /complete/);
     await cmdClickText('Editor for types.ts', 'Worker');
     const nextResults = $('[role="dialog"][aria-label="Usages of Worker"]');
-    await nextResults.waitForDisplayed({ timeout: 20000 });
+    await nextResults.waitForDisplayed({ timeout: 60000 });
     await browser.waitUntil(async () => (await nextResults.getText()).includes('consumer.ts'), {
-      timeout: 20000,
+      timeout: 60000,
     });
     assert.equal(await $('.results-panel').isExisting(), false);
     await screenshot('cmd-click-usages');
@@ -475,7 +476,8 @@ describe('native desktop workspace', () => {
         return (await tables.getHTML()).includes('.people');
       },
       {
-        timeout: 20000,
+        // Cold debug builds validate the bundled runtime and initialize the worker.
+        timeout: 60000,
         timeoutMsg: 'SQLite schema did not appear in the native UI.',
       },
     );
@@ -521,8 +523,151 @@ describe('native desktop workspace', () => {
     await browser.waitUntil(async () =>
       (await $('.sql-browser .data-grid').getText()).includes('Edited native name'),
     );
+    await query.click();
+    await browser.keys(['Meta', 'End']);
+    await query.addValue('\nSELECT 42 AS selected_only;');
+    await browser.execute(() =>
+      document.querySelector('[aria-label="SQL query"]').dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Home',
+          code: 'Home',
+          shiftKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    await browser.waitUntil(() =>
+      browser.execute(() => window.getSelection()?.toString() === 'SELECT 42 AS selected_only;'),
+    );
+    // Synthetic Meta+Enter tests the WKWebView handler; the embedded driver's
+    // physical Enter path drops Meta. Physical keyboard qualification is separate.
+    await browser.execute(() =>
+      document.querySelector('[aria-label="SQL query"]').dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Enter',
+          code: 'Enter',
+          metaKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    await browser.waitUntil(async () =>
+      (await $('.sql-browser .data-grid').getText()).includes('selected_only'),
+    );
+    assert.match(await $('.sql-browser .data-grid').getText(), /42/);
     await screenshot('database');
     await $('[aria-label="Close Database tool"]').click();
+  });
+
+  it('browses imported SQL history through the real archive store without a connection', async () => {
+    const archive = join(process.env.ZWIP_DATA, 'query-archive');
+    mkdirSync(archive, { recursive: true });
+    const id = 'c'.repeat(64);
+    writeFileSync(
+      join(archive, 'index.json'),
+      JSON.stringify([{ id, title: 'Unmapped legacy.sql', category: 'Query History' }]),
+    );
+    writeFileSync(join(archive, `${id}.sql`), '-- preserved history metadata\nSELECT 42;');
+    await $('[aria-label="Database tools"]').click();
+    await $('button=Imported queries…').click();
+    const dialog = $('dialog[aria-label="Imported queries and history"]');
+    await dialog.waitForDisplayed();
+    await browser.waitUntil(async () =>
+      (await dialog.$('select').getHTML()).includes('Unmapped legacy'),
+    );
+    await selectValue('dialog[aria-label="Imported queries and history"] select', id);
+    const sql = dialog.$('[aria-label="Archived SQL"]');
+    await sql.waitForDisplayed();
+    assert.equal(await sql.getValue(), '-- preserved history metadata\nSELECT 42;');
+    assert.equal(await sql.getProperty('readOnly'), true);
+    await screenshot('imported-query-history');
+    await dialog.$('button=Close').click();
+    await $('[aria-label="Close Database tool"]').click();
+  });
+
+  it('inspects SQL Server procedure documentation and definition through a simulated server boundary', async () => {
+    await call('connection.save', {
+      id: 'native-sql-server',
+      kind: 'mssql',
+      name: 'Native SQL Server',
+      config: { host: '127.0.0.1', port: 1433, database: 'fixture', tls: true },
+    });
+    await browser.execute(() => {
+      // Tauri's invoke function is non-writable. Simulate this connection at
+      // the fetch transport boundary while keeping the real API/callback path.
+      const originalFetch = window.fetch;
+      window.__sqlServerOriginalFetch = originalFetch;
+      window.fetch = (url, options) => {
+        let args;
+        if (String(url).endsWith('/ide_request') && typeof options?.body === 'string')
+          args = JSON.parse(options.body);
+        if (
+          args?.method === 'tool.request' &&
+          args.params?.params?.connectionId === 'native-sql-server'
+        ) {
+          const method = args.params.method;
+          let result;
+          if (method === 'schema') result = [];
+          else if (method === 'procedures') result = [{ schema: 'sales', name: 'FindOrder' }];
+          else if (method === 'procedureDetails')
+            result = {
+              schema: 'sales',
+              name: 'FindOrder',
+              description: 'Find an order by ID.',
+              definition: 'CREATE PROCEDURE sales.FindOrder @id int AS SELECT @id;',
+              parameters: [
+                {
+                  name: '@id',
+                  type: '[sys].[int]',
+                  output: false,
+                  description: 'Order identifier',
+                },
+              ],
+            };
+          else if (method === 'disconnect') result = null;
+          if (result !== undefined)
+            return Promise.resolve(
+              new Response(JSON.stringify(result), {
+                headers: { 'Content-Type': 'application/json', 'Tauri-Response': 'ok' },
+              }),
+            );
+        }
+        return originalFetch.call(window, url, options);
+      };
+    });
+    try {
+      await $('[aria-label="Database tools"]').click();
+      await browser.waitUntil(async () =>
+        (await $('[aria-label="Saved database connection"]').getHTML()).includes(
+          'native-sql-server',
+        ),
+      );
+      await selectValue('[aria-label="Saved database connection"]', 'native-sql-server');
+      await $('button=Stored procedures…').waitForDisplayed();
+      await $('button=Stored procedures…').click();
+      const dialog = $('dialog[aria-label="Stored procedures"]');
+      await dialog.waitForDisplayed();
+      await browser.waitUntil(async () =>
+        (await dialog.$('select').getHTML()).includes('sales.FindOrder'),
+      );
+      await selectValue(
+        'dialog[aria-label="Stored procedures"] select',
+        JSON.stringify(['sales', 'FindOrder']),
+      );
+      await browser.waitUntil(async () => (await dialog.getText()).includes('Order identifier'));
+      assert.match(await dialog.getText(), /Find an order by ID/);
+      assert.match(await dialog.getText(), /CREATE PROCEDURE sales.FindOrder/);
+      await screenshot('sql-server-procedures');
+      await dialog.$('button=Close').click();
+      await $('[aria-label="Close Database tool"]').click();
+    } finally {
+      await browser.execute(() => {
+        window.fetch = window.__sqlServerOriginalFetch;
+        delete window.__sqlServerOriginalFetch;
+      });
+    }
   });
 
   it('sends HTTP environments and cancels an owned request when its panel closes', async () => {

@@ -3489,3 +3489,36 @@ path.current {
 .icon.file-icon[data-type='git'] {
   color: #e05d44;
 }
+
+.procedure-viewer select {
+  width: 100%;
+  min-width: 0;
+}
+.procedure-description {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.procedure-definition {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 12px;
+  background: var(--editor);
+  border: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 12px;
+  user-select: text;
+}
+.procedure-parameters dd {
+  margin: 4px 0 12px;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+.query-archive-content {
+  width: 100%;
+  min-height: 320px;
+  resize: vertical;
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre;
+}

@@ -14,9 +14,9 @@ pub(crate) fn endpoint(value: &Value) -> String {
     let config = &value["config"];
     let kind = value["kind"].as_str().unwrap_or_default();
     json!({"kind":kind,"host":config["host"].as_str().unwrap_or_default().to_ascii_lowercase(),
-        "port":config["port"].as_u64().unwrap_or(match kind {"mysql"=>3306,"postgres"=>5432,"redis"=>6379,_=>0}),
+        "port":config["port"].as_u64().unwrap_or(match kind {"mysql"=>3306,"postgres"=>5432,"mssql"=>1433,"redis"=>6379,_=>0}),
         "database":config["database"].as_str().unwrap_or_default(),"username":config["username"].as_str().unwrap_or_default(),
-        "path":config["path"].as_str().unwrap_or_default(),"tls":config["tls"].as_bool().unwrap_or(false)}).to_string()
+        "path":config["path"].as_str().unwrap_or_default(),"tls":config["tls"].as_bool().unwrap_or(false),"trustServerCertificate":config["trustServerCertificate"].as_bool().unwrap_or(false)}).to_string()
 }
 
 fn duplicate(db: &Connection, item: &ImportConnection) -> Result<bool, String> {
@@ -116,7 +116,7 @@ impl Connections {
         if id.is_empty() || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-') {
             return Err("Invalid connection id".into());
         }
-        if !matches!(kind, "mysql" | "postgres" | "sqlite" | "redis") {
+        if !matches!(kind, "mysql" | "postgres" | "sqlite" | "mssql" | "redis") {
             return Err("Unsupported connection kind".into());
         }
         let mut config = params["config"]
@@ -124,7 +124,15 @@ impl Connections {
             .ok_or("Missing connection configuration")?
             .clone();
         // Persist only connection fields. Credentials use the system Keychain.
-        let fields = ["host", "port", "database", "username", "path", "tls"];
+        let fields = [
+            "host",
+            "port",
+            "database",
+            "username",
+            "path",
+            "tls",
+            "trustServerCertificate",
+        ];
         config.retain(|key, _| fields.contains(&key.as_str()));
         if let Some(password) = params["password"].as_str() {
             set_secret(id, password)?;
@@ -197,4 +205,33 @@ fn secret(_id: &str) -> Result<Option<String>, String> {
 #[cfg(not(target_os = "macos"))]
 fn delete_secret(_id: &str) -> Result<(), String> {
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sql_server_metadata_round_trips_without_persisting_credentials() {
+        let data = tempfile::tempdir().unwrap();
+        let store = Connections::new(data.path()).unwrap();
+        let result = store
+            .save(
+                &json!({"id":"mssql-test", "kind":"mssql", "name":"SQL Server",
+            "config":{"host":"localhost","port":1433,"database":"demo","username":"reader",
+                "tls":true,"trustServerCertificate":true,"password":"must-not-persist"}}),
+            )
+            .unwrap();
+        assert_eq!(result[0]["kind"], "mssql");
+        assert_eq!(result[0]["config"]["trustServerCertificate"], true);
+        assert!(result[0]["config"].get("password").is_none());
+        assert_eq!(
+            Connections::new(data.path()).unwrap().list().unwrap(),
+            result
+        );
+        assert_eq!(
+            endpoint(&json!({"kind":"mssql","config":{}})),
+            endpoint(&json!({"kind":"mssql","config":{"port":1433}}))
+        );
+    }
 }

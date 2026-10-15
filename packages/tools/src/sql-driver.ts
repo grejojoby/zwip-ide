@@ -1,11 +1,12 @@
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import pg from 'pg';
+import { connectMssql } from './sql-mssql';
 import mysql from 'mysql2/promise';
 import { object, string, type Params } from './transport';
-import { resultPreview } from './result-preview';
+import { RowPage } from './sql-results';
 export type Row = Record<string, unknown>;
 export interface Config {
-  kind: 'mysql' | 'postgres' | 'sqlite';
+  kind: 'mysql' | 'postgres' | 'sqlite' | 'mssql';
   id: string;
   host?: string;
   port?: number;
@@ -14,6 +15,7 @@ export interface Config {
   password?: string;
   path?: string;
   tls?: boolean;
+  trustServerCertificate?: boolean;
 }
 export interface Result {
   rows: Row[];
@@ -26,12 +28,13 @@ export interface Driver {
 }
 export function config(value: unknown): Config {
   const p = object(value);
-  if (!['mysql', 'postgres', 'sqlite'].includes(string(p, 'kind')))
+  if (!['mysql', 'postgres', 'sqlite', 'mssql'].includes(string(p, 'kind')))
     throw new Error('Unsupported SQL driver.');
   return p as unknown as Config;
 }
 export function quote(name: string, kind: Config['kind']) {
   if (!name || name.includes('\0')) throw new Error('Invalid SQL identifier.');
+  if (kind === 'mssql') return '[' + name.replaceAll(']', ']]') + ']';
   const q = kind === 'mysql' ? '`' : '"';
   return q + name.replaceAll(q, q + q) + q;
 }
@@ -39,7 +42,7 @@ export function tableName(schema: string, table: string, kind: Config['kind']) {
   return (schema && kind !== 'sqlite' ? quote(schema, kind) + '.' : '') + quote(table, kind);
 }
 export function parameter(index: number, kind: Config['kind']) {
-  return kind === 'postgres' ? `$${index}` : '?';
+  return kind === 'postgres' ? `$${index}` : kind === 'mssql' ? `@p${index}` : '?';
 }
 export function mysqlConfig(c: Config) {
   return {
@@ -69,6 +72,7 @@ export function pgConfig(c: Config) {
   };
 }
 export async function connect(c: Config): Promise<Driver> {
+  if (c.kind === 'mssql') return connectMssql(c);
   if (c.kind === 'sqlite') {
     if (!c.path) throw new Error('SQLite database path is required.');
     const db = new DatabaseSync(c.path);
@@ -152,6 +156,27 @@ export async function columns(
       primaryKey: Number(r.pk) > 0,
     }));
   }
+  if (c.kind === 'mssql') {
+    rows = (
+      await driver.query(
+        `SELECT c.name, TYPE_NAME(c.user_type_id) type, c.is_nullable nullable,
+        CAST(CASE WHEN EXISTS (SELECT 1 FROM sys.indexes i JOIN sys.index_columns ic
+          ON ic.object_id=i.object_id AND ic.index_id=i.index_id
+          WHERE i.object_id=c.object_id AND i.is_primary_key=1 AND ic.column_id=c.column_id)
+        THEN 1 ELSE 0 END AS bit) pk
+       FROM sys.columns c JOIN sys.objects o ON o.object_id=c.object_id
+       JOIN sys.schemas s ON s.schema_id=o.schema_id
+       WHERE s.name=@p1 AND o.name=@p2 ORDER BY c.column_id`,
+        [schema || 'dbo', table],
+      )
+    ).rows;
+    return rows.map((r) => ({
+      name: String(r.name),
+      type: String(r.type),
+      nullable: !!r.nullable,
+      primaryKey: !!r.pk,
+    }));
+  }
   if (c.kind === 'mysql') {
     rows = (
       await driver.query(
@@ -185,35 +210,7 @@ export function safeRows(rows: Row[]) {
   return page.result();
 }
 
-export function queryColumns(names: string[]): string[] {
-  if (new Set(names).size !== names.length)
-    throw new Error('Query result contains duplicate column names. Use unique column aliases.');
-  return names;
-}
-
-/** Retain only bounded previews as a cursor yields rows, never an entire page
- * of raw large cells. A truncated page is read-only in the renderer. */
-export class RowPage {
-  private rows: Row[] = [];
-  private truncated = false;
-  private rowBudget: number;
-  constructor(private maxRows = 500) {
-    if (!Number.isSafeInteger(maxRows) || maxRows < 1 || maxRows > 500)
-      throw new Error('A result page must contain between 1 and 500 rows.');
-    this.rowBudget = Math.floor((4 * 1024 * 1024 - 2) / maxRows) - 1;
-  }
-  add(row: Row) {
-    if (this.rows.length >= this.maxRows) throw new Error('Result page row limit exceeded.');
-    // Reserve a share for every requested row. A large early value may lose
-    // fields, but cannot consume the page and silently discard later rows.
-    const preview = resultPreview(row, { bytes: this.rowBudget, nodes: 8192 });
-    this.truncated ||= preview.truncated;
-    this.rows.push((preview.value ?? {}) as Row);
-  }
-  result() {
-    return { rows: this.rows, truncated: this.truncated };
-  }
-}
+export { queryColumns, RowPage } from './sql-results';
 export const integer = (p: Params, key: string, fallback: number, max: number) => {
   const n = p[key] === undefined ? fallback : Number(p[key]);
   if (!Number.isSafeInteger(n) || n < 0 || n > max) throw new Error(`Invalid ${key}.`);

@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react';
-import { Compartment, EditorState } from '@codemirror/state';
+import { Compartment, EditorState, Prec } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { autocompletion, completionKeymap } from '@codemirror/autocomplete';
-import { sql, PostgreSQL, MySQL, SQLite } from '@codemirror/lang-sql';
+import { sql, PostgreSQL, MySQL, SQLite, MSSQL } from '@codemirror/lang-sql';
 import { syntaxColors } from '../../editor/syntax-colors';
 import type { Connection, SqlColumn, SqlTable } from '../../contracts';
 export function SqlConsole({
@@ -44,18 +44,18 @@ export function SqlConsole({
           EditorView.updateListener.of((update) => {
             if (update.docChanged) callbacks.current.onChange?.(update.state.doc.toString());
           }),
-          keymap.of([
-            {
-              key: 'Mod-Enter',
-              run: () => {
-                callbacks.current.onExecute();
-                return true;
-              },
-            },
-            ...completionKeymap,
-            ...defaultKeymap,
-            ...historyKeymap,
-          ]),
+          Prec.highest(
+            keymap.of(
+              ['Meta-Enter', 'Ctrl-Enter'].map((key) => ({
+                key,
+                run: () => {
+                  callbacks.current.onExecute();
+                  return true;
+                },
+              })),
+            ),
+          ),
+          keymap.of([...completionKeymap, ...defaultKeymap, ...historyKeymap]),
           EditorView.contentAttributes.of({ 'aria-label': 'SQL query', spellcheck: 'false' }),
           EditorView.theme({
             '&': {
@@ -93,7 +93,14 @@ export function SqlConsole({
     view.current?.dispatch({
       effects: language.current.reconfigure(
         sql({
-          dialect: kind === 'postgres' ? PostgreSQL : kind === 'mysql' ? MySQL : SQLite,
+          dialect:
+            kind === 'mssql'
+              ? MSSQL
+              : kind === 'postgres'
+                ? PostgreSQL
+                : kind === 'mysql'
+                  ? MySQL
+                  : SQLite,
           schema,
           upperCaseKeywords: true,
         }),

@@ -32,11 +32,13 @@ The core is general-purpose. Go and Web are the initial language packages, with 
 | **Go**              | Semantic navigation, completion, diagnostics, rename, run/test/coverage and Delve debugging across independent modules |
 | **Web**             | JavaScript, TypeScript, HTML and CSS; JS/TS semantic navigation and editor services; JSX/TSX support                   |
 | **React / Next.js** | Framework integration through the project's Next.js TypeScript plugin; requires Web                                    |
-| **SQL**             | MySQL, PostgreSQL and SQLite browsing, paged queries and reviewed row edits                                            |
+| **SQL**             | SQL Server, MySQL, PostgreSQL and SQLite; paged queries, reviewed row edits, and SQL Server procedure details          |
 | **Redis**           | Read-only incremental key scans, typed values and TTL inspection                                                       |
 | **HTTP**            | Requests, environments, response inspection and cancellation                                                           |
 
 Packages are installed and enabled separately. Language workers start on demand; building the app does not enable them automatically. See the [provider contracts and limitations](docs/protocol.md).
+
+See the [SQL Server guide](docs/sql-server.md) for connection settings, selected-query execution, and stored procedure documentation.
 
 ## Build and run
 

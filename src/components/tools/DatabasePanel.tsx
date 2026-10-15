@@ -4,6 +4,7 @@ import { Modal } from '../Modal';
 import { ConnectionDialog } from './ConnectionDialog';
 import { RedisBrowser } from './RedisBrowser';
 import { SqlBrowser } from './SqlBrowser';
+import { QueryArchive } from './QueryArchive';
 import { api } from '../../api';
 import { connectionApi, SELECTED_CONNECTION_KEY, toolRequest, type Connection } from './tool-api';
 function chooseSelected(items: Connection[], current: string, saved: string | null) {
@@ -14,6 +15,7 @@ function chooseSelected(items: Connection[], current: string, saved: string | nu
 export function DatabasePanel({ onDirty }: { onDirty(dirty: boolean): void }) {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [selected, setSelected] = useState('');
+  const [showArchive, setShowArchive] = useState(false);
   const [editing, setEditing] = useState<Connection | 'new' | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
@@ -120,7 +122,9 @@ export function DatabasePanel({ onDirty }: { onDirty(dirty: boolean): void }) {
         <button disabled={!connection || dirty} onClick={() => setDeleting(true)}>
           Remove…
         </button>
+        <button onClick={() => setShowArchive(true)}>Imported queries…</button>
       </div>
+      {showArchive && <QueryArchive onClose={() => setShowArchive(false)} />}
       {dirty && (
         <p className="panel-footnote">Apply or discard pending row edits to change connections.</p>
       )}
@@ -141,7 +145,7 @@ export function DatabasePanel({ onDirty }: { onDirty(dirty: boolean): void }) {
         )
       ) : (
         <div className="empty-note">
-          <p>Connect to MySQL, PostgreSQL, SQLite, or Redis.</p>
+          <p>Connect to SQL Server, MySQL, PostgreSQL, SQLite, or Redis.</p>
           <p>Install and enable the SQL or Redis package to browse data.</p>
         </div>
       )}

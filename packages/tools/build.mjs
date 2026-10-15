@@ -52,7 +52,7 @@ export async function buildToolsPackages({
         {
           id,
           name,
-          version: '0.1.0',
+          version: id === 'sql' ? '0.2.0' : '0.1.0',
           coreVersion: '^0.1.0',
           description: name,
           platform: process.platform,
@@ -61,7 +61,7 @@ export async function buildToolsPackages({
           languages: [id],
           capabilities:
             id === 'sql'
-              ? ['schema', 'query', 'pagedResults', 'rowEditing']
+              ? ['schema', 'query', 'pagedResults', 'rowEditing', 'storedProcedures']
               : id === 'redis'
                 ? ['keys', 'inspect']
                 : ['requestFiles', 'environments', 'responses'],

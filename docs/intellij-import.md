@@ -63,3 +63,25 @@ Implementation contracts are in `src/model/intellij-import-contracts.ts`; the co
 JetBrains documents [custom keymap inheritance and locations](https://www.jetbrains.com/help/idea/configuring-keyboard-and-mouse-shortcuts.html), [manual settings export](https://www.jetbrains.com/help/idea/sharing-your-ide-settings.html#export-your-settings-manually), and [project/global data-source sharing and credential exclusions](https://www.jetbrains.com/help/idea/managing-data-sources.html#share-data-sources).
 
 Run mappings follow JetBrains' [npm configuration](https://www.jetbrains.com/help/idea/run-debug-configuration-npm.html) and [Go configuration](https://www.jetbrains.com/help/idea/go-plugin-run-debug-configurations.html) descriptions. XML formats are not a stable public interchange contract; unknown options stay unsupported.
+
+## Imported SQL file archive
+
+The Database panel's **Imported queries…** viewer reads preserved SQL files from the
+application data directory, independently of the active workspace or database
+connection. It filters by category and file name and displays the original SQL as
+read-only text for selection and copying. Opening the archive never contacts a
+database or executes SQL. Copy the desired statements into a connection's SQL
+console to execute them. IntelliJ history files remain whole files: the viewer
+does not invent execution timestamps or split legacy history metadata into events.
+Unmapped files remain available with their original labels.
+
+For a local migration, provision `query-archive/index.json` as an array of
+`{ "id": "<64 hex characters>", "title": "<file label>", "category": "Query History" }`
+objects, with the original UTF-8 contents in `query-archive/<id>.sql`. IDs must be
+unique. The viewer accepts up to 1,000 files, a 1 MiB index, and 8 MiB per SQL file;
+missing files, malformed indexes, and unreadable content are reported as errors.
+Use restrictive file permissions because SQL history may contain sensitive text.
+This archive is provisioned locally; the XML connection-import wizard does not
+import SQL archives. Existing connection metadata and nonempty default consoles
+must be preserved during migration. Credentials still require separate entry in
+Zwip; no IntelliJ passwords are copied.

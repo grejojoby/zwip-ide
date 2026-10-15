@@ -3,7 +3,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { Modal } from '../Modal';
 import { asError } from '../../model/document-session';
 import { connectionApi, type Connection, type ConnectionKind } from './tool-api';
-const ports = { mysql: 3306, postgres: 5432, redis: 6379, sqlite: 0 };
+const ports = { mysql: 3306, postgres: 5432, redis: 6379, sqlite: 0, mssql: 1433 };
 export function ConnectionDialog({
   initial,
   onSave,
@@ -21,6 +21,9 @@ export function ConnectionDialog({
   const [username, setUsername] = useState(initial?.config.username ?? '');
   const [path, setPath] = useState(initial?.config.path ?? '');
   const [tls, setTls] = useState(initial?.config.tls ?? true);
+  const [trustServerCertificate, setTrustServerCertificate] = useState(
+    initial?.config.trustServerCertificate ?? false,
+  );
   const [password, setPassword] = useState('');
   const [replacePassword, setReplacePassword] = useState(!initial);
   const [busy, setBusy] = useState(false);
@@ -30,7 +33,17 @@ export function ConnectionDialog({
     setError('');
     try {
       const id = initial?.id ?? crypto.randomUUID();
-      const config = kind === 'sqlite' ? { path } : { host, port, database, username, tls };
+      const config =
+        kind === 'sqlite'
+          ? { path }
+          : {
+              host,
+              port,
+              database,
+              username,
+              tls,
+              ...(kind === 'mssql' ? { trustServerCertificate } : {}),
+            };
       const connections = await connectionApi.save(
         { id, kind, name: name.trim(), config },
         kind === 'sqlite' || !replacePassword ? undefined : password,
@@ -85,15 +98,17 @@ export function ConnectionDialog({
                 setPort(ports[next]);
               }}
             >
-              {(['postgres', 'mysql', 'sqlite', 'redis'] as const).map((item) => (
+              {(['postgres', 'mysql', 'mssql', 'sqlite', 'redis'] as const).map((item) => (
                 <option key={item} value={item}>
                   {item === 'postgres'
                     ? 'PostgreSQL'
                     : item === 'mysql'
                       ? 'MySQL'
-                      : item === 'sqlite'
-                        ? 'SQLite'
-                        : 'Redis'}
+                      : item === 'mssql'
+                        ? 'Microsoft SQL Server'
+                        : item === 'sqlite'
+                          ? 'SQLite'
+                          : 'Redis'}
                 </option>
               ))}
             </select>
@@ -175,8 +190,20 @@ export function ConnectionDialog({
                 </label>
                 <label className="checkbox-label">
                   <input type="checkbox" checked={tls} onChange={(e) => setTls(e.target.checked)} />
-                  Use TLS with server verification
+                  {kind === 'mssql'
+                    ? 'Encrypt connection (TLS)'
+                    : 'Use TLS with server verification'}
                 </label>
+                {kind === 'mssql' && (
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={trustServerCertificate}
+                      onChange={(e) => setTrustServerCertificate(e.target.checked)}
+                    />
+                    Trust server certificate (skip verification)
+                  </label>
+                )}
                 <p className="muted">Passwords are stored in macOS Keychain.</p>
               </div>
             </>
