@@ -11,6 +11,8 @@ export function SqlConsole({
   tables,
   columns,
   initialContent = '',
+  active = false,
+  focusRequest = 0,
   onExecute,
   onRead,
   onChange,
@@ -19,6 +21,8 @@ export function SqlConsole({
   tables: SqlTable[];
   columns: Record<string, SqlColumn[]>;
   initialContent?: string;
+  active?: boolean;
+  focusRequest?: number;
   onExecute(): void;
   onRead(read: () => string): void;
   onChange?(content: string): void;
@@ -83,6 +87,9 @@ export function SqlConsole({
       editor.destroy();
     };
   }, []);
+  useEffect(() => {
+    if (active) view.current?.focus();
+  }, [active, focusRequest]);
   useEffect(() => {
     const schema: Record<string, string[]> = {};
     for (const table of tables) {

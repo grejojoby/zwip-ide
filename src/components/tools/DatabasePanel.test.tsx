@@ -47,7 +47,15 @@ beforeEach(() => {
 
 it('restores the last selected connection across panel mounts', async () => {
   vi.mocked(api.getSetting).mockResolvedValue('ready');
-  render(<DatabasePanel onDirty={() => {}} />);
+  render(
+    <DatabasePanel
+      dirty={false}
+      onOpenConsole={() => {}}
+      onRemoveConsole={async () => true}
+      onResultsHost={() => {}}
+      requestedConnection={null}
+    />,
+  );
   await waitFor(() =>
     expect((screen.getByLabelText('Saved database connection') as HTMLSelectElement).value).toBe(
       'ready',
@@ -55,11 +63,19 @@ it('restores the last selected connection across panel mounts', async () => {
   );
   expect(api.getSetting).toHaveBeenCalledWith(SELECTED_CONNECTION_KEY);
   expect(api.setSetting).not.toHaveBeenCalled();
-  expect(screen.getByText('SQL browser')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Open SQL console' })).toBeTruthy();
 });
 
 it('stores the selected connection when the user changes it', async () => {
-  render(<DatabasePanel onDirty={() => {}} />);
+  render(
+    <DatabasePanel
+      dirty={false}
+      onOpenConsole={() => {}}
+      onRemoveConsole={async () => true}
+      onResultsHost={() => {}}
+      requestedConnection={null}
+    />,
+  );
   const select = await screen.findByLabelText('Saved database connection');
   fireEvent.change(select, { target: { value: 'ready' } });
   await waitFor(() =>

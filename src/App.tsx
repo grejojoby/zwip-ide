@@ -6,6 +6,7 @@ import { closeCompletion } from '@codemirror/autocomplete';
 import { EditorState } from '@codemirror/state';
 import { api, newWindow, request } from './api';
 import type {
+  Connection,
   EditorOperation,
   EditorResult,
   NavigationBatch,
@@ -31,6 +32,9 @@ const GoTools = lazy(() =>
 );
 import { coverageLines as coverageForFile, matchesCoverage } from './model/go-results';
 import type { CoverageReport } from './model/go-types';
+const SqlBrowser = lazy(() =>
+  import('./components/tools/SqlBrowser').then((module) => ({ default: module.SqlBrowser })),
+);
 const DatabasePanel = lazy(() =>
   import('./components/tools/DatabasePanel').then((module) => ({ default: module.DatabasePanel })),
 );
@@ -382,6 +386,70 @@ export function App() {
       setStatus(asError(e).message);
     }
   }
+  const [sqlTabs, setSqlTabs] = useState<Connection[]>([]);
+  const [sqlFocusRequest, setSqlFocusRequest] = useState(0);
+  const [activeSql, setActiveSql] = useState<string>();
+  const [sqlResultsHost, setSqlResultsHost] = useState<{ id: string; host: HTMLDivElement } | null>(
+    null,
+  );
+  const [requestedSqlConnection, setRequestedSqlConnection] = useState<{ id: string } | null>(null);
+  const [discardSqlEdits, setDiscardSqlEdits] = useState(0);
+  const sqlDirty = useRef(new Map<string, boolean>());
+  const sqlOpenVersions = useRef(new Map<string, number>());
+  const openSqlConsole = useCallback((connection: Connection) => {
+    sqlOpenVersions.current.set(
+      connection.id,
+      (sqlOpenVersions.current.get(connection.id) ?? 0) + 1,
+    );
+    setSqlTabs((current) => {
+      const existing = current.find((item) => item.id === connection.id);
+      if (existing === connection) return current;
+      return existing
+        ? current.map((item) => (item.id === connection.id ? connection : item))
+        : [...current, connection];
+    });
+    setActiveSql(connection.id);
+    setSqlFocusRequest((value) => value + 1);
+  }, []);
+  const registerSqlResults = useCallback((id: string, host: HTMLDivElement | null) => {
+    setSqlResultsHost((current) =>
+      host
+        ? current?.id === id && current.host === host
+          ? current
+          : { id, host }
+        : current?.id === id
+          ? null
+          : current,
+    );
+  }, []);
+  const sqlDirtyChanged = useCallback((id: string, dirty: boolean) => {
+    sqlDirty.current.set(id, dirty);
+    setDatabaseDirty([...sqlDirty.current.values()].some(Boolean));
+  }, []);
+  const sqlCloseHandlers = useRef(new Map<string, () => Promise<void>>());
+  const registerSqlClose = useCallback((id: string, flush: (() => Promise<void>) | null) => {
+    if (flush) sqlCloseHandlers.current.set(id, flush);
+    else sqlCloseHandlers.current.delete(id);
+  }, []);
+  async function closeSqlConsole(id: string) {
+    if (sqlDirty.current.get(id)) {
+      setStatus('Apply or discard pending row edits before closing this console.');
+      return false;
+    }
+    const openVersion = sqlOpenVersions.current.get(id);
+    try {
+      await sqlCloseHandlers.current.get(id)?.();
+    } catch (error) {
+      setStatus(`SQL console retained because saving failed: ${asError(error).message}`);
+      return false;
+    }
+    // A newer open action takes precedence over a close waiting for disk writes.
+    if (sqlOpenVersions.current.get(id) !== openVersion) return false;
+    setSqlTabs((current) => current.filter((item) => item.id !== id));
+    setActiveSql((current) => (current === id ? undefined : current));
+    sqlDirty.current.delete(id);
+    return true;
+  }
   const [tabs, setTabs] = useState<string[]>([]);
   const [active, setActive] = useState<string>();
   const [split, setSplit] = useState<string>();
@@ -393,7 +461,7 @@ export function App() {
   const [showBranches, setShowBranches] = useState(false);
   const [gitRevision, setGitRevision] = useState(0);
   const [focusPane, setFocusPane] = useState<'main' | 'split'>('main');
-  const focusPath = focusPane === 'split' ? split : active;
+  const focusPath = activeSql ? undefined : focusPane === 'split' ? split : active;
   const [position, setPosition] = useState<Position>({ line: 0, character: 0 });
   const [shortcuts, setShortcuts] = useState<Shortcuts>(defaultShortcuts);
   const [historyPreferences, setHistoryPreferences] = useState<HistoryPreferences>({
@@ -697,6 +765,10 @@ export function App() {
       if (indexOnOpenRef.current) indexWorkspace();
       refreshScratches();
       setTabs([]);
+      setSqlTabs([]);
+      setActiveSql(undefined);
+      sqlDirty.current.clear();
+      sqlOpenVersions.current.clear();
       setActive(undefined);
       setDiffTabs([]);
       setActiveDiff(undefined);
@@ -825,6 +897,7 @@ export function App() {
         return;
       if (record)
         history.current.visit(path, target ?? { line: 0, character: 0 }, doc.sourceContextId);
+      setActiveSql(undefined);
       setTabs((current) => (current.includes(path) ? current : [...current, path]));
       if (pane === 'split' && split) setSplit(path);
       else {
@@ -945,6 +1018,7 @@ export function App() {
     }
   }
   function openDiff(diff: GitDiff) {
+    setActiveSql(undefined);
     setDiffTabs((current) =>
       current.some((item) => item.path === diff.path)
         ? current.map((item) => (item.path === diff.path ? diff : item))
@@ -1903,7 +1977,13 @@ export function App() {
           {sidebarTools.map((item) => {
             const side = sidebarLayout.placements[item];
             const visible = sidebarVisible(item);
-            const mounted = item === 'project' || (item === 'git' ? gitVisited : visible);
+            const mounted =
+              item === 'project' ||
+              (item === 'git'
+                ? gitVisited
+                : item === 'database'
+                  ? visible || sqlTabs.length > 0
+                  : visible);
             if (!mounted) return null;
             return (
               <aside
@@ -1997,7 +2077,13 @@ export function App() {
                         onSelectedChange={setGitSelection}
                       />
                     ) : item === 'database' ? (
-                      <DatabasePanel onDirty={setDatabaseDirty} />
+                      <DatabasePanel
+                        dirty={databaseDirty}
+                        onOpenConsole={openSqlConsole}
+                        onRemoveConsole={closeSqlConsole}
+                        onResultsHost={registerSqlResults}
+                        requestedConnection={requestedSqlConnection}
+                      />
                     ) : (
                       <HttpPanel source={httpSource} />
                     )}
@@ -2033,14 +2119,15 @@ export function App() {
             <div className="editor-tabs" role="tablist" aria-label="Open files">
               {tabs.map((path) => (
                 <div
-                  className={`editor-tab ${path === active && !diffView ? 'active' : ''}`}
+                  className={`editor-tab ${path === active && !diffView && !activeSql ? 'active' : ''}`}
                   key={path}
                 >
                   <button
                     role="tab"
-                    aria-selected={path === active && !diffView}
+                    aria-selected={path === active && !diffView && !activeSql}
                     title={path}
                     onClick={() => {
+                      setActiveSql(undefined);
                       setActive(path);
                       setActiveDiff(undefined);
                       setFocusPane('main');
@@ -2063,14 +2150,17 @@ export function App() {
               ))}
               {diffTabs.map((item) => (
                 <div
-                  className={`editor-tab ${item.path === activeDiff ? 'active' : ''}`}
+                  className={`editor-tab ${item.path === activeDiff && !activeSql ? 'active' : ''}`}
                   key={`diff:${item.path}`}
                 >
                   <button
                     role="tab"
-                    aria-selected={item.path === activeDiff}
+                    aria-selected={item.path === activeDiff && !activeSql}
                     title={`Changes in ${item.path}`}
-                    onClick={() => setActiveDiff(item.path)}
+                    onClick={() => {
+                      setActiveSql(undefined);
+                      setActiveDiff(item.path);
+                    }}
                   >
                     <Icon name="git" />
                     {item.path.split('/').pop()} (changes)
@@ -2084,8 +2174,34 @@ export function App() {
                   </button>
                 </div>
               ))}
+              {sqlTabs.map((connection) => (
+                <div
+                  className={`editor-tab ${activeSql === connection.id ? 'active' : ''}`}
+                  key={`sql:${connection.id}`}
+                >
+                  <button
+                    role="tab"
+                    aria-selected={activeSql === connection.id}
+                    title={`SQL console · ${connection.name}`}
+                    onClick={() => {
+                      openSqlConsole(connection);
+                      setRequestedSqlConnection({ id: connection.id });
+                    }}
+                  >
+                    <Icon name="database" />
+                    {connection.name}
+                  </button>
+                  <button
+                    className="tab-close"
+                    aria-label={`Close SQL console ${connection.name}`}
+                    onClick={() => closeSqlConsole(connection.id)}
+                  >
+                    <Icon name="close" />
+                  </button>
+                </div>
+              ))}
               <div className="spacer" />
-              {active && !diffView && isMarkdownPath(active) && (
+              {active && !diffView && !activeSql && isMarkdownPath(active) && (
                 <button
                   className="icon-button"
                   aria-pressed={markdownPreview}
@@ -2096,7 +2212,7 @@ export function App() {
                   <Icon name="eye" />
                 </button>
               )}
-              {active && !diffView && (
+              {active && !diffView && !activeSql && (
                 <button
                   className="icon-button"
                   aria-label={split ? 'Close split editor' : 'Split editor'}
@@ -2109,7 +2225,7 @@ export function App() {
                 </button>
               )}
             </div>
-            {active && !diffView && (
+            {active && !diffView && !activeSql && (
               <div className="breadcrumbs">
                 <span>{workspace.name}</span>
                 {active
@@ -2176,7 +2292,27 @@ export function App() {
               </div>
             )}
             <div className="editors">
-              {diffView ? (
+              <Suspense fallback={<p className="empty-note">Opening SQL editor…</p>}>
+                {sqlTabs.map((connection) => (
+                  <SqlBrowser
+                    key={connection.id}
+                    connection={connection}
+                    visible={activeSql === connection.id}
+                    focusRequest={sqlFocusRequest}
+                    resultsTarget={
+                      sqlResultsHost?.id === connection.id ? sqlResultsHost.host : null
+                    }
+                    onDirty={sqlDirtyChanged}
+                    onRegisterClose={registerSqlClose}
+                    discardEdits={discardSqlEdits}
+                    onShowResults={() => {
+                      setRequestedSqlConnection({ id: connection.id });
+                      changeSidebar({ kind: 'open', tool: 'database' });
+                    }}
+                  />
+                ))}
+              </Suspense>
+              {activeSql ? null : diffView ? (
                 <div className="diff-editor">
                   <div className="diff-editor-body">
                     <PartialDiff
@@ -2612,7 +2748,15 @@ export function App() {
           </div>
           <div className="modal-actions">
             <button onClick={() => setPendingSidebar(null)}>Keep editing</button>
-            <button className="danger" onClick={() => changeSidebar(pendingSidebar, true)}>
+            <button
+              className="danger"
+              onClick={() => {
+                setDiscardSqlEdits((value) => value + 1);
+                sqlDirty.current.clear();
+                setDatabaseDirty(false);
+                changeSidebar(pendingSidebar, true);
+              }}
+            >
               Discard and close
             </button>
           </div>

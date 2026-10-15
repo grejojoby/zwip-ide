@@ -11,8 +11,6 @@ import { updates } from './content/updates';
 const panels = vi.hoisted(() => ({
   editors: new Map<string, OpenEditor>(),
   gitMounts: 0,
-  databaseMounts: 0,
-  databaseUnmounts: 0,
 }));
 vi.mock('./editor/CodeEditor', () => ({
   CodeEditor: ({ document }: { document: OpenEditor }) => {
@@ -42,36 +40,9 @@ vi.mock('./components/GitPanel', async () => {
     },
   };
 });
-vi.mock('./components/tools/DatabasePanel', async () => {
-  const { useState, useEffect } = await import('react');
-  return {
-    DatabasePanel: ({ onDirty }: { onDirty(dirty: boolean): void }) => {
-      const [draft, setDraft] = useState(() => {
-        panels.databaseMounts++;
-        return '';
-      });
-      useEffect(
-        () => () => {
-          panels.databaseUnmounts++;
-          onDirty(false);
-        },
-        [onDirty],
-      );
-      return (
-        <section aria-label="Database tools">
-          <input
-            aria-label="Pending database row"
-            value={draft}
-            onChange={(event) => {
-              setDraft(event.target.value);
-              onDirty(true);
-            }}
-          />
-        </section>
-      );
-    },
-  };
-});
+vi.mock('./components/tools/SqlConsole', () => ({
+  SqlConsole: () => <textarea aria-label="SQL query" />,
+}));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn() }));
 vi.mock('./api', () => ({
   request: vi.fn(),
@@ -89,6 +60,10 @@ vi.mock('./api', () => ({
     workspaceStatus: vi.fn(),
     workspaceChanges: vi.fn(),
     cancelNavigation: vi.fn(),
+    connections: vi.fn(),
+    queryConsole: vi.fn(),
+    saveQueryConsole: vi.fn(),
+    toolRequest: vi.fn(),
   },
 }));
 const root = '/sidebar-fixture';
@@ -111,7 +86,7 @@ beforeEach(() => {
   localStorage.clear();
   storage.clear();
   panels.editors.clear();
-  panels.gitMounts = panels.databaseMounts = panels.databaseUnmounts = 0;
+  panels.gitMounts = 0;
   storage.set('zwip.updates.lastSeen', updates[0].id);
   vi.stubGlobal(
     'ResizeObserver',
@@ -123,6 +98,12 @@ beforeEach(() => {
   HTMLDialogElement.prototype.showModal = function () {
     this.setAttribute('open', '');
   };
+  vi.mocked(api.connections).mockResolvedValue([
+    { id: 'db', name: 'Demo', kind: 'sqlite', config: { path: '/db.sqlite' } },
+  ]);
+  vi.mocked(api.queryConsole).mockResolvedValue({ content: '' });
+  vi.mocked(api.saveQueryConsole).mockResolvedValue({ content: '' });
+  vi.mocked(api.toolRequest).mockResolvedValue([]);
   vi.mocked(open).mockResolvedValue(root);
   vi.mocked(api.getSetting).mockImplementation(async (key) => storage.get(key) ?? null);
   vi.mocked(api.setSetting).mockImplementation(async (key, value) => {
@@ -324,22 +305,43 @@ describe('sidebar panel ownership', () => {
   it('moves a dirty database panel without remounting, but guards a switch that hides it', async () => {
     await openWorkspace();
     fireEvent.click(railButton('right', 'database'));
-    const row = await screen.findByLabelText('Pending database row');
-    fireEvent.change(row, { target: { value: 'Unapplied database value' } });
+    vi.mocked(api.toolRequest)
+      .mockResolvedValueOnce([{ schema: '', name: 'people', type: 'table' }])
+      .mockResolvedValueOnce({
+        columns: [
+          { name: 'id', type: 'INTEGER', nullable: false, primaryKey: true },
+          { name: 'name', type: 'TEXT', nullable: false, primaryKey: false },
+        ],
+        rows: [{ id: 1, name: 'Original' }],
+        primaryKey: ['id'],
+        editable: true,
+        offset: 0,
+        hasMore: false,
+      });
+    await screen.findByRole('option', { name: 'Demo · sqlite' });
+    fireEvent.change(await screen.findByLabelText('Saved database connection'), {
+      target: { value: 'db' },
+    });
+    await screen.findByRole('option', { name: 'people' });
+    fireEvent.change(screen.getByLabelText('Database table'), { target: { value: '.people' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit row 1 name' }));
+    const cell = await screen.findByRole('dialog', { name: 'Edit name' });
+    fireEvent.change(within(cell).getByRole('textbox'), {
+      target: { value: 'Unapplied database value' },
+    });
+    fireEvent.click(within(cell).getByRole('button', { name: 'Keep edit' }));
+    const row = screen.getByRole('button', { name: 'Edit row 1 name' });
     const databaseHost = panel('database');
     await move('Database', 'left');
     expect(panel('database')).toBe(databaseHost);
     expect(databaseHost.dataset.sidebarSide).toBe('left');
-    expect(screen.getByLabelText('Pending database row')).toBe(row);
-    expect(panels.databaseMounts).toBe(1);
-    expect(panels.databaseUnmounts).toBe(0);
+    expect(screen.getByRole('button', { name: 'Edit row 1 name' })).toBe(row);
     expect(screen.queryByRole('dialog', { name: 'Discard pending row edits?' })).toBeNull();
     fireEvent.click(railButton('left', 'project'));
     const confirmation = await screen.findByRole('dialog', { name: 'Discard pending row edits?' });
     expect(visible(databaseHost)).toBe(true);
     fireEvent.click(within(confirmation).getByRole('button', { name: 'Keep editing' }));
-    expect((row as HTMLInputElement).value).toBe('Unapplied database value');
-    expect(panels.databaseUnmounts).toBe(0);
+    expect(row.textContent).toBe('Unapplied database value');
     fireEvent.click(railButton('left', 'project'));
     fireEvent.click(
       within(await screen.findByRole('dialog', { name: 'Discard pending row edits?' })).getByRole(
@@ -347,8 +349,14 @@ describe('sidebar panel ownership', () => {
         { name: 'Discard and close' },
       ),
     );
-    await waitFor(() => expect(panels.databaseUnmounts).toBe(1));
-    expect(screen.queryByLabelText('Pending database row')).toBeNull();
+    await waitFor(() => expect(visible(databaseHost)).toBe(false));
+    expect(screen.getByRole('tab', { name: 'Demo' })).toBeTruthy();
+    fireEvent.click(railButton('left', 'database'));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Edit row 1 name' }).textContent).toBe('Original'),
+    );
+    expect(panel('database')).toBe(databaseHost);
+    fireEvent.click(railButton('left', 'project'));
     expect(visible(panel('project'))).toBe(true);
   });
 });

@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { asError } from '../../model/document-session';
 import { Modal } from '../Modal';
 import { ConnectionDialog } from './ConnectionDialog';
 import { RedisBrowser } from './RedisBrowser';
-import { SqlBrowser } from './SqlBrowser';
 import { QueryArchive } from './QueryArchive';
 import { api } from '../../api';
 import { connectionApi, SELECTED_CONNECTION_KEY, toolRequest, type Connection } from './tool-api';
@@ -12,22 +11,27 @@ function chooseSelected(items: Connection[], current: string, saved: string | nu
   if (saved && items.some((item) => item.id === saved)) return saved;
   return '';
 }
-export function DatabasePanel({ onDirty }: { onDirty(dirty: boolean): void }) {
+export function DatabasePanel({
+  dirty,
+  onOpenConsole,
+  onRemoveConsole,
+  onResultsHost,
+  requestedConnection,
+}: {
+  dirty: boolean;
+  onOpenConsole(connection: Connection): void;
+  onRemoveConsole(id: string): Promise<boolean>;
+  onResultsHost(id: string, host: HTMLDivElement | null): void;
+  requestedConnection: { id: string } | null;
+}) {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [selected, setSelected] = useState('');
   const [showArchive, setShowArchive] = useState(false);
   const [editing, setEditing] = useState<Connection | 'new' | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
-  const [dirty, setDirty] = useState(false);
   const [generation, setGeneration] = useState(0);
   const [busy, setBusy] = useState(false);
-  const onDirtyRef = useRef(onDirty);
-  onDirtyRef.current = onDirty;
-  const dirtyChanged = useCallback((value: boolean) => {
-    setDirty(value);
-    onDirtyRef.current(value);
-  }, []);
   useEffect(() => {
     let current = true;
     let requestGeneration = 0;
@@ -48,7 +52,6 @@ export function DatabasePanel({ onDirty }: { onDirty(dirty: boolean): void }) {
     return () => {
       current = false;
       window.removeEventListener('zwip:connections-changed', refresh);
-      onDirtyRef.current(false);
     };
   }, []);
   function selectConnection(id: string) {
@@ -57,6 +60,19 @@ export function DatabasePanel({ onDirty }: { onDirty(dirty: boolean): void }) {
     void api.setSetting(SELECTED_CONNECTION_KEY, id).catch((e) => setError(asError(e).message));
   }
   const connection = connections.find((item) => item.id === selected);
+  useEffect(() => {
+    if (connection && connection.kind !== 'redis') onOpenConsole(connection);
+  }, [connection, onOpenConsole]);
+  const resultsRef = useCallback(
+    (host: HTMLDivElement | null) => {
+      onResultsHost(selected, host);
+    },
+    [selected, onResultsHost],
+  );
+  useEffect(() => {
+    if (!requestedConnection) return;
+    setSelected(requestedConnection.id);
+  }, [requestedConnection]);
   async function saved(items: Connection[], id: string) {
     try {
       if (connection)
@@ -68,6 +84,8 @@ export function DatabasePanel({ onDirty }: { onDirty(dirty: boolean): void }) {
     }
     setConnections(items);
     selectConnection(id);
+    const next = items.find((item) => item.id === id);
+    if (next && next.kind !== 'redis') onOpenConsole(next);
     setGeneration((value) => value + 1);
     setEditing(null);
     setError('');
@@ -84,6 +102,8 @@ export function DatabasePanel({ onDirty }: { onDirty(dirty: boolean): void }) {
       } catch {
         /* Connection metadata can be removed while a worker is unavailable. */
       }
+      if (!(await onRemoveConsole(connection.id)))
+        throw new Error('Cannot close the SQL console; the saved connection was retained.');
       const items = await connectionApi.delete(connection.id);
       setConnections(items);
       selectConnection('');
@@ -137,11 +157,12 @@ export function DatabasePanel({ onDirty }: { onDirty(dirty: boolean): void }) {
         connection.kind === 'redis' ? (
           <RedisBrowser key={`${connection.id}:${generation}`} connection={connection} />
         ) : (
-          <SqlBrowser
-            key={`${connection.id}:${generation}`}
-            connection={connection}
-            onDirty={dirtyChanged}
-          />
+          <>
+            <div className="tool-section-title">
+              <button onClick={() => onOpenConsole(connection)}>Open SQL console</button>
+            </div>
+            <div className="sql-results-host" ref={resultsRef} />
+          </>
         )
       ) : (
         <div className="empty-note">

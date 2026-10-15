@@ -22,6 +22,21 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-15-sql-console-editor-tabs',
+    version: '0.1.0',
+    date: '2026-10-15',
+    title: 'SQL consoles in editor tabs',
+    summary: 'Each database connection opens its SQL console in a full editor tab.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'Connection-named SQL tabs',
+        description:
+          'SQL editors use connection names as tab titles and retain their text and undo history when switching tabs or hiding Database. Cmd+Enter executes selected SQL and reveals results in the Database panel. Saved consoles remain attached to their connections. Closing waits for pending saves and retains the editor if saving fails.',
+      },
+    ],
+  },
+  {
     id: '2026-10-15-imported-query-archive',
     version: '0.1.0',
     date: '2026-10-15',

@@ -118,7 +118,15 @@ describe('IntelliJ import review', () => {
       }
       throw new Error(`Unexpected operation: ${method}`);
     });
-    render(<DatabasePanel onDirty={() => {}} />);
+    render(
+      <DatabasePanel
+        dirty={false}
+        onOpenConsole={() => {}}
+        onRemoveConsole={async () => true}
+        onResultsHost={() => {}}
+        requestedConnection={null}
+      />,
+    );
     mount();
     await inspect();
     fireEvent.click(screen.getByRole('button', { name: 'Import 1 selected connection' }));

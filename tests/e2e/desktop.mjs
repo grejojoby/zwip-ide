@@ -507,7 +507,17 @@ describe('native desktop workspace', () => {
     );
     assert.equal(after.prepare('SELECT name FROM people WHERE id=2').get().name, 'Second row');
     after.close();
+    const sqlTab = $('[role="tab"]=Native SQLite');
+    await sqlTab.waitForDisplayed();
+    assert.equal(await sqlTab.getAttribute('aria-selected'), 'true');
     const query = $('[aria-label="SQL query"]');
+    assert.equal(
+      await browser.execute(() => {
+        const editor = document.querySelector('[aria-label="SQL query"]');
+        return Boolean(editor?.closest('.workspace-main')) && !editor.closest('.database-panel');
+      }),
+      true,
+    );
     await query.click();
     await query.addValue('SELECT name, score FROM people WHERE id = 1');
     await waitForHighlightedToken('SQL query', 'SELECT');
@@ -557,7 +567,46 @@ describe('native desktop workspace', () => {
       (await $('.sql-browser .data-grid').getText()).includes('selected_only'),
     );
     assert.match(await $('.sql-browser .data-grid').getText(), /42/);
-    await screenshot('database');
+    await browser.execute(() => {
+      window.__sqlTabEditor = document.querySelector('[aria-label="SQL query"]');
+    });
+    await $('[aria-label="Close Database tool"]').click();
+    await query.waitForDisplayed();
+    await sqlTab.click();
+    assert.equal(
+      await browser.execute(
+        () => document.querySelector('[aria-label="SQL query"]') === window.__sqlTabEditor,
+      ),
+      true,
+    );
+    await browser.execute(() =>
+      document.querySelector('[aria-label="SQL query"]').dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Enter',
+          code: 'Enter',
+          metaKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    await $('.database-panel .data-grid').waitForDisplayed();
+    assert.match(await $('.database-panel .data-grid').getText(), /selected_only/);
+    await screenshot('database-editor-tab');
+    const connectionId = await $('[aria-label="Saved database connection"]').getValue();
+    await browser.waitUntil(async () =>
+      (await call('queryConsole.get', { connectionId })).content.includes('selected_only'),
+    );
+    await $('[aria-label="Close SQL console Native SQLite"]').click();
+    await sqlTab.waitForExist({ reverse: true });
+    await $('button=Open SQL console').click();
+    await $('[role="tab"]=Native SQLite').waitForDisplayed();
+    await browser.waitUntil(async () =>
+      (await $('[aria-label="SQL query"]').getText()).includes('selected_only'),
+    );
+    await browser.execute(() => {
+      delete window.__sqlTabEditor;
+    });
     await $('[aria-label="Close Database tool"]').click();
   });
 
@@ -638,6 +687,9 @@ describe('native desktop workspace', () => {
       };
     });
     try {
+      // Fixture setup uses native RPC rather than the connection dialog; refresh
+      // the retained Database panel just as a connection import does.
+      await browser.execute(() => window.dispatchEvent(new Event('zwip:connections-changed')));
       await $('[aria-label="Database tools"]').click();
       await browser.waitUntil(async () =>
         (await $('[aria-label="Saved database connection"]').getHTML()).includes(
