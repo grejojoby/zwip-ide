@@ -6,6 +6,8 @@ import {
   useState,
   type Dispatch,
   type SetStateAction,
+  type MouseEvent,
+  type KeyboardEvent,
 } from 'react';
 import { api } from '../api';
 import type {
@@ -26,6 +28,8 @@ import { Icon } from './Icon';
 import { PartialDiff } from './PartialDiff';
 import { GitOperations } from './GitOperations';
 import { PushOverview } from './PushOverview';
+import { EditorContextMenu, type MenuEntry } from './EditorContextMenu';
+import type { ProjectAction } from './ProjectTree';
 import type { MergeResolution } from './MergeEditor';
 const MergeEditor = lazy(() =>
   import('./MergeEditor').then((module) => ({ default: module.MergeEditor })),
@@ -40,6 +44,8 @@ export function GitPanel({
   revision,
   remoteStatus,
   onOpenDiff,
+  onOpenFile,
+  onFileAction,
   selected,
   onSelectedChange: setSelected,
 }: {
@@ -50,11 +56,22 @@ export function GitPanel({
   remoteStatus?: GitRemoteStatus;
   /** Shows the selected change in the main editor area. */
   onOpenDiff?(diff: GitDiff): void;
+  onOpenFile?(path: string): void;
+  onFileAction?(action: ProjectAction, path: string, directory: boolean): void;
   /** Lines chosen for commit, owned by the app so the main-editor diff can edit them too. */
   selected: Map<string, Selection>;
   onSelectedChange: Dispatch<SetStateAction<Map<string, Selection>>>;
 }) {
+  const [menu, setMenu] = useState<{
+    path: string;
+    files: GitSnapshot['files'];
+    directory: boolean;
+    x: number;
+    y: number;
+    trigger: HTMLElement;
+  } | null>(null);
   const [snapshot, setSnapshot] = useState<GitSnapshot | null>(null);
+  useEffect(() => setMenu(null), [generation, revision, snapshot?.fingerprint]);
   const [diffPath, setDiffPath] = useState<string>();
   const [push, setPush] = useState<PushPlan | null>(null);
   const [merge, setMerge] = useState<MergeSession | null>(null);
@@ -293,7 +310,7 @@ export function GitPanel({
       setBusy(false);
     }
   }
-  async function assignToList(id: string) {
+  async function assignToList(id: string, paths = [...selected.keys()]) {
     const target = lists.find((item) => item.id === id);
     if (!target) return;
     try {
@@ -301,11 +318,31 @@ export function GitPanel({
         await api.saveChangelist(
           id,
           target.name,
-          [...new Set([...target.paths, ...selected.keys()])],
-          assignmentsForMove(target, [...selected.keys()], persistedSelections()),
+          [...new Set([...target.paths, ...paths])],
+          assignmentsForMove(
+            target,
+            paths,
+            paths.flatMap((path) => {
+              const selection = selected.get(path);
+              if (selection)
+                return selection.changes === null
+                  ? []
+                  : [
+                      {
+                        path,
+                        changeIds: [...selection.changes],
+                        fingerprint: selection.fingerprint,
+                      },
+                    ];
+              const saved = lists
+                .find((item) => item.id === list)
+                ?.selections?.find((item) => item.path === path);
+              return saved ? [saved] : [];
+            }),
+          ),
         ),
       );
-      setNotice(`Selected changes assigned to ${target.name}.`);
+      setNotice(`Changes assigned to ${target.name}.`);
     } catch (e) {
       report(e);
     }
@@ -325,9 +362,114 @@ export function GitPanel({
     ) ?? [];
   const selectable = (items: GitSnapshot['files']) =>
     items.filter((file) => !conflicts.includes(file.path));
+  function contextHandlers(path: string, items: GitSnapshot['files'], directory = false) {
+    function open(event: MouseEvent<HTMLDivElement> | KeyboardEvent<HTMLDivElement>) {
+      event.preventDefault();
+      const trigger = event.currentTarget.querySelector<HTMLButtonElement>('button');
+      if (!trigger) return;
+      const box = trigger.getBoundingClientRect();
+      setMenu({
+        path,
+        files: items,
+        directory,
+        trigger,
+        x: 'clientX' in event ? event.clientX : box.left + 24,
+        y: 'clientY' in event ? event.clientY : box.bottom,
+      });
+    }
+    return {
+      onContextMenu: open,
+      onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => {
+        if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) open(event);
+      },
+    };
+  }
+  function closeMenu() {
+    menu?.trigger.focus();
+    setMenu(null);
+  }
+  function contextEntries(): MenuEntry[] {
+    if (!menu || !snapshot) return [];
+    const { path, directory } = menu;
+    const absolute = `${snapshot.root}/${path}`;
+    const conflicted = menu.files.some((file) => conflicts.includes(file.path));
+    const missing = (file: GitSnapshot['files'][number]) =>
+      file.worktreeStatus === 'D' || file.indexStatus === 'D';
+    const unavailable = directory ? menu.files.every(missing) : missing(menu.files[0]);
+    const editable = !unavailable && !conflicted;
+    const eligible = selectable(menu.files);
+    const included = eligible.length > 0 && eligible.every((file) => selected.has(file.path));
+    const action = (label: string, kind: ProjectAction, disabled = false): MenuEntry => ({
+      label,
+      disabled: busy || disabled,
+      run: () => onFileAction?.(kind, absolute, directory),
+    });
+    const entries: MenuEntry[] = [];
+    if (!directory) {
+      entries.push({ label: 'Show diff', disabled: busy, run: () => void showDiff(path) });
+      if (conflicted)
+        entries.push({
+          label: 'Resolve conflicts…',
+          disabled: busy,
+          run: () => void resolve(path),
+        });
+      if (onOpenFile)
+        entries.push({
+          label: 'Open file',
+          disabled: busy || unavailable,
+          run: () => onOpenFile(absolute),
+        });
+    }
+    entries.push({
+      label: included ? 'Exclude from commit' : 'Include in commit',
+      disabled: busy || !eligible.length,
+      run: () => eligible.forEach((file) => chooseFile(file.path, !included)),
+    });
+    const destinations = lists.filter((item) => item.id !== list);
+    entries.push({
+      label: 'Move to changelist',
+      disabled: busy || conflicted || !destinations.length,
+      children: destinations.map((item) => ({
+        label: item.name,
+        run: () =>
+          void assignToList(
+            item.id,
+            menu.files.map((file) => file.path),
+          ),
+      })),
+    });
+    if (onFileAction) {
+      entries.push('separator');
+      if (directory)
+        entries.push(
+          action('New file…', 'file', unavailable),
+          action('New folder…', 'directory', unavailable),
+        );
+      else
+        entries.push(
+          action('Rename or move…', 'rename', !editable),
+          action('Refactor / code actions…', 'refactor', !editable),
+          action('Format file', 'format', !editable),
+          action('Copy file…', 'copy', !editable),
+          action('Delete…', 'trash', !editable),
+        );
+      entries.push(
+        'separator',
+        action('Copy path', 'copyPath'),
+        action('Copy relative path', 'copyRelativePath'),
+        action('Show in Finder', 'reveal', unavailable),
+      );
+    }
+    return entries;
+  }
   function fileRow(file: GitSnapshot['files'][number], label: string, depth: number) {
     return (
-      <div className="git-file" key={file.path} style={{ paddingLeft: 8 + depth * 16 }}>
+      <div
+        className="git-file"
+        key={file.path}
+        style={{ paddingLeft: 8 + depth * 16 }}
+        {...contextHandlers(file.path, [file])}
+      >
         <input
           type="checkbox"
           aria-label={`Include ${file.path} in commit`}
@@ -463,6 +605,7 @@ export function GitPanel({
                   <div
                     className="git-file git-directory"
                     key={`dir:${row.path}`}
+                    {...contextHandlers(row.path, row.files, true)}
                     style={{ paddingLeft: 8 + row.depth * 16 }}
                   >
                     <input
@@ -509,6 +652,9 @@ export function GitPanel({
           )}
         </div>
       </div>
+      {menu && (
+        <EditorContextMenu x={menu.x} y={menu.y} entries={contextEntries()} onClose={closeMenu} />
+      )}
       {newList && (
         <Modal title="New changelist" onClose={() => setNewList(false)}>
           <form

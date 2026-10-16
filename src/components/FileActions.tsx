@@ -1,4 +1,5 @@
 import { useImperativeHandle, useState, type Ref } from 'react';
+import { createPortal } from 'react-dom';
 import { request } from '../api';
 import { Modal } from './Modal';
 import './file-actions.css';
@@ -169,153 +170,158 @@ export function FileActions({
       >
         Files…
       </button>
-      {mode && (
-        <Modal key={`${mode}:${preview ? 'preview' : 'form'}`} title={title} onClose={close}>
-          <div className="modal-body file-actions-body" aria-busy={busy}>
-            {mode === 'actions' && (
-              <>
-                <div className="file-actions-grid">
-                  <button data-autofocus onClick={() => choose('file')}>
-                    New file…
-                  </button>
-                  <button onClick={() => choose('directory')}>New folder…</button>
-                  <button disabled={!included} onClick={() => choose('rename')}>
-                    Rename or move file…
-                  </button>
-                  <button disabled={!included} onClick={() => choose('trash')}>
-                    Move file to IDE trash…
-                  </button>
-                  <button onClick={() => choose('restore')}>Recover trashed files…</button>
-                </div>
-                <p className="muted">
-                  {activeRelative
-                    ? `Selected file: ${activeRelative}`
-                    : 'Open a workspace file to rename or move it to trash.'}
-                </p>
-              </>
-            )}
-            {form && !preview && (
-              <form
-                id="file-action-form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  if (mode === 'rename' || mode === 'copy') void review(mode);
-                  else void create();
-                }}
-              >
-                {(mode === 'rename' || mode === 'copy') && (
-                  <p>
-                    Current file: <code>{activeRelative}</code>
-                  </p>
-                )}
-                <label>
-                  Path relative to project root
-                  <input
-                    data-autofocus
-                    required
-                    autoComplete="off"
-                    spellCheck={false}
-                    aria-label="Project relative path"
-                    disabled={busy}
-                    value={relativePath}
-                    onChange={(event) => setRelativePath(event.target.value)}
-                  />
-                </label>
-                <p className="muted file-action-path">{root}</p>
-              </form>
-            )}
-            {preview && (
-              <div className="file-action-preview">
-                <dl>
-                  <dt>Current path</dt>
-                  <dd>{preview.path}</dd>
-                  {preview.destination && (
-                    <>
-                      <dt>New path</dt>
-                      <dd>{preview.destination}</dd>
-                    </>
-                  )}
-                  <dt>Size</dt>
-                  <dd>{preview.bytes.toLocaleString()} bytes</dd>
-                </dl>
-                <p>
-                  {preview.operation === 'trash'
-                    ? 'The file will move to recoverable IDE trash. Restore it from Project file actions.'
-                    : preview.operation === 'copy'
-                      ? 'Creates an independent copy. Existing files are never overwritten.'
-                      : 'This changes the file path. References and imports are not automatically rewritten.'}
-                </p>
-              </div>
-            )}
-            {mode === 'restore' && (
-              <div className="file-trash-list">
-                {trash.map((entry) => (
-                  <div key={entry.id} className="file-trash-entry">
-                    <div>
-                      <strong>{entry.path}</strong>
-                      <span>
-                        {entry.bytes.toLocaleString()} bytes ·{' '}
-                        {new Date(entry.createdAt * 1000).toLocaleString()}
-                        {!entry.available && ' · Stored file unavailable'}
-                      </span>
-                    </div>
-                    <button disabled={busy || !entry.available} onClick={() => void restore(entry)}>
-                      Restore
+      {mode &&
+        createPortal(
+          <Modal key={`${mode}:${preview ? 'preview' : 'form'}`} title={title} onClose={close}>
+            <div className="modal-body file-actions-body" aria-busy={busy}>
+              {mode === 'actions' && (
+                <>
+                  <div className="file-actions-grid">
+                    <button data-autofocus onClick={() => choose('file')}>
+                      New file…
                     </button>
+                    <button onClick={() => choose('directory')}>New folder…</button>
+                    <button disabled={!included} onClick={() => choose('rename')}>
+                      Rename or move file…
+                    </button>
+                    <button disabled={!included} onClick={() => choose('trash')}>
+                      Move file to IDE trash…
+                    </button>
+                    <button onClick={() => choose('restore')}>Recover trashed files…</button>
                   </div>
-                ))}
-                {!busy && !trash.length && <p>No recoverable files in this project.</p>}
-              </div>
-            )}
-            {busy && <p role="status">Working…</p>}
-            {error && (
-              <p className="error-message" role="alert">
-                {error}
-              </p>
-            )}
-          </div>
-          <div className="modal-actions">
-            <button disabled={busy} onClick={close}>
-              {mode === 'actions' || mode === 'restore' ? 'Close' : 'Cancel'}
-            </button>
-            {preview && (
-              <button
-                disabled={busy}
-                onClick={() => {
-                  setPreview(null);
-                  if (mode === 'trash') void review('trash');
-                }}
-              >
-                {mode === 'trash' ? 'Refresh preview' : 'Edit destination'}
+                  <p className="muted">
+                    {activeRelative
+                      ? `Selected file: ${activeRelative}`
+                      : 'Open a workspace file to rename or move it to trash.'}
+                  </p>
+                </>
+              )}
+              {form && !preview && (
+                <form
+                  id="file-action-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (mode === 'rename' || mode === 'copy') void review(mode);
+                    else void create();
+                  }}
+                >
+                  {(mode === 'rename' || mode === 'copy') && (
+                    <p>
+                      Current file: <code>{activeRelative}</code>
+                    </p>
+                  )}
+                  <label>
+                    Path relative to project root
+                    <input
+                      data-autofocus
+                      required
+                      autoComplete="off"
+                      spellCheck={false}
+                      aria-label="Project relative path"
+                      disabled={busy}
+                      value={relativePath}
+                      onChange={(event) => setRelativePath(event.target.value)}
+                    />
+                  </label>
+                  <p className="muted file-action-path">{root}</p>
+                </form>
+              )}
+              {preview && (
+                <div className="file-action-preview">
+                  <dl>
+                    <dt>Current path</dt>
+                    <dd>{preview.path}</dd>
+                    {preview.destination && (
+                      <>
+                        <dt>New path</dt>
+                        <dd>{preview.destination}</dd>
+                      </>
+                    )}
+                    <dt>Size</dt>
+                    <dd>{preview.bytes.toLocaleString()} bytes</dd>
+                  </dl>
+                  <p>
+                    {preview.operation === 'trash'
+                      ? 'The file will move to recoverable IDE trash. Restore it from Project file actions.'
+                      : preview.operation === 'copy'
+                        ? 'Creates an independent copy. Existing files are never overwritten.'
+                        : 'This changes the file path. References and imports are not automatically rewritten.'}
+                  </p>
+                </div>
+              )}
+              {mode === 'restore' && (
+                <div className="file-trash-list">
+                  {trash.map((entry) => (
+                    <div key={entry.id} className="file-trash-entry">
+                      <div>
+                        <strong>{entry.path}</strong>
+                        <span>
+                          {entry.bytes.toLocaleString()} bytes ·{' '}
+                          {new Date(entry.createdAt * 1000).toLocaleString()}
+                          {!entry.available && ' · Stored file unavailable'}
+                        </span>
+                      </div>
+                      <button
+                        disabled={busy || !entry.available}
+                        onClick={() => void restore(entry)}
+                      >
+                        Restore
+                      </button>
+                    </div>
+                  ))}
+                  {!busy && !trash.length && <p>No recoverable files in this project.</p>}
+                </div>
+              )}
+              {busy && <p role="status">Working…</p>}
+              {error && (
+                <p className="error-message" role="alert">
+                  {error}
+                </p>
+              )}
+            </div>
+            <div className="modal-actions">
+              <button disabled={busy} onClick={close}>
+                {mode === 'actions' || mode === 'restore' ? 'Close' : 'Cancel'}
               </button>
-            )}
-            {form && !preview && (
-              <button
-                className="primary"
-                type="submit"
-                form="file-action-form"
-                disabled={busy || !relativePath.trim()}
-              >
-                {mode === 'rename' ? 'Review move' : mode === 'copy' ? 'Review copy' : 'Create'}
-              </button>
-            )}
-            {preview && (
-              <button
-                data-autofocus
-                className="primary"
-                disabled={busy}
-                onClick={() => void apply()}
-              >
-                {preview.operation === 'trash'
-                  ? 'Move to IDE trash'
-                  : preview.operation === 'copy'
-                    ? 'Copy file'
-                    : 'Apply move'}
-              </button>
-            )}
-          </div>
-        </Modal>
-      )}
+              {preview && (
+                <button
+                  disabled={busy}
+                  onClick={() => {
+                    setPreview(null);
+                    if (mode === 'trash') void review('trash');
+                  }}
+                >
+                  {mode === 'trash' ? 'Refresh preview' : 'Edit destination'}
+                </button>
+              )}
+              {form && !preview && (
+                <button
+                  className="primary"
+                  type="submit"
+                  form="file-action-form"
+                  disabled={busy || !relativePath.trim()}
+                >
+                  {mode === 'rename' ? 'Review move' : mode === 'copy' ? 'Review copy' : 'Create'}
+                </button>
+              )}
+              {preview && (
+                <button
+                  data-autofocus
+                  className="primary"
+                  disabled={busy}
+                  onClick={() => void apply()}
+                >
+                  {preview.operation === 'trash'
+                    ? 'Move to IDE trash'
+                    : preview.operation === 'copy'
+                      ? 'Copy file'
+                      : 'Apply move'}
+                </button>
+              )}
+            </div>
+          </Modal>,
+          document.body,
+        )}
     </>
   );
 }

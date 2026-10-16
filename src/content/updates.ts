@@ -22,6 +22,27 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-16-git-change-context-actions',
+    version: '0.1.0',
+    date: '2026-10-16',
+    title: 'Git changes context menus',
+    summary: 'Right-click changed files and grouped folders for file and Git actions.',
+    changes: [
+      {
+        type: 'added',
+        title: 'File actions in Git changes',
+        description:
+          'Open files, review diffs, rename or move, copy, delete to IDE trash, format, request provider refactors, copy paths, and show files in Finder. Grouped folders support file creation, path actions, and commit inclusion. Keyboard menus support Shift+F10, arrow navigation, and Escape.',
+      },
+      {
+        type: 'improved',
+        title: 'Actions follow the selected change',
+        description:
+          'Include or exclude the context file or folder from commit and move its changes to a changelist without changing unrelated commit selections. Conflict resolution is available for conflicted files; editing actions are disabled for conflicts and deleted files. File dialogs remain visible when the Project tool is hidden. File operations refresh Git changes and remove obsolete commit selections after moves or deletion.',
+      },
+    ],
+  },
+  {
     id: '2026-10-16-project-explorer-context-actions',
     version: '0.1.0',
     date: '2026-10-16',

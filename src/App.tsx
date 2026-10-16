@@ -1033,6 +1033,14 @@ export function App() {
     const refreshed = await api.rescanWorkspace(false);
     workspaceRef.current = refreshed;
     setWorkspace(refreshed);
+    setGitRevision((current) => current + 1);
+    if (result.operation === 'rename' || result.operation === 'trash') {
+      setGitSelection((current) => {
+        const next = new Map(current);
+        next.delete(result.previousPath.slice(refreshed.root.length + 1));
+        return next;
+      });
+    }
     if (result.operation !== 'directory' && result.operation !== 'trash')
       await openFile(result.path, undefined, true, 'main');
     setStatus(
@@ -2143,6 +2151,10 @@ export function App() {
                         revision={gitRevision}
                         remoteStatus={gitRemote}
                         onOpenDiff={openDiff}
+                        onOpenFile={(path) => void openFile(path)}
+                        onFileAction={(action, path, directory) =>
+                          void projectFileAction(action, path, directory)
+                        }
                         selected={gitSelection}
                         onSelectedChange={setGitSelection}
                       />

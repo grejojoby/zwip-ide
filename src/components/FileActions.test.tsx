@@ -181,3 +181,16 @@ it('creates new files inside the context folder and previews deletion of the con
   });
   expect(request).not.toHaveBeenCalledWith('workspace.fileApply', expect.anything());
 });
+
+it('shows file dialogs when invoked from Git with the project tool hidden', async () => {
+  const { createRef } = await import('react');
+  const { act } = await import('@testing-library/react');
+  const ref = createRef<import('./FileActions').FileActionsHandle>();
+  render(
+    <aside hidden>
+      <FileActions ref={ref} root="/project" beforeMutation={async () => {}} onApplied={vi.fn()} />
+    </aside>,
+  );
+  act(() => ref.current!.open('rename', '/project/second.ts', false));
+  expect(await screen.findByRole('dialog', { name: 'Rename or move file' })).toBeTruthy();
+});

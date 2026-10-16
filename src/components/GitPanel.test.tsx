@@ -1,10 +1,17 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { api } from '../api';
+import type { Changelist } from '../contracts';
 import { GitPanel, type Selection } from './GitPanel';
 
 const settings = new Map<string, unknown>();
+const changes = {
+  statuses: {} as Record<string, string>,
+  conflicts: [] as string[],
+  lists: [] as Changelist[],
+};
 const repository = {
   fingerprint: 'f1',
   paths: ['renderly/app/cmd/app.go', 'renderly/app/pkg/fetch.go', 'README.md'],
@@ -15,7 +22,11 @@ vi.mock('../api', () => ({
       root: '/repo',
       branch: 'main',
       fingerprint: repository.fingerprint,
-      files: repository.paths.map((path) => ({ path, indexStatus: ' ', worktreeStatus: 'M' })),
+      files: repository.paths.map((path) => ({
+        path,
+        indexStatus: ' ',
+        worktreeStatus: changes.statuses[path] ?? 'M',
+      })),
     }),
     pushPlan: async () => ({
       fingerprint: 'push1',
@@ -31,8 +42,10 @@ vi.mock('../api', () => ({
       },
       diff: '+app change\n+helper change\n+readme change',
     }),
-    changelists: async () => [],
-    gitConflicts: async () => [],
+    changelists: async () => changes.lists,
+    saveChangelist: vi.fn(async () => changes.lists),
+    gitDiff: vi.fn(async (path: string) => ({ path, fingerprint: repository.fingerprint })),
+    gitConflicts: async () => changes.conflicts,
     getSetting: async (key: string) => settings.get(key) ?? null,
     setSetting: async (key: string, value: unknown) => settings.set(key, value),
   },
@@ -40,12 +53,22 @@ vi.mock('../api', () => ({
 }));
 vi.mock('./GitOperations', () => ({ GitOperations: () => null }));
 afterEach(cleanup);
+beforeEach(() => {
+  settings.clear();
+  changes.statuses = {};
+  changes.conflicts = [];
+  changes.lists = [];
+  vi.clearAllMocks();
+});
 
-function Harness() {
+function Harness({ onFileAction = vi.fn(), onOpenFile = vi.fn(), onOpenDiff = vi.fn() } = {}) {
   const [selected, setSelected] = useState(new Map<string, Selection>());
   return (
     <GitPanel
       generation={1}
+      onFileAction={onFileAction}
+      onOpenFile={onOpenFile}
+      onOpenDiff={onOpenDiff}
       onBranch={() => {}}
       selected={selected}
       onSelectedChange={setSelected}
@@ -124,4 +147,114 @@ it('shows outgoing commits beside a nested file tree and previews only the selec
   expect(dialog.queryByRole('button', { name: 'src/app.ts' })).toBeNull();
   fireEvent.click(dialog.getByRole('button', { name: 'src', expanded: false }));
   expect(dialog.getByRole('button', { name: 'src/app.ts' })).toBeTruthy();
+});
+
+it('targets the right-clicked change for file actions without opening a diff or changing selection', async () => {
+  const onFileAction = vi.fn();
+  const onOpenFile = vi.fn();
+  render(<Harness onFileAction={onFileAction} onOpenFile={onOpenFile} />);
+  const file = await screen.findByTitle('README.md');
+  fireEvent.contextMenu(file);
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Rename or move…' }));
+  expect(onFileAction).toHaveBeenCalledWith('rename', '/repo/README.md', false);
+  expect(api.gitDiff).not.toHaveBeenCalled();
+  expect(
+    (screen.getByRole('checkbox', { name: 'Include README.md in commit' }) as HTMLInputElement)
+      .checked,
+  ).toBe(false);
+  fireEvent.contextMenu(file);
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Open file' }));
+  expect(onOpenFile).toHaveBeenCalledWith('/repo/README.md');
+});
+
+it('offers diff and commit inclusion from the keyboard and restores row focus', async () => {
+  const onOpenDiff = vi.fn();
+  render(<Harness onOpenDiff={onOpenDiff} />);
+  const file = await screen.findByTitle('README.md');
+  fireEvent.keyDown(file, { key: 'F10', shiftKey: true });
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Include in commit' }));
+  expect(
+    (screen.getByRole('checkbox', { name: 'Include README.md in commit' }) as HTMLInputElement)
+      .checked,
+  ).toBe(true);
+  fireEvent.contextMenu(file);
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Exclude from commit' }));
+  fireEvent.contextMenu(file);
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Show diff' }));
+  await waitFor(() =>
+    expect(onOpenDiff).toHaveBeenCalledWith(expect.objectContaining({ path: 'README.md' })),
+  );
+  fireEvent.contextMenu(file);
+  fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+  expect(document.activeElement).toBe(file);
+});
+
+it('disables missing-file actions for deletions while preserving diff and path actions', async () => {
+  changes.statuses['README.md'] = 'D';
+  const onFileAction = vi.fn();
+  render(<Harness onFileAction={onFileAction} />);
+  fireEvent.contextMenu(await screen.findByTitle('README.md'));
+  for (const name of ['Open file', 'Rename or move…', 'Copy file…', 'Delete…', 'Format file'])
+    expect((screen.getByRole('menuitem', { name }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole('menuitem', { name: 'Show diff' }) as HTMLButtonElement).disabled).toBe(
+    false,
+  );
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Copy relative path' }));
+  expect(onFileAction).toHaveBeenCalledWith('copyRelativePath', '/repo/README.md', false);
+});
+
+it('offers conflict resolution and prevents editing conflicted files from the menu', async () => {
+  changes.conflicts = ['README.md'];
+  render(<Harness />);
+  fireEvent.contextMenu(await screen.findByTitle('README.md'));
+  expect(screen.getByRole('menuitem', { name: 'Resolve conflicts…' })).toBeTruthy();
+  for (const name of ['Include in commit', 'Rename or move…', 'Format file'])
+    expect((screen.getByRole('menuitem', { name }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+it('moves only the context file to a changelist, preserving unrelated commit selections', async () => {
+  changes.lists = [{ id: 'work', name: 'Work', paths: [] }];
+  render(<Harness />);
+  await screen.findByTitle('README.md');
+  fireEvent.click(
+    screen.getByRole('checkbox', { name: 'Include renderly/app/cmd/app.go in commit' }),
+  );
+  fireEvent.contextMenu(screen.getByTitle('README.md'));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Move to changelist' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Work' }));
+  await waitFor(() =>
+    expect(api.saveChangelist).toHaveBeenCalledWith('work', 'Work', ['README.md'], []),
+  );
+  expect(
+    (
+      screen.getByRole('checkbox', {
+        name: 'Include renderly/app/cmd/app.go in commit',
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+});
+
+it('offers folder actions in directory grouping and includes only that directory in commit', async () => {
+  const onFileAction = vi.fn();
+  render(<Harness onFileAction={onFileAction} />);
+  await screen.findByTitle('README.md');
+  fireEvent.click(screen.getByRole('button', { name: /Directories/ }));
+  const directory = screen.getByTitle('renderly/app');
+  fireEvent.contextMenu(directory);
+  expect(screen.queryByRole('menuitem', { name: 'Rename or move…' })).toBeNull();
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Copy path' }));
+  expect(onFileAction).toHaveBeenCalledWith('copyPath', '/repo/renderly/app', true);
+  fireEvent.contextMenu(directory);
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Include in commit' }));
+  expect(
+    (
+      screen.getByRole('checkbox', {
+        name: 'Include renderly/app/cmd/app.go in commit',
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+  expect(
+    (screen.getByRole('checkbox', { name: 'Include README.md in commit' }) as HTMLInputElement)
+      .checked,
+  ).toBe(false);
 });
