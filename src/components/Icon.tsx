@@ -24,8 +24,10 @@ export type IconName =
   | 'arrow'
   | 'clock'
   | 'database'
-  | 'http';
+  | 'http'
+  | 'download';
 const paths: Record<IconName, string> = {
+  download: 'M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4',
   database: 'M3 5c0-4 18-4 18 0s-18 4-18 0ZM3 5v14c0 4 18 4 18 0V5M3 12c0 4 18 4 18 0',
   http: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20ZM2 12h20M12 2c-6 5-6 15 0 20M12 2c6 5 6 15 0 20',
   folder: 'M2 5h5l2 2h13v12H2z',

@@ -13,6 +13,7 @@ import type {
   Changelist,
   GitDiff,
   GitSnapshot,
+  GitRemoteStatus,
   MergeSession,
   PushPlan,
 } from '../contracts';
@@ -37,6 +38,7 @@ export function GitPanel({
   generation,
   onBranch,
   revision,
+  remoteStatus,
   onOpenDiff,
   selected,
   onSelectedChange: setSelected,
@@ -45,6 +47,7 @@ export function GitPanel({
   onBranch(branch: string): void;
   /** Changes when Git was modified outside the panel, to trigger a refresh. */
   revision?: number;
+  remoteStatus?: GitRemoteStatus;
   /** Shows the selected change in the main editor area. */
   onOpenDiff?(diff: GitDiff): void;
   /** Lines chosen for commit, owned by the app so the main-editor diff can edit them too. */
@@ -382,7 +385,12 @@ export function GitPanel({
         </button>
       </div>
       {snapshot && (
-        <GitOperations snapshot={snapshot} path={diffPath} onUpdate={() => void refresh()} />
+        <GitOperations
+          remoteStatus={remoteStatus}
+          snapshot={snapshot}
+          path={diffPath}
+          onUpdate={() => void refresh()}
+        />
       )}
       <div className="changelist-bar">
         <label>

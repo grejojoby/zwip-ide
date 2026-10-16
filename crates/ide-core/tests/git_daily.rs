@@ -432,3 +432,60 @@ fn branch_popup_actions_cover_remote_checkout_compare_update_push_rename_and_del
         .trim()
         .is_empty());
 }
+
+#[test]
+fn branches_report_incoming_and_diverged_upstreams_without_marking_untracked_branches() {
+    let (root, _data, core) = fixture();
+    let origin = tempfile::tempdir().unwrap();
+    git(origin.path(), &["init", "--bare", "-b", "main"]);
+    git(
+        root.path(),
+        &["remote", "add", "origin", origin.path().to_str().unwrap()],
+    );
+    git(root.path(), &["push", "-u", "origin", "main"]);
+    git(root.path(), &["branch", "untracked"]);
+    let writer = tempfile::tempdir().unwrap();
+    git(
+        writer.path(),
+        &["clone", origin.path().to_str().unwrap(), "."],
+    );
+    git(
+        writer.path(),
+        &["config", "user.email", "fixture@example.test"],
+    );
+    git(writer.path(), &["config", "user.name", "Fixture"]);
+    git(writer.path(), &["config", "commit.gpgsign", "false"]);
+    fs::write(writer.path().join("remote.txt"), "incoming").unwrap();
+    git(writer.path(), &["add", "."]);
+    git(writer.path(), &["commit", "-m", "incoming"]);
+    git(writer.path(), &["push"]);
+    fs::write(root.path().join("local.txt"), "outgoing").unwrap();
+    git(root.path(), &["add", "."]);
+    git(root.path(), &["commit", "-m", "outgoing"]);
+    git(root.path(), &["fetch", "origin"]);
+    let result = core.request("git.branches", json!({})).unwrap();
+    let branches = result["branches"].as_array().unwrap();
+    let main = branches.iter().find(|b| b["name"] == "main").unwrap();
+    assert_eq!(main["behind"], 1);
+    assert_eq!(main["ahead"], 1);
+    assert_eq!(
+        branches
+            .iter()
+            .find(|b| b["name"] == "origin/main")
+            .unwrap()["behind"],
+        1
+    );
+    assert!(branches.iter().find(|b| b["name"] == "untracked").unwrap()["behind"].is_null());
+    git(
+        root.path(),
+        &["update-ref", "-d", "refs/remotes/origin/main"],
+    );
+    let result = core.request("git.branches", json!({})).unwrap();
+    assert!(result["branches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["name"] == "main")
+        .unwrap()["behind"]
+        .is_null());
+}

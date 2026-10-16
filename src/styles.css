@@ -3533,3 +3533,34 @@ path.current {
   min-height: 0;
   flex-direction: column;
 }
+
+/* Incoming commits use the same icon in branch rows, the toolbar and dialogs. */
+.git-incoming {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--accent);
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.git-incoming .icon {
+  width: 14px;
+  height: 14px;
+}
+.branch-remote-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  font-size: 12px;
+}
+.branch-remote-summary > span:first-child {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.branch-remote-summary button {
+  margin-left: auto;
+}

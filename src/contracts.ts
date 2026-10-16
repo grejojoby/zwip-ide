@@ -198,6 +198,28 @@ export interface GitFile {
   worktreeStatus: string;
   originalPath?: string;
 }
+export interface GitBranch {
+  name: string;
+  remote: boolean;
+  current: boolean;
+  upstream?: string;
+  subject: string;
+  oid: string;
+  /** Null when no resolvable upstream exists. Remote rows summarize their local trackers. */
+  behind?: number | null;
+  ahead?: number | null;
+}
+export interface GitRemoteStatus {
+  root: string;
+  current: string;
+  branches: GitBranch[];
+  fetch: {
+    state: 'idle' | 'fetching' | 'ready' | 'failed' | 'unavailable';
+    lastFetched: number | null;
+    error: string | null;
+    version: number;
+  };
+}
 export interface GitSnapshot {
   root: string;
   branch: string;

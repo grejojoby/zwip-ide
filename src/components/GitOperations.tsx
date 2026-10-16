@@ -1,16 +1,9 @@
 import { useEffect, useState } from 'react';
 import { request } from '../api';
-import type { GitSnapshot } from '../contracts';
+import type { GitBranch as Branch, GitRemoteStatus, GitSnapshot } from '../contracts';
 import { asError } from '../model/document-session';
 import { Modal } from './Modal';
-interface Branch {
-  name: string;
-  remote: boolean;
-  current: boolean;
-  upstream?: string;
-  subject: string;
-  oid: string;
-}
+import { IncomingChanges, incomingBranches } from './IncomingChanges';
 interface Commit {
   id: string;
   parents: string[];
@@ -45,8 +38,10 @@ export function GitOperations({
   snapshot,
   path,
   onUpdate,
+  remoteStatus,
 }: {
   snapshot: GitSnapshot;
+  remoteStatus?: GitRemoteStatus;
   path?: string;
   onUpdate(): void;
 }) {
@@ -77,6 +72,10 @@ export function GitOperations({
       active = false;
     };
   }, [snapshot.fingerprint]);
+  useEffect(() => {
+    if (remoteStatus && dialog === 'branches') setBranches(remoteStatus.branches);
+  }, [remoteStatus, dialog]);
+  const incoming = incomingBranches(remoteStatus?.branches);
   async function inspect(next: Dialog) {
     setBusy(true);
     setError('');
@@ -119,7 +118,11 @@ export function GitOperations({
     <>
       <div className="git-operations">
         <button disabled={busy} onClick={() => void inspect('branches')}>
-          Branches…
+          Branches…{' '}
+          <IncomingChanges
+            count={incoming}
+            label={`Updates to pull on ${incoming} ${incoming === 1 ? 'branch' : 'branches'}`}
+          />
         </button>
         <button disabled={busy} onClick={() => void run('git.fetch')}>
           Fetch
@@ -196,6 +199,10 @@ export function GitOperations({
                         {branch.current ? '● ' : ''}
                         {branch.name}
                       </strong>
+                      <IncomingChanges
+                        count={branch.behind ?? 0}
+                        label={`${branch.behind} incoming commit${branch.behind === 1 ? '' : 's'} ${branch.remote ? 'compared with local tracking branches' : `from ${branch.upstream}`}`}
+                      />
                       <span>
                         {branch.remote ? 'remote' : 'local'} · {branch.subject}
                       </span>

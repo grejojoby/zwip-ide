@@ -5,7 +5,16 @@ import { BranchPopup } from './BranchPopup';
 
 const calls: { method: string; params: Record<string, unknown> }[] = [];
 const branches = [
-  { name: 'main', remote: false, current: true, upstream: 'origin/main', subject: 's', oid: '1' },
+  {
+    name: 'main',
+    remote: false,
+    current: true,
+    upstream: 'origin/main',
+    subject: 's',
+    oid: '1',
+    behind: 2,
+    ahead: 1,
+  },
   { name: 'feature', remote: false, current: false, upstream: '', subject: 's', oid: '2' },
   { name: 'origin/main', remote: true, current: false, subject: 's', oid: '1' },
   { name: 'origin/HEAD', remote: true, current: false, subject: 's', oid: '1' },
@@ -135,4 +144,51 @@ describe('branch popup', () => {
       }),
     );
   });
+});
+
+it('shows incoming changes next to a branch and summarizes branches with updates in the modal', async () => {
+  await open();
+  expect(screen.getByRole('img', { name: '2 incoming commits from origin/main' })).toBeTruthy();
+  expect(screen.getByText('1 branch has incoming changes')).toBeTruthy();
+});
+it('updates branch badges in an open modal and keeps cached counts visible after a fetch failure', async () => {
+  const incoming = [{ ...branches[0], behind: 2 }];
+  const remote = {
+    root: '/p/demo',
+    current: 'main',
+    branches: incoming,
+    fetch: {
+      state: 'failed' as const,
+      lastFetched: 1,
+      error: 'Could not fetch origin; showing last fetched refs.',
+      version: 1,
+    },
+  };
+  const { rerender } = render(
+    <BranchPopup
+      onClose={() => {}}
+      onChanged={() => {}}
+      remoteStatus={remote}
+      onFetch={() => {}}
+    />,
+  );
+  expect(
+    await screen.findByRole('img', { name: '2 incoming commits from origin/main' }),
+  ).toBeTruthy();
+  expect(screen.getByText(/Could not fetch origin/)).toBeTruthy();
+  rerender(
+    <BranchPopup
+      onClose={() => {}}
+      onChanged={() => {}}
+      remoteStatus={{
+        ...remote,
+        branches: [{ ...incoming[0], behind: 0 }],
+        fetch: { ...remote.fetch, state: 'ready', error: null, version: 2 },
+      }}
+    />,
+  );
+  await waitFor(() =>
+    expect(screen.queryByRole('img', { name: '2 incoming commits from origin/main' })).toBeNull(),
+  );
+  expect(screen.queryByText(/has incoming changes/)).toBeNull();
 });

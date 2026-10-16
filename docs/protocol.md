@@ -97,3 +97,27 @@ The editor's build-context selector appears for the nearest applicable project w
 The command-line JSONL host has six ordinary request threads, two reserved control threads, and bounded queues. Progress, cancellation and app information remain available while semantic requests occupy ordinary threads. Replies may arrive out of order and retain request IDs. Clients must await mutations they depend on. CLI input and provider-output frames reject messages over 64 MiB. Closing stdin drains accepted work, cancels semantic activity and shuts down workers while preserving unsaved recovery.
 
 The package host supplies a generic `ZWIP_PACKAGE_CACHE` directory. Each package owns its tool-specific environment and cache layout; Go configures its own Go toolchain, build cache and gopls cache at bootstrap.
+
+## Incoming Git updates
+
+`git.branches` includes `ahead` and `behind` counts for resolvable local upstreams;
+unknown or deleted upstreams use `null`. Origin rows summarize their local trackers.
+Diverged branches still have incoming commits. An untracked local branch is not silently
+assigned an upstream. Single-branch fetch mappings are respected without changing Git
+configuration; explicitly fetched origin refs can resolve configured tracking branches.
+
+`git.remoteStatus {}` returns `{root, current, branches, fetch}`. The fetch object has a
+`state` (`idle`, `fetching`, `ready`, `failed`, `unavailable`), `lastFetched` Unix seconds,
+`error`, and `version`. Initial observation and changes to local refs, checked-out branch,
+external `FETCH_HEAD`, or origin configuration schedule a background origin refresh.
+Successful checkout, branch creation, checkout/rebase, branch update and pull operations
+also schedule it, including no-op pulls. `git.refreshRemote {}` explicitly requests another
+refresh. Repeated requests combine into at most one running fetch plus one pending refresh.
+
+The refresh fetches every origin branch into `refs/remotes/origin/*`, prunes stale tracking
+refs, skips tags/submodules and leaves local branches/files untouched. It does not rewrite
+fetch mappings or `FETCH_HEAD`; its own updates therefore do not trigger a refresh loop.
+Fetch runs without interactive prompts, has a 60-second limit and stops at application
+shutdown. Failed refreshes retain the last fetched refs and report failure separately from
+incoming counts. The workspace UI observes changes every five seconds while visible and
+on focus, so branch switches/pulls made in another application are detected when observed.

@@ -22,6 +22,27 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-16-git-incoming-branches',
+    version: '0.1.0',
+    date: '2026-10-16',
+    title: 'Incoming branch updates',
+    summary: 'See which branches have commits waiting to be pulled.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Incoming commit icons',
+        description:
+          'Branch rows show incoming commit counts, including diverged branches. The branch control and branch dialogs summarize branches with incoming changes.',
+      },
+      {
+        type: 'improved',
+        title: 'Background origin refresh',
+        description:
+          'Fetch all origin branches after checkout or pull. Local branch updates made outside Zwip are detected while the workspace is visible. Fetches run in the background, combine rapid requests, and preserve local branches and files. Failed refreshes retain the last fetched counts with a status message.',
+      },
+    ],
+  },
+  {
     id: '2026-10-16-persistent-workspace-index',
     version: '0.1.0',
     date: '2026-10-16',

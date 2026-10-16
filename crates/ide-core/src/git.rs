@@ -1,4 +1,6 @@
+mod remote;
 use crate::documents::hash;
+pub use remote::RemoteUpdates;
 use rusqlite::{params, Connection};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -32,6 +34,7 @@ fn run_with(
         .args(["-C", root])
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
+        .env("LC_ALL", "C")
         .env("GIT_OPTIONAL_LOCKS", "0")
         .env("GIT_EDITOR", "true")
         .env("GIT_SEQUENCE_EDITOR", "true")
@@ -1518,22 +1521,117 @@ fn branches(root: &str) -> Result<Value, String> {
         .unwrap_or_default()
         .trim()
         .to_owned();
-    let rows = git(
+    let rows = git(root, &[
+        "for-each-ref",
+        "--format=%(refname)%00%(objectname)%00%(upstream)%00%(upstream:track,nobracket)%00%(subject)",
+        "refs/heads", "refs/remotes",
+    ])?;
+    let mut branches: Vec<_> = rows.lines().filter_map(|row| {
+        let fields: Vec<_> = row.splitn(5, '\0').collect();
+        if fields.len()!=5 { return None; }
+        let remote = fields[0].starts_with("refs/remotes/");
+        let short = |reference: &str| reference.trim_start_matches("refs/remotes/").trim_start_matches("refs/heads/").to_owned();
+        let known = !fields[2].is_empty() && !fields[3].contains("gone");
+        let count = |prefix: &str| fields[3].split(", ").find_map(|value| value.strip_prefix(prefix).and_then(|value|value.parse::<u64>().ok())).unwrap_or(0);
+        Some(json!({"name":short(fields[0]),"remote":remote,"current":!remote&&short(fields[0])==current,"upstream":short(fields[2]),"upstreamRef":fields[2],"subject":fields[4],"oid":fields[1],"behind":known.then(||count("behind ")),"ahead":known.then(||count("ahead "))}))
+    }).collect();
+    // An explicitly fetched origin ref can exist outside a single-branch clone's
+    // configured fetch mapping. Honor its configured upstream without rewriting config.
+    let config = git(
         root,
         &[
-            "for-each-ref",
-            "--format=%(refname)%00%(objectname)%00%(upstream:short)%00%(subject)",
-            "refs/heads",
-            "refs/remotes",
+            "config",
+            "--null",
+            "--get-regexp",
+            r"^branch\..*\.(remote|merge)$",
         ],
-    )?;
-    let branches: Vec<_> = rows.lines().filter_map(|row| {
-        let fields: Vec<_> = row.splitn(4, '\0').collect();
-        if fields.len()!=4 { return None; }
-        let remote = fields[0].starts_with("refs/remotes/");
-        let name = fields[0].trim_start_matches(if remote { "refs/remotes/" } else { "refs/heads/" });
-        Some(json!({"name":name,"remote":remote,"current":!remote&&name==current,"upstream":fields[2],"subject":fields[3],"oid":fields[1]}))
-    }).collect();
+    )
+    .unwrap_or_default();
+    let mut tracking: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
+    for entry in config.split('\0') {
+        if let Some((key, value)) = entry.split_once('\n') {
+            if let Some((name, field)) = key
+                .strip_prefix("branch.")
+                .and_then(|key| key.rsplit_once('.'))
+            {
+                tracking
+                    .entry(name.to_owned())
+                    .or_default()
+                    .insert(field.to_owned(), value.to_owned());
+            }
+        }
+    }
+    let remote_oids: BTreeMap<String, String> = branches
+        .iter()
+        .filter(|b| b["remote"] == true)
+        .filter_map(|b| {
+            Some((
+                format!("refs/remotes/{}", b["name"].as_str()?),
+                b["oid"].as_str()?.to_owned(),
+            ))
+        })
+        .collect();
+    for branch in &mut branches {
+        if branch["remote"] != false || !branch["upstream"].as_str().unwrap_or_default().is_empty()
+        {
+            continue;
+        }
+        let Some(settings) = tracking.get(branch["name"].as_str().unwrap_or_default()) else {
+            continue;
+        };
+        if settings.get("remote").map(String::as_str) != Some("origin") {
+            continue;
+        }
+        let Some(name) = settings
+            .get("merge")
+            .and_then(|r| r.strip_prefix("refs/heads/"))
+        else {
+            continue;
+        };
+        let reference = format!("refs/remotes/origin/{name}");
+        let Some(oid) = remote_oids.get(&reference) else {
+            continue;
+        };
+        let counts = git(
+            root,
+            &[
+                "rev-list",
+                "--left-right",
+                "--count",
+                &format!("{}...{oid}", branch["oid"].as_str().unwrap_or_default()),
+                "--",
+            ],
+        )?;
+        let counts: Vec<u64> = counts
+            .split_whitespace()
+            .filter_map(|v| v.parse().ok())
+            .collect();
+        if let [ahead, behind] = counts.as_slice() {
+            branch["upstream"] = json!(format!("origin/{name}"));
+            branch["upstreamRef"] = json!(reference);
+            branch["ahead"] = json!(ahead);
+            branch["behind"] = json!(behind);
+        }
+    }
+    let incoming: BTreeMap<String, u64> = branches
+        .iter()
+        .filter(|b| b["remote"] == false)
+        .filter_map(|b| Some((b["upstreamRef"].as_str()?.to_owned(), b["behind"].as_u64()?)))
+        .fold(BTreeMap::new(), |mut map, (name, count)| {
+            let entry = map.entry(name).or_default();
+            *entry = (*entry).max(count);
+            map
+        });
+    for branch in &mut branches {
+        if branch["remote"] == true {
+            branch["behind"] = incoming
+                .get(&format!(
+                    "refs/remotes/{}",
+                    branch["name"].as_str().unwrap_or_default()
+                ))
+                .map_or(Value::Null, |count| json!(count));
+        }
+    }
     Ok(json!({"current":current,"branches":branches}))
 }
 fn log(root: &str, params: &Value) -> Result<Value, String> {

@@ -138,6 +138,8 @@ export const api = {
     request<WorkspaceEditPreview>('workspace.editPreview', { edits, workspaceGeneration }),
   applyEdit: (id: string) => request<DocumentSnapshot[]>('workspace.editApply', { id }),
   cancelNavigation: (id: string) => request<void>('navigation.cancel', { id }),
+  gitRemoteStatus: () => request<import('./contracts').GitRemoteStatus>('git.remoteStatus'),
+  refreshGitRemote: () => request<import('./contracts').GitRemoteStatus>('git.refreshRemote'),
   packages: () => request<PackageState[]>('package.list'),
   configureCatalog: (url: string) => request<{ url: string }>('package.catalogConfigure', { url }),
   packageCatalog: () => request<import('./contracts').PackageCatalog>('package.catalog'),

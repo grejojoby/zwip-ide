@@ -1,17 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, request } from '../api';
-import type { GitSnapshot } from '../contracts';
+import type { GitBranch as Branch, GitRemoteStatus, GitSnapshot } from '../contracts';
 import { asError } from '../model/document-session';
 import { BranchDiffWindow } from './BranchDiffWindow';
 import { Modal } from './Modal';
+import { IncomingChanges, incomingBranches } from './IncomingChanges';
 
-interface Branch {
-  name: string;
-  remote: boolean;
-  current: boolean;
-  upstream?: string;
-  subject: string;
-}
 interface GitMutation {
   snapshot: GitSnapshot;
   output: string;
@@ -47,10 +41,16 @@ export interface BranchChange {
 export function BranchPopup({
   onClose,
   onChanged,
+  remoteStatus,
+  onFetch,
 }: {
   onClose(): void;
   onChanged(change: BranchChange): void;
+  remoteStatus?: GitRemoteStatus;
+  onFetch?(): void;
 }) {
+  const latestRemote = useRef(remoteStatus);
+  latestRemote.current = remoteStatus;
   const [snapshot, setSnapshot] = useState<GitSnapshot | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [query, setQuery] = useState('');
@@ -97,7 +97,11 @@ export function BranchPopup({
       .then(([status, result]) => {
         if (!active) return;
         setSnapshot(status);
-        setBranches(result.branches.filter((branch) => !branch.name.endsWith('/HEAD')));
+        setBranches(
+          (latestRemote.current?.branches ?? result.branches).filter(
+            (branch) => !branch.name.endsWith('/HEAD'),
+          ),
+        );
       })
       .catch((e) => active && setError(asError(e).message))
       .finally(() => active && setBusy(false));
@@ -106,6 +110,22 @@ export function BranchPopup({
     };
   }, []);
 
+  useEffect(() => {
+    if (!remoteStatus) return;
+    let active = true;
+    setBranches(remoteStatus.branches.filter((branch) => !branch.name.endsWith('/HEAD')));
+    // A completed fetch changes reviewed remote refs; refresh the action precondition too.
+    void api
+      .gitStatus()
+      .then((next) => {
+        if (active) setSnapshot(next);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [remoteStatus]);
+  const incoming = incomingBranches(branches);
   const current = snapshot?.branch ?? '';
   const needle = query.trim().toLowerCase();
   const matching = (branch: Branch) => !needle || branch.name.toLowerCase().includes(needle);
@@ -347,6 +367,42 @@ export function BranchPopup({
           </p>
         )}
         {view.kind === 'list' && (
+          <div className="branch-remote-summary">
+            {incoming > 0 && (
+              <span>
+                <IncomingChanges
+                  count={incoming}
+                  label={`Updates to pull on ${incoming} ${incoming === 1 ? 'branch' : 'branches'}`}
+                />{' '}
+                {incoming} {incoming === 1 ? 'branch has' : 'branches have'} incoming changes
+              </span>
+            )}
+            {remoteStatus?.fetch.state === 'fetching' && (
+              <span className="muted" role="status">
+                Fetching origin…
+              </span>
+            )}
+            {remoteStatus?.fetch.state === 'failed' && (
+              <span className="muted" role="status">
+                {remoteStatus.fetch.error}
+              </span>
+            )}
+            {remoteStatus?.fetch.lastFetched && (
+              <span
+                className="muted"
+                title={new Date(remoteStatus.fetch.lastFetched * 1000).toLocaleString()}
+              >
+                Last fetched {new Date(remoteStatus.fetch.lastFetched * 1000).toLocaleTimeString()}
+              </span>
+            )}
+            {onFetch && remoteStatus?.fetch.state !== 'unavailable' && (
+              <button onClick={onFetch} disabled={remoteStatus?.fetch.state === 'fetching'}>
+                Fetch origin
+              </button>
+            )}
+          </div>
+        )}
+        {view.kind === 'list' && (
           <div className="branch-panes">
             <div className="branch-main">
               <input
@@ -531,6 +587,10 @@ function BranchRow({
         {branch.current ? '★ ' : ''}
         {branch.name}
       </span>
+      <IncomingChanges
+        count={branch.behind ?? 0}
+        label={`${branch.behind} incoming commit${branch.behind === 1 ? '' : 's'} ${branch.remote ? 'compared with local tracking branches' : `from ${branch.upstream}`}`}
+      />
       <span className="muted">{branch.upstream}</span>
       <span aria-hidden="true">›</span>
     </button>

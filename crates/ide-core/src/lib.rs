@@ -33,6 +33,7 @@ pub struct Core {
     shutdown_lock: Mutex<()>,
     worker_supervisor: Arc<worker::Supervisor>,
     file_plan: Mutex<Option<files::FilePlan>>,
+    git_remote: git::RemoteUpdates,
     connections: Mutex<connections::Connections>,
     terminals: terminal::Terminals,
     edits: Mutex<edits::Edits>,
@@ -70,6 +71,7 @@ impl Core {
             shutdown_lock: Mutex::new(()),
             worker_supervisor,
             file_plan: Mutex::new(None),
+            git_remote: git::RemoteUpdates::default(),
             connections: Mutex::new(connections),
             terminals: terminal::Terminals::default(),
             edits: Mutex::new(edits::Edits::default()),
@@ -135,6 +137,7 @@ impl Core {
         if self.closed.swap(true, Ordering::AcqRel) {
             return;
         }
+        self.git_remote.shutdown();
         let _transition = self
             .workspace_transition
             .lock()
@@ -601,7 +604,26 @@ impl Core {
                 Ok(Value::Null)
             }
             method if method.starts_with("git.") => {
-                git::dispatch(&self.current()?.root, &self.data, method, &params)
+                let workspace = self.current()?;
+                if matches!(method, "git.remoteStatus" | "git.refreshRemote") {
+                    return self
+                        .git_remote
+                        .snapshot(&workspace.root, method == "git.refreshRemote");
+                }
+                let result = git::dispatch(&workspace.root, &self.data, method, &params);
+                if result.is_ok()
+                    && matches!(
+                        method,
+                        "git.switchBranch"
+                            | "git.createBranch"
+                            | "git.checkoutRebase"
+                            | "git.pull"
+                            | "git.updateBranch"
+                    )
+                {
+                    let _ = self.git_remote.snapshot(&workspace.root, true);
+                }
+                result
             }
             "intellij.preview" => {
                 let mut preview = intellij_import::read(&params)?;

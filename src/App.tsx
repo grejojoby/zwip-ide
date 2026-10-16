@@ -53,6 +53,8 @@ import { withNavigationProgress } from './model/navigation-progress';
 import { mergeContextUpdates, warming } from './model/build-contexts';
 import { Icon } from './components/Icon';
 import { BranchPopup } from './components/BranchPopup';
+import { IncomingChanges, incomingBranches } from './components/IncomingChanges';
+import { useGitRemote } from './model/git-remote';
 import { IntelliJImport } from './components/IntelliJImport';
 import { PartialDiff } from './components/PartialDiff';
 import { MarkdownPreview } from './components/MarkdownPreview';
@@ -513,6 +515,15 @@ export function App() {
   const [execution, setExecution] = useState<{ path: string; line: number } | null>(null);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [branch, setBranch] = useState('');
+  const { remote: gitRemote, refresh: refreshGitRemote } = useGitRemote(
+    workspace?.root,
+    workspace?.generation,
+    gitRevision,
+  );
+  const branchesWithIncoming = incomingBranches(gitRemote?.branches);
+  useEffect(() => {
+    if (gitRemote) setBranch(gitRemote.current || 'Detached HEAD');
+  }, [gitRemote]);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('Ready');
   const [opening, setOpening] = useState(false);
@@ -1814,6 +1825,10 @@ export function App() {
             <button className="branch-button" onClick={() => changeAuxiliary('git')}>
               <Icon name="branch" />
               {branch || 'Git'}
+              <IncomingChanges
+                count={branchesWithIncoming}
+                label={`Updates to pull on ${branchesWithIncoming} ${branchesWithIncoming === 1 ? 'branch' : 'branches'}`}
+              />
             </button>
           </>
         )}
@@ -2089,6 +2104,7 @@ export function App() {
                         generation={workspace.generation}
                         onBranch={branchChanged}
                         revision={gitRevision}
+                        remoteStatus={gitRemote}
                         onOpenDiff={openDiff}
                         selected={gitSelection}
                         onSelectedChange={setGitSelection}
@@ -2846,6 +2862,8 @@ export function App() {
       )}
       {showBranches && workspace && (
         <BranchPopup
+          remoteStatus={gitRemote}
+          onFetch={refreshGitRemote}
           onClose={() => setShowBranches(false)}
           onChanged={(change) => {
             setBranch(change.branch);
