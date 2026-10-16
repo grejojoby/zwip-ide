@@ -233,3 +233,15 @@ fn shutdown_cancels_a_blocked_background_fetch() {
     f.core.shutdown();
     assert!(start.elapsed() < Duration::from_secs(3));
 }
+
+#[test]
+fn background_refresh_preserves_local_tags_even_with_prune_tags_configured() {
+    let f = Fixture::new();
+    git(f.root.path(), &["tag", "private-local-tag"]);
+    git(f.root.path(), &["config", "fetch.pruneTags", "true"]);
+    assert_eq!(f.ready()["fetch"]["state"], "ready");
+    assert_eq!(
+        git(f.root.path(), &["tag", "--list", "private-local-tag"]).trim(),
+        "private-local-tag"
+    );
+}
