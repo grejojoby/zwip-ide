@@ -14,6 +14,7 @@ mod tasks;
 mod terminal;
 mod worker;
 mod workspace;
+mod workspace_index;
 use documents::{Delta, Documents};
 use notify::Watcher;
 use serde_json::{json, Value};
@@ -50,6 +51,7 @@ pub struct Core {
     file_events: Arc<Mutex<HashSet<String>>>,
     /// Files indexed so far by the running (or last) workspace scan.
     scanned_files: AtomicU64,
+    validating_index: AtomicBool,
     /// Catalog downloads and installs in flight, keyed by package ID.
     package_progress: Mutex<HashMap<String, Value>>,
 }
@@ -76,6 +78,7 @@ impl Core {
             watcher: Mutex::new(None),
             file_events: Arc::new(Mutex::new(HashSet::new())),
             scanned_files: AtomicU64::new(0),
+            validating_index: AtomicBool::new(false),
             package_progress: Mutex::new(HashMap::new()),
             tasks: tasks::Tasks::default(),
             packages: Mutex::new(packages),
@@ -172,12 +175,18 @@ impl Core {
                     .lock()
                     .map_err(|e| e.to_string())?;
                 let previous = self.current()?;
-                let mut workspace = workspace::scan(
+                self.validating_index.store(
+                    workspace_index::exists(&self.data, &PathBuf::from(&previous.root)),
+                    Ordering::Relaxed,
+                );
+                let mut workspace = workspace_index::scan(
+                    &self.data,
                     &PathBuf::from(&previous.root),
                     previous.generation,
                     &self.discovery_rules()?,
                     &self.exclusions(&previous.root)?,
                     &self.scanned_files,
+                    params["rebuildIndex"] == true,
                 )?;
                 if params["reanalyze"] == true || workspace.contexts != previous.contexts {
                     let languages = previous
@@ -242,12 +251,18 @@ impl Core {
                     .map_err(|e| e.to_string())?;
                 let previous = self.current()?;
                 let generation = self.generation.load(Ordering::SeqCst) + 1;
-                let workspace = workspace::scan(
+                self.validating_index.store(
+                    workspace_index::exists(&self.data, &PathBuf::from(&previous.root)),
+                    Ordering::Relaxed,
+                );
+                let workspace = workspace_index::scan(
+                    &self.data,
                     &PathBuf::from(&previous.root),
                     generation,
                     &self.discovery_rules()?,
                     &self.exclusions(&previous.root)?,
                     &self.scanned_files,
+                    params["rebuildIndex"] == true,
                 )?;
                 self.packages.lock().map_err(|e| e.to_string())?.stop_all();
                 self.generation.store(generation, Ordering::SeqCst);
@@ -273,12 +288,18 @@ impl Core {
                 let root = string(&params, "root")?.to_owned();
                 let generation = self.generation.load(Ordering::SeqCst) + 1;
                 let exclusions = self.exclusions(&root)?;
-                let workspace = workspace::scan(
+                self.validating_index.store(
+                    workspace_index::exists(&self.data, &PathBuf::from(&root)),
+                    Ordering::Relaxed,
+                );
+                let workspace = workspace_index::scan(
+                    &self.data,
                     &PathBuf::from(root),
                     generation,
                     &self.discovery_rules()?,
                     &exclusions,
                     &self.scanned_files,
+                    params["rebuildIndex"] == true,
                 )?;
                 // Changes accepted while discovery was running must survive a
                 // switch. Keep this guard through publication so no delta can
@@ -335,10 +356,11 @@ impl Core {
                     .as_str()
                     .ok_or("Missing console content")?,
             ),
-            "workspace.index" => self.index_workspace(),
-            "workspace.scanProgress" => {
-                Ok(json!({"files": self.scanned_files.load(Ordering::Relaxed)}))
-            }
+            "workspace.index" => self.index_workspace(false),
+            "workspace.restore" => self.index_workspace(true),
+            "workspace.scanProgress" => Ok(
+                json!({"files": self.scanned_files.load(Ordering::Relaxed),"validating":self.validating_index.load(Ordering::Relaxed)}),
+            ),
             "document.sync" => {
                 self.analysis_epoch.fetch_add(1, Ordering::SeqCst);
                 self.documents
@@ -786,7 +808,7 @@ impl Core {
     }
     /// Starts every language provider the workspace needs and asks each to index all of its
     /// contexts now, rather than when the first file opens. Missing packages are reported.
-    fn index_workspace(&self) -> Result<Value, String> {
+    fn index_workspace(&self, restore_only: bool) -> Result<Value, String> {
         let workspace = self.current()?;
         let mut languages: Vec<&str> = workspace
             .contexts
@@ -804,7 +826,7 @@ impl Core {
                 Ok(worker) => started.push(json!({
                     "language": language,
                     "warming": worker
-                        .probe("workspace.index", json!({}), std::time::Duration::from_secs(5))
+                        .probe(if restore_only { "workspace.restore" } else { "workspace.index" }, json!({}), std::time::Duration::from_secs(5))
                         .is_ok(),
                 })),
                 Err(reason) => unavailable.push(json!({"language":language,"reason":reason})),

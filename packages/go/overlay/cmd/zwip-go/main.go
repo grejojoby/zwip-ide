@@ -143,8 +143,11 @@ func serveWithContext(lifetime context.Context, input io.Reader, output io.Write
 			}
 			cancelAll()
 			contexts, err := worker.initializeAsync(lifetime, params)
-			send(request.ID, map[string]any{"contexts": contexts, "generation": params.Generation}, err, -32001)
+			send(request.ID, map[string]any{"contexts": contexts, "generation": params.Generation, "indexCapabilities": []string{"workspaceCheckpoint", "workspaceRestore"}}, err, -32001)
 		case "workspace.status":
+			send(request.ID, worker.status(), nil, 0)
+		case "workspace.restore":
+			worker.startWorkspaceIndex(true)
 			send(request.ID, worker.status(), nil, 0)
 		case "workspace.index":
 			worker.indexWorkspace()

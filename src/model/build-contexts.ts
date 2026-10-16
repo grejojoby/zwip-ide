@@ -26,4 +26,6 @@ export function sourceContexts(path: string, contexts: BuildContext[]): BuildCon
 
 /** True while a context's packages are still being indexed in the background. */
 export const warming = (context: BuildContext) =>
-  !!context.packages && (context.indexed ?? 0) < context.packages;
+  context.indexState === 'validating' ||
+  context.indexState === 'building' ||
+  (!context.indexState && !!context.packages && (context.indexed ?? 0) < context.packages);

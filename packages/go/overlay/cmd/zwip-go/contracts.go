@@ -13,6 +13,9 @@ type buildContext struct {
 	State      string `json:"state"`
 	Reason     string `json:"reason,omitempty"`
 	// Background type-checking progress after "workspace.index"; both zero until it starts.
+	MetadataRestored bool           `json:"metadataRestored,omitempty"`
+	IndexState       string         `json:"indexState,omitempty"`
+	IndexReason      string         `json:"indexReason,omitempty"`
 	Indexed          int            `json:"indexed,omitempty"`
 	Packages         int            `json:"packages,omitempty"`
 	GoWork           string         `json:"goWork,omitempty"`
@@ -21,10 +24,17 @@ type buildContext struct {
 	profile          goBuildSettings
 	protectedOverlay string
 }
+type indexIdentity struct {
+	Epoch       string `json:"epoch"`
+	State       string `json:"state"`
+	Fingerprint string `json:"fingerprint"`
+	Rebuild     bool   `json:"rebuild"`
+}
 type initializeParams struct {
-	Root       string         `json:"root"`
-	Contexts   []buildContext `json:"contexts"`
-	Generation int64          `json:"generation"`
+	WorkspaceIndex *indexIdentity `json:"workspaceIndex,omitempty"`
+	Root           string         `json:"root"`
+	Contexts       []buildContext `json:"contexts"`
+	Generation     int64          `json:"generation"`
 }
 type documentUpdate struct {
 	Path     string `json:"path"`

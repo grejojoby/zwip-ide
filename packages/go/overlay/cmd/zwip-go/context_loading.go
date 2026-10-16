@@ -91,6 +91,7 @@ func (w *worker) loadContexts(loading *contextInitialization) {
 				if w.initialization == loading {
 					if view != nil {
 						w.views[c.ID] = view
+						w.contexts[index].MetadataRestored = view.ZwipMetadataRestored()
 					}
 					if err != nil {
 						w.contexts[index].State, w.contexts[index].Reason = "failed", err.Error()
@@ -143,14 +144,16 @@ func loadGoContext(ctx context.Context, session *cache.Session, c buildContext, 
 }
 
 // indexWorkspace warms every ready context now and each remaining one when it loads.
-func (w *worker) indexWorkspace() {
+func (w *worker) indexWorkspace() { w.startWorkspaceIndex(false) }
+func (w *worker) startWorkspaceIndex(restoreOnly bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	loading := w.initialization
-	if w.warm {
+	if w.warm && (!w.restoreOnly || restoreOnly) {
 		return
 	}
 	w.warm = true
+	w.restoreOnly = restoreOnly
 	if loading == nil {
 		return
 	}
@@ -160,8 +163,6 @@ func (w *worker) indexWorkspace() {
 		}
 	}
 }
-
-const warmBatch = 16
 
 // warmContext type-checks the context's workspace packages in small batches, reporting
 // progress. Type-checking writes export data and cross-references to the gopls file
@@ -173,6 +174,7 @@ func (w *worker) warmContext(loading *contextInitialization, index int) {
 		return
 	}
 	view := w.views[w.contexts[index].ID]
+	w.contexts[index].IndexState = "validating"
 	w.mu.Unlock()
 	if view == nil {
 		return
@@ -190,23 +192,38 @@ func (w *worker) warmContext(loading *contextInitialization, index int) {
 	for _, meta := range metas {
 		ids = append(ids, meta.ID)
 	}
-	progress := func(done int) bool {
+	progress := func(done int, building bool) bool {
 		w.mu.Lock()
 		defer w.mu.Unlock()
 		if w.initialization != loading || loading.ctx.Err() != nil {
 			return false
 		}
 		w.contexts[index].Indexed, w.contexts[index].Packages = done, len(ids)
+		if building {
+			w.contexts[index].IndexState = "building"
+		}
 		return true
 	}
-	for start := 0; start < len(ids); start += warmBatch {
-		if !progress(start) {
-			return
-		}
-		end := min(start+warmBatch, len(ids))
-		if _, err := snapshot.TypeCheck(loading.ctx, ids[start:end]...); err != nil && loading.ctx.Err() != nil {
-			return
-		}
+	w.mu.Lock()
+	force := w.forceIndex
+	restoreOnly := w.restoreOnly
+	w.contexts[index].IndexState = "validating"
+	w.mu.Unlock()
+	restored, err := snapshot.ZwipWorkspaceIndex(loading.ctx, ids, force, progress, restoreOnly)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.initialization != loading || loading.ctx.Err() != nil {
+		return
 	}
-	progress(len(ids))
+	if err != nil {
+		w.contexts[index].IndexState = "failed"
+		if restoreOnly {
+			w.contexts[index].IndexState = "missing"
+		}
+		w.contexts[index].IndexReason = err.Error()
+	} else if restored {
+		w.contexts[index].IndexState = "restored"
+	} else {
+		w.contexts[index].IndexState = "built"
+	}
 }

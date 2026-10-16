@@ -1,7 +1,7 @@
 {
   "id": "web",
   "name": "Web Languages",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "coreVersion": "0.1.0",
   "description": "JavaScript and TypeScript navigation, completion, diagnostics and reviewed edits with workspace SDKs and TSX/JSX support.",
   "capabilities": [

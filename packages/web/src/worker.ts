@@ -57,6 +57,15 @@ export function startWorker(input: Readable = process.stdin, output: Writable = 
             throw new TypeError('document.update requires path, content, and revision.');
           result = service.updateDocument(params as unknown as DocumentUpdate);
           break;
+        case 'workspace.index':
+          result = service.indexWorkspace();
+          break;
+        case 'workspace.restore':
+          result = service.indexWorkspace(true);
+          break;
+        case 'workspace.checkpoint':
+          result = await service.checkpointWorkspace();
+          break;
         case 'workspace.status':
           result = service.workspaceStatus();
           break;

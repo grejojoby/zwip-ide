@@ -79,3 +79,24 @@ Rename resolves one physical declaration, checks every module graph, gathers ups
 The maintained gopls fork consists of `overlay/cmd/zwip-go/*.go` and additive `overlay/internal/{golang,cache}/zwip_*.go` helpers. The cache bridge creates explicit views with distinct folder options at the same physical module root, which public `Session.NewView` rejects; upstream snapshot, invalidation and lifetime logic remain in use. Its pinned x/tools dependency also carries one explicit source-line patch in `patches/tools-imports-gowork-off.json`: the import resolver must treat `GOWORK=off` as independent-module mode to find vendored imports. Vendor-mode modules select upstream's goimports source, which can discover unused packages present only in vendor; the default gopls source searches loaded metadata and module caches. Bootstrap verifies both module checksums, verifies the patch anchor, and applies a local dependency replacement only inside generated upstream source. An upstream bump requires changing the lock, rebuilding the copied source, and rerunning the integration fixtures; internal APIs are not stable.
 
 Primary upstream references: [navigation behavior](https://go.dev/gopls/features/navigation), [workspace configuration](https://go.dev/gopls/workspace), [gopls source](https://cs.opensource.google/go/x/tools/+/gopls/v0.21.1:gopls/), [Go module workspaces](https://go.dev/ref/mod#workspaces).
+
+## Workspace checkpoints
+
+Initialization accepts the host's optional `workspaceIndex` identity (`epoch`, `rebuild`).
+The owned `gopls-workspace-index.json` patch restores a serialized package/import graph
+only after hashing its source, dependency, module, SDK and directory inputs. Custom package
+drivers and gccgo conservatively use live loading. Configured environments, profiles and
+normalized checksum overlays isolate cache keys; raw environment values are not persisted.
+
+`workspace.index` validates upstream export data, cross-references, method sets, tests and
+diagnostics, then builds missing artifacts and waits for their writes before reporting
+`indexState: built`. An unchanged new process reports `restored`; `metadataRestored` reports
+actual package-graph reuse separately. `workspace.restore` verifies existing artifacts without
+starting missing full type-check batches. Missing/corrupt data falls back to normal live
+queries, with explicit index status. Go environment discovery and live compiler hydration
+still occur; a restored index does not mean the provider process itself is serialized.
+
+The file cache publishes checksummed immutable artifacts atomically. Its upstream eviction
+policy can discard old artifacts; verification catches that and rebuilds rather than trusting
+saved counters. Workspace content changes invalidate affected package handles. The host's
+workspace rebuild epoch isolates a deliberate rebuild from other workspace checkpoints.

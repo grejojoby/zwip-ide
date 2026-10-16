@@ -215,6 +215,23 @@ export function App() {
       })
       .catch(() => {});
   }
+  async function refreshProject(rebuildIndex = false) {
+    if (lifecycleBusy.current) return;
+    lifecycleBusy.current = true;
+    try {
+      await documents.flushAll();
+      const next = await api.refreshWorkspace(rebuildIndex);
+      workspaceRef.current = next;
+      setWorkspace(next);
+      if (rebuildIndex || indexOnOpenRef.current) indexWorkspace();
+      else await api.restoreWorkspace();
+      setStatus(rebuildIndex ? 'Rebuilding workspace index…' : 'Project refreshed');
+    } catch (error) {
+      report(error);
+    } finally {
+      lifecycleBusy.current = false;
+    }
+  }
   function changeStickyLines(enabled: boolean) {
     setStickyLines(enabled);
     void api.setSetting('zwip.stickyLines', enabled).catch(report);
@@ -499,7 +516,8 @@ export function App() {
   const [error, setError] = useState('');
   const [status, setStatus] = useState('Ready');
   const [opening, setOpening] = useState(false);
-  const scannedFiles = useScanProgress(opening);
+  const scanProgress = useScanProgress(opening);
+  const scannedFiles = scanProgress?.files ?? null;
   const [closing, setClosing] = useState(false);
   const lifecycleBusy = useRef(false);
   const [recentRoots, setRecentRoots] = useState<string[]>([]);
@@ -763,6 +781,7 @@ export function App() {
       setWorkspace(next);
       workspaceRef.current = next;
       if (indexOnOpenRef.current) indexWorkspace();
+      else void api.restoreWorkspace().catch(report);
       refreshScratches();
       setTabs([]);
       setSqlTabs([]);
@@ -1621,6 +1640,12 @@ export function App() {
   const splitDoc = split ? documents.documents.get(split) : undefined;
   const branchChanged = useCallback((name: string) => setBranch(name), []);
   const commands: ActionCommand[] = [
+    {
+      id: 'rebuild-workspace-index',
+      label: 'Rebuild workspace index',
+      disabled: !workspace,
+      run: () => void refreshProject(true),
+    },
     { id: 'open', label: 'Open project…', run: () => void chooseWorkspace() },
     {
       id: 'open-new-window',
@@ -2012,15 +2037,7 @@ export function App() {
                       <button
                         className="icon-button"
                         aria-label="Refresh project"
-                        onClick={() => {
-                          api
-                            .refreshWorkspace()
-                            .then((next) => {
-                              setWorkspace(next);
-                              setStatus('Project refreshed');
-                            })
-                            .catch(report);
-                        }}
+                        onClick={() => void refreshProject()}
                       >
                         <Icon name="refresh" />
                       </button>
@@ -2681,6 +2698,7 @@ export function App() {
         <div className="spacer" />
         <IndexingStatus
           scannedFiles={scannedFiles}
+          validatingFiles={scanProgress?.validating}
           contexts={workspace?.contexts ?? []}
           root={workspace?.root}
         />
@@ -3030,7 +3048,7 @@ export function App() {
           <div className="modal-body" role="status">
             {opening
               ? scannedFiles
-                ? `Indexing files… ${scannedFiles.toLocaleString()}`
+                ? `${scanProgress?.validating ? 'Validating saved index…' : 'Indexing files…'} ${scannedFiles.toLocaleString()}`
                 : 'Synchronizing documents and opening the workspace…'
               : 'Synchronizing and releasing the editor…'}
           </div>

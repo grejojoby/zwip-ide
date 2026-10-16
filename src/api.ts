@@ -90,15 +90,17 @@ export const api = {
       started: { language: string; warming: boolean }[];
       unavailable: { language: string; reason: string }[];
     }>('workspace.index'),
+  restoreWorkspace: () => request<unknown>('workspace.restore'),
   openWorkspace: (root: string) => request<WorkspaceSnapshot>('workspace.open', { root }),
-  refreshWorkspace: () => request<WorkspaceSnapshot>('workspace.refresh'),
+  refreshWorkspace: (rebuildIndex = false) =>
+    request<WorkspaceSnapshot>('workspace.refresh', { rebuildIndex }),
   rescanWorkspace: (reanalyze: boolean) =>
     request<WorkspaceSnapshot>('workspace.rescan', { reanalyze }),
   setDirectoryExcluded: (path: string, excluded: boolean) =>
     request<WorkspaceSnapshot>('workspace.setExcluded', { path, excluded }),
   workspaceChanges: () =>
     request<{ paths: string[]; configurationChanged: boolean }>('workspace.changes'),
-  scanProgress: () => request<{ files: number }>('workspace.scanProgress'),
+  scanProgress: () => request<{ files: number; validating?: boolean }>('workspace.scanProgress'),
   workspaceStatus: () =>
     request<{ generation: number; contexts: import('./contracts').BuildContext[] }>(
       'workspace.status',

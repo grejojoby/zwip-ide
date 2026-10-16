@@ -4,8 +4,8 @@ import type { BuildContext } from '../contracts';
 import { warming } from '../model/build-contexts';
 
 /** Files indexed so far while a workspace scan runs; null when no scan is running. */
-export function useScanProgress(scanning: boolean): number | null {
-  const [files, setFiles] = useState<number | null>(null);
+export function useScanProgress(scanning: boolean): { files: number; validating?: boolean } | null {
+  const [files, setFiles] = useState<{ files: number; validating?: boolean } | null>(null);
   useEffect(() => {
     if (!scanning) {
       setFiles(null);
@@ -16,7 +16,7 @@ export function useScanProgress(scanning: boolean): number | null {
       api
         .scanProgress()
         .then((reply) => {
-          if (active) setFiles(reply.files);
+          if (active) setFiles(reply);
         })
         .catch(() => undefined);
     }, 250);
@@ -55,9 +55,11 @@ function contextLabel(context: BuildContext, root: string): string {
 export function IndexingStatus({
   scannedFiles,
   contexts,
+  validatingFiles = false,
   root = '',
 }: {
   scannedFiles: number | null;
+  validatingFiles?: boolean;
   contexts: readonly BuildContext[];
   root?: string;
 }) {
@@ -73,9 +75,14 @@ export function IndexingStatus({
   }, [open]);
   if (scannedFiles !== null)
     return (
-      <span className="indexing-status" role="progressbar" aria-label="Indexing files">
+      <span
+        className="indexing-status"
+        role="progressbar"
+        aria-label={validatingFiles ? 'Validating saved index' : 'Indexing files'}
+      >
         <progress />
-        Indexing files… {scannedFiles.toLocaleString()}
+        {validatingFiles ? 'Validating saved index…' : 'Indexing files…'}{' '}
+        {scannedFiles.toLocaleString()}
       </span>
     );
   const done = contexts.filter((context) => context.state !== 'loading').length;
@@ -84,7 +91,14 @@ export function IndexingStatus({
   const total = packages.reduce((sum, context) => sum + (context.packages ?? 0), 0);
   const indexed = packages.reduce((sum, context) => sum + (context.indexed ?? 0), 0);
   const modulesDone = done === contexts.length;
-  if (modulesDone && !packages.length) return null;
+  const saved = contexts.filter((context) => context.indexState === 'restored').length;
+  const issues = contexts.filter((context) =>
+    ['failed', 'missing', 'invalidated'].includes(context.indexState ?? ''),
+  );
+  const settled = modulesDone && !packages.length;
+  if (settled && !saved && !issues.length) return null;
+  const validating = packages.some((context) => context.indexState === 'validating');
+  const units = packages.every((context) => context.indexUnits === 'files') ? 'files' : 'packages';
   const sorted = [...contexts].sort(
     (a, b) =>
       stateOrder[a.state] - stateOrder[b.state] ||
@@ -95,8 +109,16 @@ export function IndexingStatus({
       <button
         type="button"
         className="indexing-status"
-        role="progressbar"
-        aria-label={modulesDone ? 'Indexing packages' : 'Indexing build contexts'}
+        role={settled ? undefined : 'progressbar'}
+        aria-label={
+          settled
+            ? 'Workspace index status'
+            : validating
+              ? 'Validating saved index'
+              : modulesDone
+                ? `Indexing ${units}`
+                : 'Indexing build contexts'
+        }
         aria-valuemin={0}
         aria-valuemax={modulesDone ? total : contexts.length}
         aria-valuenow={modulesDone ? indexed : done}
@@ -104,10 +126,17 @@ export function IndexingStatus({
         title="Show indexing progress per module"
         onClick={() => setOpen((value) => !value)}
       >
-        {modulesDone ? (
+        {settled ? (
+          issues.length ? (
+            'Index needs attention'
+          ) : (
+            `Index loaded (${saved}/${contexts.length})`
+          )
+        ) : modulesDone ? (
           <>
             <progress value={indexed} max={total} />
-            Indexing packages {indexed.toLocaleString()}/{total.toLocaleString()}
+            {validating ? 'Validating saved index' : `Indexing ${units}`} {indexed.toLocaleString()}
+            /{total.toLocaleString()}
           </>
         ) : (
           <>
@@ -134,14 +163,33 @@ export function IndexingStatus({
           <ul className="indexing-panel-list">
             {sorted.map((context) => (
               <li key={context.id} className="indexing-panel-row" data-state={context.state}>
-                <span className="indexing-panel-state">{stateLabel[context.state]}</span>
+                <span className="indexing-panel-state">
+                  {context.indexState === 'restored'
+                    ? 'Loaded'
+                    : context.indexState === 'validating'
+                      ? 'Validating'
+                      : context.indexState === 'building'
+                        ? 'Indexing'
+                        : context.indexState === 'built'
+                          ? 'Saved'
+                          : context.indexState === 'failed'
+                            ? 'Cache failed'
+                            : context.indexState === 'missing'
+                              ? 'Not saved'
+                              : context.indexState === 'invalidated'
+                                ? 'Changed'
+                                : stateLabel[context.state]}
+                </span>
                 <span className="indexing-panel-name" title={context.configPath}>
                   {contextLabel(context, root)}
                 </span>
                 {!!context.packages && (
                   <span className="indexing-panel-reason">
-                    {context.indexed ?? 0}/{context.packages} packages
+                    {context.indexed ?? 0}/{context.packages} {context.indexUnits ?? 'packages'}
                   </span>
+                )}
+                {context.indexReason && (
+                  <span className="indexing-panel-reason">{context.indexReason}</span>
                 )}
                 {context.reason && (
                   <span className="indexing-panel-reason" title={context.reason}>

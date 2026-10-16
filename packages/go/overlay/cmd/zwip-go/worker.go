@@ -34,7 +34,9 @@ type worker struct {
 	views          map[string]*cache.View
 	// Set by "workspace.index": type-check every package of each ready context so gopls
 	// fills its persistent cache up front instead of on first use.
-	warm bool
+	warm        bool
+	forceIndex  bool
+	restoreOnly bool
 }
 
 func newWorker() *worker {
@@ -184,6 +186,11 @@ func (w *worker) initializeAsync(ctx context.Context, p initializeParams) ([]bui
 	defer w.mu.Unlock()
 	w.root, w.contexts, w.generation = root, contexts, p.Generation
 	w.documents = make(map[string]documentUpdate)
+	if p.WorkspaceIndex != nil {
+		cache.ZwipConfigureWorkspaceIndex(root, p.WorkspaceIndex.Epoch, p.WorkspaceIndex.Rebuild)
+	} else {
+		cache.ZwipConfigureWorkspaceIndex(root, "", false)
+	}
 	w.session = cache.NewSession(context.Background(), cache.New(nil))
 	w.protection = protection
 	if len(protectiveChanges) > 0 {
@@ -192,6 +199,9 @@ func (w *worker) initializeAsync(ctx context.Context, p initializeParams) ([]bui
 		}
 	}
 	w.views = make(map[string]*cache.View)
+	w.warm = false
+	w.restoreOnly = false
+	w.forceIndex = p.WorkspaceIndex != nil && p.WorkspaceIndex.Rebuild
 	loadCtx, cancel := context.WithCancel(ctx)
 	loading := &contextInitialization{ctx: loadCtx, cancel: cancel, done: make(chan struct{}), session: w.session, goBinary: goBinary}
 	for i := range w.contexts {

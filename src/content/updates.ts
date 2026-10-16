@@ -22,6 +22,42 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-16-persistent-workspace-index',
+    version: '0.1.0',
+    date: '2026-10-16',
+    title: 'Saved workspace indexes',
+    summary: 'Restore Go and web semantic indexes when reopening a workspace.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Workspace checkpoints',
+        description:
+          'Save the workspace inventory, Go package graphs and semantic artifacts, and web token/declaration indexes locally. Validate source, dependency and configuration contents before restoring them; rebuild changed or missing data.',
+      },
+      {
+        type: 'improved',
+        title: 'Index status and rebuilding',
+        description:
+          'Distinguish validation, restored coverage and cache failures. Existing indexes load even when eager indexing is disabled. Use Rebuild workspace index in action search to start fresh for the current workspace. Live compiler state still initializes as needed.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-15-workspace-index-persistence-spec',
+    version: '0.1.0',
+    date: '2026-10-15',
+    title: 'Workspace index persistence design',
+    summary: 'Document the requested workspace snapshot and semantic index restore behavior.',
+    changes: [
+      {
+        type: 'maintenance',
+        title: 'Persistence specification',
+        description:
+          'Record provider-owned semantic checkpoints, safe restore and invalidation, and restart verification requirements. This documents the planned feature; persistent workspace index restoration is not implemented by this change.',
+      },
+    ],
+  },
+  {
     id: '2026-10-15-sql-console-editor-tabs',
     version: '0.1.0',
     date: '2026-10-15',

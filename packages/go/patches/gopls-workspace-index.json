@@ -1,0 +1,5 @@
+{
+  "file": "internal/cache/load.go",
+  "find": "pkgs, err := packages.Load(cfg, query...)",
+  "replace": "pkgs, err := s.zwipLoadPackages(cfg, query...)"
+}

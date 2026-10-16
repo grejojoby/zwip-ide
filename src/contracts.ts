@@ -22,7 +22,12 @@ export interface BuildContext {
   settings?: Record<string, unknown>;
   state: 'ready' | 'loading' | 'failed' | 'unavailable';
   reason?: string;
-  /** Background package indexing after `workspace.index` (Go): packages checked of the total. */
+  /** Provider checkpoint validation/build status, independent of live query readiness. */
+  indexState?:
+    'validating' | 'building' | 'restored' | 'built' | 'invalidated' | 'missing' | 'failed';
+  indexReason?: string;
+  metadataRestored?: boolean;
+  indexUnits?: 'files' | 'packages';
   indexed?: number;
   packages?: number;
 }
@@ -32,6 +37,13 @@ export interface ExcludedDirectory {
   reason: string;
 }
 export interface WorkspaceSnapshot {
+  index?: {
+    state: 'loaded' | 'built' | 'unavailable';
+    fingerprint: string | null;
+    epoch: string | null;
+    reason: string | null;
+    rebuild: boolean;
+  };
   root: string;
   name: string;
   generation: number;

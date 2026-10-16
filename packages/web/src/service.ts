@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { dirname, isAbsolute, relative, resolve } from 'node:path';
+import { sep, dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setImmediate as yieldTurn } from 'node:timers/promises';
 import type * as ts from 'typescript-sdk';
@@ -18,6 +18,18 @@ import type {
 } from '../../../src/contracts';
 import { isMarkup, markupEditor, markupNavigation } from './markup';
 import { loadNextPlugin, type PluginStatus } from './next-plugin';
+import {
+  WebIndexStore,
+  directoryInputs,
+  directoryHash,
+  fileHash,
+  hash,
+  indexCurrent,
+  type WorkspaceIndex,
+  type ProjectIndex,
+  type IndexToken,
+  type IndexValue,
+} from './workspace-index';
 
 type TypeScript = typeof ts;
 type Overlay = { content: string; revision: number };
@@ -32,6 +44,9 @@ type Project = {
   checkedVersion: number;
   coverageReasons: string[];
   plugins: PluginStatus[];
+  inputFiles: Record<string, string>;
+  inputDirectories: Record<string, string>;
+  readonly indexError?: string;
 };
 
 export interface InitializeParams {
@@ -39,6 +54,7 @@ export interface InitializeParams {
   contexts: BuildContext[];
   generation: number;
   enabledPackages?: string[];
+  workspaceIndex?: { epoch?: string | null; rebuild?: boolean };
 }
 export interface DocumentUpdate {
   path: string;
@@ -125,6 +141,46 @@ export class WebSemanticService {
   private failures = new Map<string, string>();
   private overlays = new Map<string, Overlay>();
   private enabledPackages = new Set<string>();
+  private readonly indexStore: WebIndexStore;
+  private readonly persistentIndex: boolean;
+  private checkpoint: WorkspaceIndex | null = null;
+  private checkpointIdentity = '';
+  private indexTask: Promise<void> | undefined;
+  private indexEager = false;
+  private lifecycle = 0;
+  private pendingIndex = false;
+  private indexProgress = new Map<
+    string,
+    Pick<BuildContext, 'indexState' | 'indexReason' | 'indexed' | 'packages' | 'indexUnits'>
+  >();
+  constructor(cacheDirectory = process.env.ZWIP_PACKAGE_CACHE) {
+    this.indexStore = new WebIndexStore(cacheDirectory);
+    this.persistentIndex = Boolean(cacheDirectory && isAbsolute(cacheDirectory));
+  }
+  private ensureProjects() {
+    for (const context of this.contexts) {
+      if (this.projects.has(context.id) || this.failures.has(context.id)) continue;
+      try {
+        this.projects.set(context.id, this.createProject(context));
+      } catch (error) {
+        this.failures.set(context.id, this.errorText(error));
+      }
+    }
+  }
+  private checkpointUsable(): boolean {
+    const index = this.checkpoint;
+    if (!index) return false;
+    for (const [path, overlay] of this.overlays) {
+      if (index.files[path] !== hash(overlay.content)) return false;
+    }
+    try {
+      if (indexCurrent(index)) return true;
+    } catch {
+      /* Rebuild from live files. */
+    }
+    this.workspaceChanged([]);
+    return false;
+  }
 
   initialize(params: InitializeParams) {
     if (
@@ -146,6 +202,15 @@ export class WebSemanticService {
         root: canonical(context.root),
         configPath: canonical(context.configPath),
       }));
+    this.checkpointIdentity = this.indexStore.identity(
+      this.root,
+      this.contexts,
+      params.workspaceIndex?.epoch ?? 'initial',
+      hash(readFileSync(fileURLToPath(import.meta.url))),
+      [...this.enabledPackages],
+    );
+    if (this.persistentIndex && !params.workspaceIndex?.rebuild)
+      this.checkpoint = this.indexStore.load(this.root, this.checkpointIdentity);
     const seen = new Set<string>();
     for (const context of this.contexts) {
       if (seen.has(context.id)) throw new Error(`Duplicate context ID: ${context.id}`);
@@ -155,7 +220,19 @@ export class WebSemanticService {
           throw new Error(
             'Web build profiles must use separate tsconfig/jsconfig files; custom profile settings are unsupported.',
           );
-        this.projects.set(context.id, this.createProject(context));
+        const cached = this.checkpoint?.projects.find((item) => item.id === context.id);
+        if (cached) {
+          const count = Object.keys(cached.files).filter(
+            (path) => inside(this.root, path) && !path.includes('/node_modules/'),
+          ).length;
+          this.indexProgress.set(context.id, {
+            indexState: 'restored',
+            indexReason: cached.reasons.join('; ') || undefined,
+            indexed: count,
+            packages: count,
+            indexUnits: 'files',
+          });
+        } else this.projects.set(context.id, this.createProject(context));
       } catch (error) {
         this.failures.set(context.id, this.errorText(error));
       }
@@ -172,6 +249,7 @@ export class WebSemanticService {
         'workspaceSymbols',
         'codeActions',
       ],
+      indexCapabilities: ['workspaceCheckpoint', 'workspaceRestore'],
       ...this.workspaceStatus(),
     };
   }
@@ -181,15 +259,18 @@ export class WebSemanticService {
       generation: this.generation,
       contexts: this.contexts.map((context) => {
         const project = this.projects.get(context.id);
+        const cached = this.checkpoint?.projects.find((item) => item.id === context.id);
         return {
           ...context,
-          state: project ? 'ready' : 'failed',
+          state: !this.failures.has(context.id) && (project || cached) ? 'ready' : 'failed',
+          compilerHydrated: Boolean(project),
+          ...this.indexProgress.get(context.id),
           reason: this.failures.get(context.id),
-          sdkVersion: project?.sdk.version,
-          sdkPath: project?.sdkPath,
-          sdkSource: project?.sdkSource,
-          diagnostics: project?.diagnostics ?? [],
-          plugins: project?.plugins ?? [],
+          sdkVersion: project?.sdk.version ?? cached?.metadata.sdkVersion,
+          sdkPath: project?.sdkPath ?? cached?.metadata.sdkPath,
+          sdkSource: project?.sdkSource ?? cached?.metadata.sdkSource,
+          diagnostics: project?.diagnostics ?? cached?.metadata.diagnostics ?? [],
+          plugins: project?.plugins ?? cached?.metadata.plugins ?? [],
         };
       }),
     };
@@ -214,6 +295,7 @@ export class WebSemanticService {
       throw new Error('Document revision is obsolete or conflicts with existing content.');
     this.overlays.set(path, { content: update.content, revision: update.revision });
     this.version++;
+    if (this.indexTask) this.pendingIndex = true;
     return { path, revision: update.revision, workspaceGeneration: this.generation };
   }
 
@@ -226,6 +308,9 @@ export class WebSemanticService {
       )
     )
       throw new Error('Changed files must be absolute workspace paths.');
+    this.checkpoint = null;
+    for (const context of this.contexts)
+      this.indexProgress.set(context.id, { indexState: 'invalidated' });
     // Reparse file lists as well as snapshots: a new unopened file can introduce references.
     // Existing overlays are kept because their unsaved contents take precedence over disk.
     for (const project of this.projects.values()) project.service.dispose();
@@ -239,6 +324,7 @@ export class WebSemanticService {
         this.failures.set(context.id, this.errorText(error));
       }
     }
+    if (this.indexEager) this.indexWorkspace();
     return { workspaceGeneration: this.generation, paths };
   }
 
@@ -283,6 +369,33 @@ export class WebSemanticService {
           state: 'unsupported',
           reasons: ['Semantic editor features for this language are not available.'],
         };
+      if (
+        (request.operation === 'diagnostics' ||
+          (request.operation === 'symbols' && !request.query)) &&
+        this.checkpointUsable()
+      ) {
+        const cached = this.checkpoint!.projects.filter((project) => project.files[path]).sort(
+          (a, b) => {
+            const left = this.contexts.find((context) => context.id === a.id)!;
+            const right = this.contexts.find((context) => context.id === b.id)!;
+            return (
+              Number(inside(right.root, path)) - Number(inside(left.root, path)) ||
+              right.root.length - left.root.length
+            );
+          },
+        )[0]?.files[path].editor?.[request.operation as 'diagnostics' | 'symbols'];
+        if (cached) {
+          await yieldTurn();
+          if (canceled()) return { ...result, state: 'canceled' };
+          return {
+            ...structuredClone(cached),
+            id: request.id,
+            documentRevision: request.documentRevision,
+            workspaceGeneration: this.generation,
+          };
+        }
+      }
+      this.ensureProjects();
       const projects = [...this.projects.values()]
         .filter((project) => this.sourceFile(project, path))
         .sort(
@@ -733,6 +846,13 @@ export class WebSemanticService {
         state: 'failed',
         reasons: [...batch.reasons, 'No configured web projects are available.'],
       };
+    if (this.checkpointUsable()) {
+      await yieldTurn();
+      if (canceled()) return { ...batch, state: 'canceled', reasons: ['Query canceled.'] };
+      const cached = this.checkpointQuery(query, path, selected, batch);
+      if (cached) return cached;
+    }
+    this.ensureProjects();
     const merged = new Map<string, SourceLocation>();
     const originProjects = [...this.projects.values()].filter((project) =>
       this.sourceFile(project, path),
@@ -855,6 +975,7 @@ export class WebSemanticService {
         state: 'failed',
         reasons: ['Symbol search requires between 1 and 200 characters.'],
       };
+    this.ensureProjects();
     const locations = new Map<string, SourceLocation>();
     for (const context of this.contexts) {
       await yieldTurn();
@@ -910,7 +1031,369 @@ export class WebSemanticService {
     return batch;
   }
 
+  private checkpointQuery(
+    query: NavigationQuery,
+    path: string,
+    selected: BuildContext[],
+    base: NavigationBatch,
+  ): NavigationBatch | null {
+    const data = this.checkpoint;
+    if (!data) return null;
+    const locate = (
+      project: ProjectIndex,
+      file: string,
+      offset: number,
+      operation: NavigationOperation,
+    ): IndexValue | undefined => {
+      const token = project.files[file]?.tokens.find(
+        (token) => token.start <= offset && offset < token.end,
+      );
+      const key = token?.operations[operation];
+      return key ? data.values[key] : undefined;
+    };
+    const origins = data.projects.filter((project) => project.files[path]);
+    const source = origins[0]?.files[path];
+    const { line, character } = query.position;
+    if (
+      !source ||
+      !Number.isSafeInteger(line) ||
+      !Number.isSafeInteger(character) ||
+      line < 0 ||
+      character < 0 ||
+      line >= source.lines.length
+    )
+      return null;
+    const offset = source.lines[line] + character;
+    if (offset > (source.lines[line + 1] ?? source.length)) return null;
+    const anchors: Anchor[] = [{ path, offset }];
+    for (const origin of origins) {
+      const definition = locate(origin, path, offset, 'definition');
+      if (!definition || definition.error) return null;
+      for (const location of definition.locations) {
+        const file = data.projects.find((project) => project.files[location.path])?.files[
+          location.path
+        ];
+        if (file)
+          anchors.push({
+            path: location.path,
+            offset: file.lines[location.range.start.line] + location.range.start.character,
+          });
+      }
+    }
+    const unique = [
+      ...new Map(anchors.map((anchor) => [`${anchor.path}:${anchor.offset}`, anchor])).values(),
+    ];
+    const result = { ...base, reasons: [...base.reasons], locations: [] as SourceLocation[] };
+    const merged = new Map<string, SourceLocation>();
+    for (const context of selected) {
+      const project = data.projects.find((project) => project.id === context.id);
+      if (!project) return null;
+      result.reasons.push(...project.reasons.map((reason) => `${context.id}: ${reason}`));
+      const points = project.files[path]
+        ? [{ path, offset }]
+        : unique.filter((anchor) => project.files[anchor.path]);
+      let failed = false;
+      for (const point of points) {
+        const value = locate(project, point.path, point.offset, query.operation);
+        if (!value) return null;
+        if (value.error) {
+          result.reasons.push(`${context.id}: ${value.error}`);
+          failed = true;
+          break;
+        }
+        for (const location of value.locations) {
+          const key = `${location.path}:${location.range.start.line}:${location.range.start.character}:${location.range.end.line}:${location.range.end.character}:${location.relationship}`;
+          const previous = merged.get(key);
+          if (previous)
+            previous.contextIds = [
+              ...new Set([...previous.contextIds, ...location.contextIds]),
+            ].sort();
+          else merged.set(key, structuredClone(location));
+        }
+      }
+      if (!failed) result.searchedContexts++;
+    }
+    result.locations = [...merged.values()].sort(
+      (a, b) =>
+        a.path.localeCompare(b.path) ||
+        a.range.start.line - b.range.start.line ||
+        a.range.start.character - b.range.start.character ||
+        a.relationship.localeCompare(b.relationship),
+    );
+    result.state = !result.searchedContexts
+      ? 'failed'
+      : result.reasons.length
+        ? 'partial'
+        : 'complete';
+    return result;
+  }
+
+  indexWorkspace(restoreOnly = false) {
+    if (restoreOnly) {
+      for (const context of this.contexts)
+        if (!this.indexProgress.has(context.id))
+          this.indexProgress.set(context.id, {
+            indexState: 'missing',
+            indexReason: 'No valid saved web index; eager indexing is disabled.',
+          });
+      return this.workspaceStatus();
+    }
+    this.indexEager = true;
+    if (!this.persistentIndex) {
+      for (const context of this.contexts)
+        this.indexProgress.set(context.id, {
+          indexState: 'failed',
+          indexReason: 'Persistent web index storage is unavailable.',
+        });
+      return this.workspaceStatus();
+    }
+    if (this.indexTask) {
+      this.pendingIndex = true;
+      return this.workspaceStatus();
+    }
+    for (const [path, overlay] of this.overlays) {
+      if (fileHash(path) !== hash(overlay.content)) {
+        for (const context of this.contexts)
+          this.indexProgress.set(context.id, {
+            indexState: 'invalidated',
+            indexReason:
+              'Unsaved buffers use live analysis; the saved-file checkpoint is retained.',
+          });
+        return this.workspaceStatus();
+      }
+    }
+    if (this.checkpoint?.complete) {
+      try {
+        if (indexCurrent(this.checkpoint)) return this.workspaceStatus();
+      } catch {
+        /* Rebuild safely. */
+      }
+    }
+    const version = this.version;
+    const lifecycle = this.lifecycle;
+    for (const context of this.contexts)
+      this.indexProgress.set(context.id, {
+        indexState: 'building',
+        indexed: 0,
+        packages: 0,
+        indexUnits: 'files',
+      });
+    this.indexTask = this.buildWorkspaceIndex(version)
+      .catch((error: unknown) => {
+        if (version === this.version)
+          for (const context of this.contexts)
+            this.indexProgress.set(context.id, {
+              indexState: 'failed',
+              indexReason: this.errorText(error),
+            });
+      })
+      .finally(() => {
+        if (lifecycle !== this.lifecycle) return;
+        this.indexTask = undefined;
+        if (this.pendingIndex && this.indexEager) {
+          this.pendingIndex = false;
+          this.indexWorkspace();
+        }
+      });
+    return this.workspaceStatus();
+  }
+  async checkpointWorkspace() {
+    this.indexWorkspace();
+    await this.indexTask;
+    return this.workspaceStatus();
+  }
+  private async buildWorkspaceIndex(version: number) {
+    await yieldTurn();
+    const check = () => {
+      if (this.version !== version) throw new Error('Workspace changed during indexing.');
+    };
+    check();
+    this.ensureProjects();
+    const data: WorkspaceIndex = {
+      schema: 1,
+      root: this.root,
+      identity: this.checkpointIdentity,
+      complete: false,
+      files: {},
+      directories: directoryInputs(this.root),
+      projects: [],
+      values: {},
+    };
+    const store = (value: IndexValue) => {
+      const key = hash(JSON.stringify(value));
+      data.values[key] = value;
+      return key;
+    };
+    for (const context of this.contexts) {
+      check();
+      const project = this.projects.get(context.id);
+      if (!project) {
+        this.indexProgress.set(context.id, {
+          indexState: 'failed',
+          indexReason: this.failures.get(context.id) ?? 'Project is unavailable.',
+        });
+        continue;
+      }
+      if (project.indexError) throw new Error(project.indexError);
+      const { sdk, service } = project;
+      const program = service.getProgram();
+      if (!program) throw new Error(`${context.id}: compiler program is unavailable.`);
+      const entry: ProjectIndex = {
+        id: context.id,
+        files: {},
+        reasons: this.coverageDiagnostics(project),
+        metadata: {
+          sdkVersion: sdk.version,
+          sdkPath: project.sdkPath,
+          sdkSource: project.sdkSource,
+          diagnostics: project.diagnostics,
+          plugins: project.plugins,
+        },
+      };
+      // Record all source/dependency contents actually consumed by this program.
+      for (const source of program.getSourceFiles()) {
+        const path = canonical(source.fileName);
+        entry.files[path] = {
+          length: source.text.length,
+          lines: [...source.getLineStarts()],
+          tokens: [],
+        };
+        data.files[path] = hash(source.text);
+      }
+      const sources = program
+        .getSourceFiles()
+        .filter(
+          (source) =>
+            inside(this.root, canonical(source.fileName)) &&
+            !canonical(source.fileName).includes('/node_modules/'),
+        );
+      let done = 0,
+        visited = 0;
+      for (const source of sources) {
+        const path = canonical(source.fileName);
+        const file = entry.files[path];
+        const nodes: ts.Node[] = [];
+        const visit = (node: ts.Node) => {
+          if (
+            sdk.isIdentifier(node) ||
+            sdk.isPrivateIdentifier(node) ||
+            sdk.isStringLiteral(node) ||
+            node.kind === sdk.SyntaxKind.ThisKeyword ||
+            node.kind === sdk.SyntaxKind.SuperKeyword
+          )
+            nodes.push(node);
+          sdk.forEachChild(node, visit);
+        };
+        visit(source);
+        for (const node of nodes) {
+          check();
+          const string = sdk.isStringLiteral(node);
+          const start = node.getStart(source) + (string ? 1 : 0);
+          const end = node.getEnd() - (string ? 1 : 0);
+          if (end < start) continue;
+          const token: IndexToken = { start, end, operations: {} };
+          const operations: NavigationOperation[] = ['definition', 'typeDefinition', 'references'];
+          const parent = node.parent;
+          if (
+            'name' in parent &&
+            (parent as ts.NamedDeclaration).name === node &&
+            (sdk.isClassDeclaration(parent) ||
+              sdk.isInterfaceDeclaration(parent) ||
+              sdk.isFunctionDeclaration(parent) ||
+              sdk.isMethodDeclaration(parent) ||
+              sdk.isMethodSignature(parent) ||
+              sdk.isTypeAliasDeclaration(parent) ||
+              (sdk.isVariableDeclaration(parent) &&
+                parent.initializer &&
+                (sdk.isArrowFunction(parent.initializer) ||
+                  sdk.isFunctionExpression(parent.initializer))))
+          )
+            operations.push('implementations', 'typeHierarchy', 'incomingCalls', 'outgoingCalls');
+          for (const operation of operations) {
+            let value: IndexValue;
+            try {
+              value = { locations: this.queryProject(project, operation, { path, offset: start }) };
+            } catch (error) {
+              value = { locations: [], error: this.errorText(error) };
+            }
+            token.operations[operation] = store(value);
+          }
+          file.tokens.push(token);
+          if (++visited % 16 === 0) {
+            await yieldTurn();
+            check();
+          }
+        }
+        file.tokens.sort((a, b) => a.start - b.start || a.end - b.end);
+        file.editor = {};
+        for (const operation of ['diagnostics', 'symbols'] as const) {
+          const response = await this.editor(
+            {
+              id: 'checkpoint',
+              operation,
+              path,
+              documentRevision: this.overlays.get(path)?.revision ?? 0,
+              workspaceGeneration: this.generation,
+            },
+            () => this.version !== version,
+          );
+          check();
+          file.editor[operation] = {
+            state: response.state,
+            reasons: response.reasons,
+            diagnostics: response.diagnostics,
+            symbols: response.symbols,
+          };
+        }
+        this.indexProgress.set(context.id, {
+          indexState: 'building',
+          indexed: ++done,
+          packages: sources.length,
+          indexUnits: 'files',
+        });
+        await yieldTurn();
+      }
+      check();
+      Object.assign(data.files, project.inputFiles);
+      // Program text wins over a later resolver probe of the same source file.
+      for (const source of program.getSourceFiles())
+        data.files[canonical(source.fileName)] = hash(source.text);
+      Object.assign(data.directories, project.inputDirectories);
+      for (const plugin of project.plugins) {
+        if (!plugin.path) continue;
+        data.files[plugin.path] = fileHash(plugin.path);
+        // Next's entry loads helper modules that can change independently of its manifest.
+        const marker = `${sep}node_modules${sep}next${sep}`;
+        const end = plugin.path.lastIndexOf(marker);
+        const packageRoot =
+          end >= 0 ? plugin.path.slice(0, end + marker.length) : dirname(plugin.path);
+        for (const loaded of Object.keys(require.cache))
+          if (loaded.startsWith(packageRoot)) data.files[loaded] = fileHash(loaded);
+      }
+      data.projects.push(entry);
+      data.complete =
+        data.projects.length === this.contexts.length &&
+        data.projects.every((project) => project.reasons.length === 0);
+      this.indexStore.save(data);
+      this.indexProgress.set(context.id, {
+        indexState: 'built',
+        indexReason: entry.reasons.join('; ') || undefined,
+        indexed: sources.length,
+        packages: sources.length,
+        indexUnits: 'files',
+      });
+    }
+    check();
+    this.checkpoint = data;
+  }
+
   dispose() {
+    this.lifecycle++;
+    this.indexTask = undefined;
+    this.checkpoint = null;
+    this.indexProgress.clear();
+    this.indexEager = false;
+    this.pendingIndex = false;
     for (const project of this.projects.values()) project.service.dispose();
     this.projects.clear();
     this.failures.clear();
@@ -922,13 +1405,61 @@ export class WebSemanticService {
     if (!inside(this.root, context.root) || !inside(this.root, context.configPath))
       throw new Error('Project configuration is outside the workspace.');
     const { sdk, path, source, diagnostics } = loadSdk(context.root);
-    const config = sdk.readConfigFile(context.configPath, sdk.sys.readFile);
+    const inputFiles: Record<string, string> = {};
+    const inputDirectories: Record<string, string> = {};
+    let indexError: string | undefined;
+    const record = (operation: () => void) => {
+      if (!this.persistentIndex) return;
+      try {
+        operation();
+      } catch (error) {
+        indexError = `Cannot validate web checkpoint inputs: ${this.errorText(error)}`;
+      }
+    };
+    record(() => {
+      inputFiles[path] = fileHash(path);
+      Object.assign(inputDirectories, directoryInputs(context.root));
+    });
+    for (let dir = context.root; ; dir = dirname(dir)) {
+      for (const candidate of [
+        'node_modules/typescript/package.json',
+        'node_modules/typescript/lib/typescript.js',
+        'node_modules/next/package.json',
+      ])
+        record(() => {
+          inputFiles[resolve(dir, candidate)] = fileHash(resolve(dir, candidate));
+        });
+      if (dirname(dir) === dir) break;
+    }
+    const readFile = (file: string) => {
+      const text = this.overlays.get(canonical(file))?.content ?? sdk.sys.readFile(file);
+      record(() => {
+        inputFiles[resolve(file)] = text === undefined ? 'missing' : hash(text);
+      });
+      return text;
+    };
+    const fileExists = (file: string) => {
+      const exists = this.overlays.has(canonical(file)) || sdk.sys.fileExists(file);
+      record(() => {
+        inputFiles[resolve(file)] = fileHash(resolve(file));
+      });
+      return exists;
+    };
+    const directoryExists = (dir: string) => {
+      const exists = sdk.sys.directoryExists(dir);
+      record(() => {
+        if (exists) inputDirectories[resolve(dir)] = directoryHash(dir);
+        else inputFiles[resolve(dir)] = 'missing';
+      });
+      return exists;
+    };
+    const config = sdk.readConfigFile(context.configPath, readFile);
     const explain = (diagnostic: ts.Diagnostic) =>
       sdk.flattenDiagnosticMessageText(diagnostic.messageText, '\n');
     if (config.error) throw new Error(explain(config.error));
     const parsed = sdk.parseJsonConfigFileContent(
       config.config,
-      sdk.sys,
+      { ...sdk.sys, readFile, fileExists, directoryExists },
       dirname(context.configPath),
       undefined,
       context.configPath,
@@ -941,15 +1472,15 @@ export class WebSemanticService {
         `${this.overlays.get(canonical(file))?.revision ?? 0}:${this.version}`,
       getProjectVersion: () => String(this.version),
       getScriptSnapshot: (file) => {
-        const text = this.overlays.get(canonical(file))?.content ?? sdk.sys.readFile(file);
+        const text = readFile(file);
         return text === undefined ? undefined : sdk.ScriptSnapshot.fromString(text);
       },
       getCurrentDirectory: () => dirname(context.configPath),
       getDefaultLibFileName: (options) => sdk.getDefaultLibFilePath(options),
-      readFile: (file) => this.overlays.get(canonical(file))?.content ?? sdk.sys.readFile(file),
-      fileExists: (file) => this.overlays.has(canonical(file)) || sdk.sys.fileExists(file),
+      readFile,
+      fileExists,
       readDirectory: sdk.sys.readDirectory,
-      directoryExists: sdk.sys.directoryExists,
+      directoryExists,
       getDirectories: sdk.sys.getDirectories,
       realpath: sdk.sys.realpath,
       useCaseSensitiveFileNames: () => sdk.sys.useCaseSensitiveFileNames,
@@ -987,6 +1518,11 @@ export class WebSemanticService {
         ...plugins.flatMap((plugin) => (plugin.reason ? [plugin.reason] : [])),
       ],
       plugins,
+      inputFiles,
+      inputDirectories,
+      get indexError() {
+        return indexError;
+      },
       checkedVersion: -1,
       coverageReasons: [],
     };

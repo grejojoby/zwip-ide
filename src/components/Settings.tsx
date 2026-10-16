@@ -187,8 +187,9 @@ export function Settings({
                   Index the whole project when it opens
                 </label>
                 <p className="muted">
-                  Loads every module and type-checks its packages in the background, so navigation
-                  and search are ready before you open files. Results are cached across restarts.
+                  Builds and saves semantic indexes for every configured module in the background.
+                  Existing indexes are validated and restored on reopen even when this is off.
+                  Changed or missing data is rebuilt when enabled, or analyzed on demand.
                 </p>
               </div>
             )}

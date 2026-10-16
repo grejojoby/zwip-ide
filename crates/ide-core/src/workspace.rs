@@ -148,6 +148,8 @@ fn add_profiles(root: &Path, contexts: &mut Vec<BuildContext>) -> Result<(), Str
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Workspace {
+    #[serde(default)]
+    pub index: Option<crate::workspace_index::IndexState>,
     pub root: String,
     pub name: String,
     pub generation: u64,
@@ -347,6 +349,7 @@ pub fn scan(
     let mut excluded_directories = skipped.lock().map_err(|e| e.to_string())?.clone();
     excluded_directories.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(Workspace {
+        index: None,
         name: root
             .file_name()
             .unwrap_or_default()

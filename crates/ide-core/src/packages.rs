@@ -658,7 +658,7 @@ impl PackageHost {
                 cache: self.root.join(".cache").join(&manifest.id),
                 workspace_root: workspace.root.clone(),
                 generation: workspace.generation,
-                params: json!({"root":workspace.root,"contexts":contexts,"generation":workspace.generation,"enabledPackages":self.enabled_ids()?}),
+                params: json!({"root":workspace.root,"contexts":contexts,"generation":workspace.generation,"workspaceIndex":workspace.index,"enabledPackages":self.enabled_ids()?}),
             })
         } else {
             None
@@ -1067,7 +1067,7 @@ impl PackageHost {
                 .iter()
                 .filter(|context| manifest.languages.contains(&context.language))
                 .collect();
-            let params = json!({"root":workspace.root,"contexts":contexts,"generation":workspace.generation,"enabledPackages":self.enabled_ids()?});
+            let params = json!({"root":workspace.root,"contexts":contexts,"generation":workspace.generation,"workspaceIndex":workspace.index,"enabledPackages":self.enabled_ids()?});
             let plan = Arc::new(WorkerPlan {
                 id: item.id.clone(),
                 ready: false,

@@ -80,7 +80,10 @@ function prepare() {
     readFileSync(path.join(root, 'patches/tools-imports-gowork-off.json'), 'utf8'),
   );
   prepareModule(lock.tools, path.join(upstream, 'tools'), [patch]);
-  prepareModule(lock, source);
+  const indexPatch = JSON.parse(
+    readFileSync(path.join(root, 'patches/gopls-workspace-index.json'), 'utf8'),
+  );
+  prepareModule(lock, source, [indexPatch]);
   run(['mod', 'edit', '-replace=golang.org/x/tools=../tools']);
   // Remove obsolete generated command files before copying the owned overlay.
   rmSync(path.join(source, 'cmd/zwip-go'), { recursive: true, force: true });
