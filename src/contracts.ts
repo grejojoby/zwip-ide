@@ -292,6 +292,7 @@ export interface PushPlan {
   commits: PushCommit[];
   files: string[];
   diff: string;
+  filePatches: Record<string, string>;
 }
 export interface HistoryEntry {
   id: number;

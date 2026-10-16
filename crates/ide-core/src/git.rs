@@ -921,8 +921,41 @@ pub fn push_plan(root: &str) -> Result<Value, String> {
         .collect::<Result<_, _>>()?;
     let diff = git(
         root,
-        &["diff", "--no-ext-diff", "--no-textconv", &upstream, "HEAD"],
+        &[
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--default-prefix",
+            "--no-color",
+            "--submodule=short",
+            "--output-indicator-new=+",
+            "--output-indicator-old=-",
+            "--output-indicator-context= ",
+            &upstream,
+            "HEAD",
+        ],
     )?;
+    // Both commands use the same ordering and rename detection, so each output path
+    // maps to one patch. Never parse Git's quoted filenames.
+    let patches: Vec<_> =
+        diff.split_inclusive('\n')
+            .fold(Vec::<String>::new(), |mut parts, line| {
+                if line.starts_with("diff --git ") {
+                    parts.push(String::new());
+                }
+                if let Some(part) = parts.last_mut() {
+                    part.push_str(line);
+                }
+                parts
+            });
+    if patches.len() != files.len() {
+        return Err("Could not match outgoing files to their patches".into());
+    }
+    let file_patches: serde_json::Map<String, Value> = files
+        .iter()
+        .cloned()
+        .zip(patches.into_iter().map(Value::String))
+        .collect();
     let fingerprint = hash(
         format!(
             "{}\n{branch}\n{remote}\n{remote_ref}\n{upstream_oid}\n{remote_oid}\n{urls}",
@@ -931,7 +964,7 @@ pub fn push_plan(root: &str) -> Result<Value, String> {
         .as_bytes(),
     );
     Ok(
-        json!({"fingerprint":fingerprint,"head":snapshot["head"],"remote":remote,"branch":branch,"upstream":upstream,"remoteRef":remote_ref,"commits":commits,"files":files,"diff":diff}),
+        json!({"fingerprint":fingerprint,"head":snapshot["head"],"remote":remote,"branch":branch,"upstream":upstream,"remoteRef":remote_ref,"commits":commits,"files":files,"diff":diff,"filePatches":file_patches}),
     )
 }
 pub fn push(root: &str, fingerprint: &str) -> Result<Value, String> {

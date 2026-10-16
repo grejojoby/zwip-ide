@@ -86,6 +86,26 @@ impl Core {
             self.analysis_epoch.fetch_add(1, Ordering::SeqCst);
             return Ok(json!({"path":path}));
         }
+        if method == "workspace.revealFile" {
+            let path = Path::new(string(params, "path")?)
+                .canonicalize()
+                .map_err(|e| e.to_string())?;
+            Documents::ensure_writable(&path, &workspace.root)?;
+            #[cfg(target_os = "macos")]
+            {
+                let status = std::process::Command::new("/usr/bin/open")
+                    .arg("-R")
+                    .arg(&path)
+                    .status()
+                    .map_err(|e| e.to_string())?;
+                if !status.success() {
+                    return Err("Finder could not reveal this path".into());
+                }
+                return Ok(json!({"path":path}));
+            }
+            #[cfg(not(target_os = "macos"))]
+            return Err("Show in Finder is available on macOS".into());
+        }
         let trash = self.data.join("trash");
         fs::create_dir_all(&trash).map_err(|e| e.to_string())?;
         let mut docs = self.documents.lock().map_err(|e| e.to_string())?;
@@ -154,14 +174,16 @@ impl Core {
             let path = path.to_string_lossy().into_owned();
             let metadata = fs::metadata(&path).map_err(|e| e.to_string())?;
             if !metadata.is_file() {
-                return Err("Rename and trash currently apply to individual files".into());
+                return Err("Rename, copy, and trash currently apply to individual files".into());
             }
             if docs.open.get(&path).is_some_and(|doc| doc.dirty) {
-                return Err("Save this file before renaming or moving it to trash".into());
+                return Err(
+                    "Save this file before renaming, copying, or moving it to trash".into(),
+                );
             }
             let operation = string(params, "operation")?;
             let destination = match operation {
-                "rename" => Some(
+                "rename" | "copy" => Some(
                     target(&workspace.root, string(params, "destination")?)?
                         .to_string_lossy()
                         .into_owned(),
@@ -210,6 +232,36 @@ impl Core {
             return Err("Save this file before applying the action".into());
         }
         validate_plan_paths(&plan, &workspace.root)?;
+        if plan.operation == "copy" {
+            let destination = plan
+                .destination
+                .as_ref()
+                .ok_or("Missing copy destination")?;
+            let mut source = fs::File::open(&plan.path).map_err(|e| e.to_string())?;
+            let mut output = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(destination)
+                .map_err(|e| e.to_string())?;
+            let copied = std::io::copy(&mut source, &mut output)
+                .and_then(|_| output.set_permissions(source.metadata()?.permissions()))
+                .and_then(|_| output.sync_all())
+                .map_err(|e| e.to_string())
+                .and_then(|_| {
+                    if source_hash(destination)? != plan.hash {
+                        return Err("Source changed while copying; review again".into());
+                    }
+                    Ok(())
+                });
+            if let Err(error) = copied {
+                drop(output);
+                let _ = fs::remove_file(destination);
+                return Err(error);
+            }
+            *self.file_plan.lock().map_err(|e| e.to_string())? = None;
+            self.analysis_epoch.fetch_add(1, Ordering::SeqCst);
+            return Ok(json!({"path":destination}));
+        }
         // Close provider overlays before moving the source. The editor must flush
         // its buffer before requesting this operation; dirty mirrors are rejected.
         let revision = docs.open.get(&plan.path).map(|doc| doc.revision);

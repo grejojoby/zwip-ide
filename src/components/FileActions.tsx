@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useImperativeHandle, useState, type Ref } from 'react';
 import { request } from '../api';
 import { Modal } from './Modal';
 import './file-actions.css';
@@ -8,7 +8,7 @@ interface FileOperationPreview {
   path: string;
   destination?: string | null;
   bytes: number;
-  operation: 'rename' | 'trash';
+  operation: 'rename' | 'trash' | 'copy';
 }
 interface TrashEntry {
   id: string;
@@ -17,19 +17,25 @@ interface TrashEntry {
   createdAt: number;
   available: boolean;
 }
-type Mode = 'actions' | 'file' | 'directory' | 'rename' | 'trash' | 'restore';
+export type FileActionMode = 'file' | 'directory' | 'rename' | 'trash' | 'restore' | 'copy';
+type Mode = 'actions' | FileActionMode;
+export interface FileActionsHandle {
+  open(mode: FileActionMode, path: string, directory: boolean): void;
+}
 export type FileActionResult =
-  | { operation: 'create' | 'restore'; path: string }
+  | { operation: 'create' | 'restore' | 'copy'; path: string }
   | { operation: 'directory'; path?: string }
   | { operation: 'rename'; path: string; previousPath: string }
   | { operation: 'trash'; previousPath: string };
 
 export function FileActions({
+  ref,
   root,
   activePath,
   beforeMutation,
   onApplied,
 }: {
+  ref?: Ref<FileActionsHandle>;
   root: string;
   activePath?: string;
   beforeMutation(): Promise<void>;
@@ -41,7 +47,10 @@ export function FileActions({
   const [trash, setTrash] = useState<TrashEntry[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const included = activePath?.startsWith(`${root}/`) ? activePath : undefined;
+  const [selectedPath, setSelectedPath] = useState<string>();
+  const sourcePath = mode ? selectedPath : activePath;
+  const included = sourcePath?.startsWith(`${root}/`) ? sourcePath : undefined;
+  useImperativeHandle(ref, () => ({ open: choose }));
   const activeRelative = included?.slice(root.length + 1);
 
   async function run(action: () => Promise<void>) {
@@ -59,18 +68,27 @@ export function FileActions({
   function close() {
     if (!busy) setMode(null);
   }
-  function choose(next: Mode) {
+  function choose(next: Mode, path = included ?? activePath, directory = false) {
+    setSelectedPath(path);
+    const selectedRelative = path?.startsWith(`${root}/`) ? path.slice(root.length + 1) : '';
     setPreview(null);
     setError('');
     setMode(next);
     setRelativePath(
       next === 'rename'
-        ? (activeRelative ?? '')
-        : activeRelative?.includes('/')
-          ? activeRelative.slice(0, activeRelative.lastIndexOf('/') + 1)
-          : '',
+        ? selectedRelative
+        : next === 'copy'
+          ? (() => {
+              const dot = selectedRelative.lastIndexOf('.');
+              return dot > selectedRelative.lastIndexOf('/') + 1
+                ? `${selectedRelative.slice(0, dot)} copy${selectedRelative.slice(dot)}`
+                : `${selectedRelative} copy`;
+            })()
+          : directory
+            ? `${selectedRelative}/`
+            : selectedRelative.slice(0, selectedRelative.lastIndexOf('/') + 1),
     );
-    if (next === 'trash') void review('trash');
+    if (next === 'trash') void review('trash', path);
     if (next === 'restore')
       void run(async () => setTrash(await request<TrashEntry[]>('workspace.trashList')));
   }
@@ -86,15 +104,15 @@ export function FileActions({
       setMode(null);
     });
   }
-  async function review(operation: 'rename' | 'trash') {
-    if (!included) return;
+  async function review(operation: 'rename' | 'trash' | 'copy', path = included) {
+    if (!path) return;
     await run(async () => {
       await beforeMutation();
       setPreview(
         await request<FileOperationPreview>('workspace.filePreview', {
           operation,
-          path: included,
-          ...(operation === 'rename' ? { destination: relativePath } : {}),
+          path,
+          ...(operation !== 'trash' ? { destination: relativePath } : {}),
         }),
       );
     });
@@ -104,7 +122,11 @@ export function FileActions({
     await run(async () => {
       await beforeMutation();
       const result = await request<{ path?: string }>('workspace.fileApply', { id: preview.id });
-      if (preview.operation === 'rename') {
+      if (preview.operation === 'copy') {
+        if (!result.path)
+          throw new Error('Copied file path was not returned. Refresh the project.');
+        await onApplied({ operation: 'copy', path: result.path });
+      } else if (preview.operation === 'rename') {
         if (!result.path)
           throw new Error(
             'The file was moved, but its new path was not returned. Refresh the project.',
@@ -127,21 +149,23 @@ export function FileActions({
       ? 'New file'
       : mode === 'directory'
         ? 'New folder'
-        : mode === 'rename'
-          ? 'Rename or move file'
-          : mode === 'trash'
-            ? 'Move file to IDE trash'
-            : mode === 'restore'
-              ? 'Recover files from IDE trash'
-              : 'Project file actions';
-  const form = mode === 'file' || mode === 'directory' || mode === 'rename';
+        : mode === 'copy'
+          ? 'Copy file'
+          : mode === 'rename'
+            ? 'Rename or move file'
+            : mode === 'trash'
+              ? 'Move file to IDE trash'
+              : mode === 'restore'
+                ? 'Recover files from IDE trash'
+                : 'Project file actions';
+  const form = mode === 'file' || mode === 'directory' || mode === 'rename' || mode === 'copy';
   return (
     <>
       <button
         className="file-actions-trigger"
         aria-label="Project file actions"
         title="Create, rename, or recover files"
-        onClick={() => choose('actions')}
+        onClick={() => choose('actions', activePath)}
       >
         Files…
       </button>
@@ -175,11 +199,11 @@ export function FileActions({
                 id="file-action-form"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  if (mode === 'rename') void review('rename');
+                  if (mode === 'rename' || mode === 'copy') void review(mode);
                   else void create();
                 }}
               >
-                {mode === 'rename' && (
+                {(mode === 'rename' || mode === 'copy') && (
                   <p>
                     Current file: <code>{activeRelative}</code>
                   </p>
@@ -217,7 +241,9 @@ export function FileActions({
                 <p>
                   {preview.operation === 'trash'
                     ? 'The file will move to recoverable IDE trash. Restore it from Project file actions.'
-                    : 'This changes the file path. References and imports are not automatically rewritten.'}
+                    : preview.operation === 'copy'
+                      ? 'Creates an independent copy. Existing files are never overwritten.'
+                      : 'This changes the file path. References and imports are not automatically rewritten.'}
                 </p>
               </div>
             )}
@@ -270,7 +296,7 @@ export function FileActions({
                 form="file-action-form"
                 disabled={busy || !relativePath.trim()}
               >
-                {mode === 'rename' ? 'Review move' : 'Create'}
+                {mode === 'rename' ? 'Review move' : mode === 'copy' ? 'Review copy' : 'Create'}
               </button>
             )}
             {preview && (
@@ -280,7 +306,11 @@ export function FileActions({
                 disabled={busy}
                 onClick={() => void apply()}
               >
-                {preview.operation === 'trash' ? 'Move to IDE trash' : 'Apply move'}
+                {preview.operation === 'trash'
+                  ? 'Move to IDE trash'
+                  : preview.operation === 'copy'
+                    ? 'Copy file'
+                    : 'Apply move'}
               </button>
             )}
           </div>

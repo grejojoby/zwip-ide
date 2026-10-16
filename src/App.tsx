@@ -60,7 +60,7 @@ import { PartialDiff } from './components/PartialDiff';
 import { MarkdownPreview } from './components/MarkdownPreview';
 import { Modal } from './components/Modal';
 import { isMarkdownPath } from './model/markdown';
-import { ProjectTree } from './components/ProjectTree';
+import { type ProjectAction, ProjectTree } from './components/ProjectTree';
 import { SidebarRail, SidebarMoveButton } from './components/SidebarRail';
 import {
   defaultSidebarLayout,
@@ -75,7 +75,11 @@ import {
   type SidebarTool,
 } from './model/sidebar-layout';
 import { BuildContextSelector } from './components/BuildContextSelector';
-import { FileActions, type FileActionResult } from './components/FileActions';
+import {
+  FileActions,
+  type FileActionResult,
+  type FileActionsHandle,
+} from './components/FileActions';
 import { HierarchyTree, type HierarchyOperation } from './components/HierarchyTree';
 import { NavigationResults } from './components/NavigationResults';
 import { TargetChooser } from './components/TargetChooser';
@@ -964,6 +968,33 @@ export function App() {
       report(e);
     }
   }
+  const fileActions = useRef<FileActionsHandle>(null);
+  async function projectFileAction(action: ProjectAction, path: string, directory: boolean) {
+    try {
+      if (action === 'copyPath' || action === 'copyRelativePath') {
+        await navigator.clipboard.writeText(
+          action === 'copyPath' ? path : path.slice(workspaceRef.current!.root.length + 1),
+        );
+        setStatus('Path copied');
+      } else if (action === 'reveal') {
+        await request('workspace.revealFile', { path });
+      } else if (action === 'refactor' || action === 'format') {
+        await openFile(path);
+        const result = await editorRequest(action === 'refactor' ? 'codeActions' : 'format', path, {
+          line: 0,
+          character: 0,
+        });
+        if (!result) return;
+        if (result.state !== 'complete')
+          throw new Error(result.reasons.join('\n') || 'Provider did not complete this action');
+        if (action === 'refactor') setCodeActions(result.codeActions ?? []);
+        else if (result.edits?.length) await previewEdits(result.edits, 'Format file');
+        else setStatus('Formatting is up to date');
+      } else fileActions.current?.open(action, path, directory);
+    } catch (failure) {
+      report(failure);
+    }
+  }
   async function fileActionApplied(result: FileActionResult) {
     if (result.operation === 'rename' || result.operation === 'trash') {
       const previous = result.previousPath;
@@ -1013,7 +1044,9 @@ export function App() {
             ? 'File restored'
             : result.operation === 'directory'
               ? 'Folder created'
-              : 'File created',
+              : result.operation === 'copy'
+                ? 'File copied'
+                : 'File created',
     );
   }
   async function removeTab(path: string) {
@@ -2044,6 +2077,7 @@ export function App() {
                     <>
                       <div className="spacer" />
                       <FileActions
+                        ref={fileActions}
                         root={workspace.root}
                         activePath={focusPath}
                         beforeMutation={() => documents.flushAll()}
@@ -2085,6 +2119,9 @@ export function App() {
                     root={workspace.root}
                     active={focusPath}
                     onOpen={(path) => void openFile(path)}
+                    onAction={(action, path, directory) =>
+                      void projectFileAction(action, path, directory)
+                    }
                     onExclude={(path, excluded) => void setDirectoryExcluded(path, excluded)}
                   />
                 ) : null}

@@ -52,7 +52,7 @@ describe('project file action reviews', () => {
       destination: 'b.ts',
     });
     expect(request).not.toHaveBeenCalledWith('workspace.fileApply', expect.anything());
-    fireEvent.click(screen.getByRole('button', { name: 'Apply move' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Apply move' }));
     expect(await screen.findByRole('alert')).toHaveProperty(
       'textContent',
       'Error: File changed after preview; review again.',
@@ -102,4 +102,82 @@ describe('project file action reviews', () => {
     );
     expect(await screen.findByText('No recoverable files in this project.')).toBeTruthy();
   });
+});
+
+it('uses the context target for copies and keeps copy results separate from moves', async () => {
+  const { createRef } = await import('react');
+  const { act } = await import('@testing-library/react');
+  const ref = createRef<import('./FileActions').FileActionsHandle>();
+  const applied = vi.fn().mockResolvedValue(undefined);
+  vi.mocked(request).mockImplementation(async (method) => {
+    if (method === 'workspace.filePreview')
+      return {
+        id: 'copy',
+        operation: 'copy',
+        path: '/project/nested/second.ts',
+        destination: '/project/nested/second copy.ts',
+        bytes: 5,
+      };
+    return { path: '/project/nested/second copy.ts' };
+  });
+  render(
+    <FileActions
+      ref={ref}
+      root="/project"
+      activePath="/project/first.ts"
+      beforeMutation={async () => {}}
+      onApplied={applied}
+    />,
+  );
+  act(() => ref.current!.open('copy', '/project/nested/second.ts', false));
+  expect(
+    (screen.getByRole('textbox', { name: 'Project relative path' }) as HTMLInputElement).value,
+  ).toBe('nested/second copy.ts');
+  fireEvent.submit(document.getElementById('file-action-form')!);
+  await screen.findByText('/project/nested/second copy.ts');
+  expect(request).toHaveBeenCalledWith('workspace.filePreview', {
+    operation: 'copy',
+    path: '/project/nested/second.ts',
+    destination: 'nested/second copy.ts',
+  });
+  fireEvent.click(await screen.findByRole('button', { name: 'Copy file' }));
+  await waitFor(() =>
+    expect(applied).toHaveBeenCalledWith({
+      operation: 'copy',
+      path: '/project/nested/second copy.ts',
+    }),
+  );
+});
+
+it('creates new files inside the context folder and previews deletion of the context file', async () => {
+  const { createRef } = await import('react');
+  const { act } = await import('@testing-library/react');
+  const ref = createRef<import('./FileActions').FileActionsHandle>();
+  vi.mocked(request).mockResolvedValue({
+    id: 'trash',
+    operation: 'trash',
+    path: '/project/second.ts',
+    bytes: 2,
+  });
+  render(
+    <FileActions
+      ref={ref}
+      root="/project"
+      activePath="/project/first.ts"
+      beforeMutation={async () => {}}
+      onApplied={vi.fn()}
+    />,
+  );
+  act(() => ref.current!.open('file', '/project/nested', true));
+  expect(
+    (screen.getByRole('textbox', { name: 'Project relative path' }) as HTMLInputElement).value,
+  ).toBe('nested/');
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  act(() => ref.current!.open('trash', '/project/second.ts', false));
+  await screen.findByText('/project/second.ts');
+  expect(request).toHaveBeenCalledWith('workspace.filePreview', {
+    operation: 'trash',
+    path: '/project/second.ts',
+  });
+  expect(request).not.toHaveBeenCalledWith('workspace.fileApply', expect.anything());
 });

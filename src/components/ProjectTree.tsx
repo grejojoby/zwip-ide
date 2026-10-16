@@ -3,6 +3,19 @@ import type { ExcludedDirectory, FileEntry } from '../contracts';
 import { buildTree, flattenTree, type TreeEntry, type TreeStatus } from '../model/file-tree';
 import { FileIcon } from './FileIcon';
 import { Icon } from './Icon';
+import { EditorContextMenu, type MenuEntry } from './EditorContextMenu';
+export type ProjectAction =
+  | 'file'
+  | 'directory'
+  | 'rename'
+  | 'copy'
+  | 'trash'
+  | 'restore'
+  | 'copyPath'
+  | 'copyRelativePath'
+  | 'reveal'
+  | 'refactor'
+  | 'format';
 const ROW = 27;
 export function ProjectTree({
   files,
@@ -14,6 +27,7 @@ export function ProjectTree({
   active,
   onOpen,
   onExclude,
+  onAction,
 }: {
   files: FileEntry[];
   directories?: string[];
@@ -23,9 +37,15 @@ export function ProjectTree({
   root: string;
   active?: string;
   onOpen(path: string): void;
+  onAction?(action: ProjectAction, path: string, directory: boolean): void;
   onExclude?(relativePath: string, excluded: boolean): void;
 }) {
-  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{
+    entry: TreeEntry;
+    x: number;
+    y: number;
+    trigger: HTMLElement;
+  } | null>(null);
   const [filter, setFilter] = useState('');
   const [expanded, setExpanded] = useState(new Set<string>());
   const [scroll, setScroll] = useState(0);
@@ -131,8 +151,54 @@ export function ProjectTree({
       return next;
     });
   }
-  function openMenu(id: string, x: number, y: number) {
-    if (onExclude) setMenu({ id, x, y });
+  function openMenu(entry: TreeEntry, x: number, y: number, trigger: HTMLElement) {
+    if (onAction || (entry.directory && onExclude)) setMenu({ entry, x, y, trigger });
+  }
+  function closeMenu() {
+    menu?.trigger.focus();
+    setMenu(null);
+  }
+  function menuEntries(): MenuEntry[] {
+    if (!menu) return [];
+    const { entry } = menu;
+    const path = entry.directory ? `${root}/${entry.id}` : entry.file!.path;
+    const action = (label: string, kind: ProjectAction): MenuEntry => ({
+      label,
+      run: () => onAction?.(kind, path, entry.directory),
+    });
+    const items: MenuEntry[] = [];
+    if (onAction) {
+      if (!entry.directory) items.push({ label: 'Open', run: () => onOpen(path) }, 'separator');
+      items.push(action('New file…', 'file'), action('New folder…', 'directory'));
+      if (!entry.directory)
+        items.push(
+          'separator',
+          action('Rename or move…', 'rename'),
+          action('Refactor / code actions…', 'refactor'),
+          action('Format file', 'format'),
+          action('Copy file…', 'copy'),
+          action('Delete…', 'trash'),
+        );
+      items.push(
+        'separator',
+        action('Copy path', 'copyPath'),
+        action('Copy relative path', 'copyRelativePath'),
+        action('Show in Finder', 'reveal'),
+        'separator',
+        action('Recover trashed files…', 'restore'),
+      );
+    }
+    if (entry.directory && onExclude) {
+      const reason = excludedDirectories.find((item) => item.path === entry.id)?.reason;
+      if (items.length) items.push('separator');
+      items.push({
+        label: 'Exclude from search and indexing',
+        checked: reason !== undefined,
+        disabled: reason !== undefined && reason !== 'Excluded by you',
+        run: () => onExclude(entry.id, reason === undefined),
+      });
+    }
+    return items;
   }
   function moveFocus(index: number) {
     if (!viewport.current) return;
@@ -182,18 +248,15 @@ export function ProjectTree({
                 title={entry.id}
                 onClick={() => (entry.directory ? toggle(entry.id) : onOpen(entry.file!.path))}
                 onContextMenu={(e) => {
-                  if (!entry.directory || !onExclude) return;
+                  if (!onAction && (!entry.directory || !onExclude)) return;
                   e.preventDefault();
-                  openMenu(entry.id, e.clientX, e.clientY);
+                  openMenu(entry, e.clientX, e.clientY, e.currentTarget);
                 }}
                 onKeyDown={(e) => {
-                  if (
-                    entry.directory &&
-                    (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10'))
-                  ) {
+                  if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
                     e.preventDefault();
                     const box = e.currentTarget.getBoundingClientRect();
-                    openMenu(entry.id, box.left + 24, box.bottom);
+                    openMenu(entry, box.left + 24, box.bottom, e.currentTarget);
                     return;
                   }
                   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -230,44 +293,7 @@ export function ProjectTree({
         {!entries.length && <p className="empty-note">No matching files.</p>}
       </div>
       {menu && (
-        <div
-          role="menu"
-          className="tree-context-menu"
-          style={{ left: menu.x, top: menu.y }}
-          // WebKit does not focus a clicked button, so the mousedown would blur the item and
-          // close the menu before its click arrives. Keep focus where it is.
-          onMouseDown={(e) => e.preventDefault()}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') setMenu(null);
-          }}
-          onBlur={(e) => {
-            if (!e.currentTarget.contains(e.relatedTarget)) setMenu(null);
-          }}
-        >
-          {(() => {
-            const reason = excludedDirectories.find((item) => item.path === menu.id)?.reason;
-            // Built-in exclusions (dependency/build folders, worktrees) cannot be included here.
-            const fixed = reason !== undefined && reason !== 'Excluded by you';
-            return (
-              <button
-                role="menuitemcheckbox"
-                aria-checked={reason !== undefined}
-                disabled={fixed}
-                title={fixed ? reason : undefined}
-                ref={(element) => element?.focus()}
-                onClick={() => {
-                  onExclude?.(menu.id, reason === undefined);
-                  setMenu(null);
-                }}
-              >
-                <span className="menu-check" aria-hidden="true">
-                  {reason !== undefined && <Icon name="check" />}
-                </span>
-                Exclude from search and indexing
-              </button>
-            );
-          })()}
-        </div>
+        <EditorContextMenu x={menu.x} y={menu.y} entries={menuEntries()} onClose={closeMenu} />
       )}
       <div className="panel-footnote">{files.length.toLocaleString()} workspace files</div>
     </>

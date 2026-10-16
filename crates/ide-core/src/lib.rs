@@ -168,6 +168,7 @@ impl Core {
         match method {
             "workspace.createFile"
             | "workspace.createDirectory"
+            | "workspace.revealFile"
             | "workspace.filePreview"
             | "workspace.fileApply"
             | "workspace.trashList"

@@ -22,6 +22,27 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-16-project-explorer-context-actions',
+    version: '0.1.0',
+    date: '2026-10-16',
+    title: 'Project explorer file actions',
+    summary: 'Right-click files and folders for common project operations.',
+    changes: [
+      {
+        type: 'added',
+        title: 'File and folder context menus',
+        description:
+          'Open, rename or move, copy files, delete to recoverable IDE trash, copy absolute or relative paths, and show items in Finder. Create files and folders in the selected directory, recover trashed files, and access folder indexing exclusions. Menus support keyboard navigation and Shift+F10.',
+      },
+      {
+        type: 'added',
+        title: 'Provider actions and safe copies',
+        description:
+          'Access formatting and refactor/code actions for the selected file at its start position. Available actions depend on its language provider. File rename does not rewrite imports or references. Copies are independent, preserve file permissions, require saved source contents, and never overwrite existing destinations.',
+      },
+    ],
+  },
+  {
     id: '2026-10-16-git-incoming-branches',
     version: '0.1.0',
     date: '2026-10-16',
@@ -39,6 +60,22 @@ export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
         title: 'Background origin refresh',
         description:
           'Fetch all origin branches after checkout or pull. Local branch updates made outside Zwip are detected while the workspace is visible. Fetches run in the background, combine rapid requests, and preserve local branches and files. Failed refreshes retain the last fetched counts with a status message.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-16-push-file-tree-preview',
+    version: '0.1.0',
+    date: '2026-10-16',
+    title: 'Review outgoing files before pushing',
+    summary:
+      'Browse a nested file tree with outgoing commits alongside and a selected-file preview below.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'Push overview',
+        description:
+          'Expand folders and select a file to view its combined outgoing patch in a separate card. Commits stay visible in the sidebar. Binary files show Git’s binary change notice.',
       },
     ],
   },

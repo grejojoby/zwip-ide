@@ -25,7 +25,7 @@ import { FileIcon } from './FileIcon';
 import { Icon } from './Icon';
 import { PartialDiff } from './PartialDiff';
 import { GitOperations } from './GitOperations';
-import { PatchView } from './PatchView';
+import { PushOverview } from './PushOverview';
 import type { MergeResolution } from './MergeEditor';
 const MergeEditor = lazy(() =>
   import('./MergeEditor').then((module) => ({ default: module.MergeEditor })),
@@ -621,26 +621,7 @@ export function GitPanel({
             </strong>
             <span>{push.upstream}</span>
           </div>
-          <div className="push-content">
-            <div className="push-commits">
-              <h3>{push.commits.length} outgoing commits</h3>
-              {push.commits.map((item) => (
-                <div key={item.id} className="push-commit">
-                  <strong>{item.subject}</strong>
-                  <span>
-                    <code>{item.id.slice(0, 8)}</code> · {item.author}
-                  </span>
-                </div>
-              ))}
-              <h3>{push.files.length} changed files</h3>
-              {push.files.map((file) => (
-                <div key={file} className="push-file">
-                  {file}
-                </div>
-              ))}
-            </div>
-            <PatchView patch={push.diff} />
-          </div>
+          <PushOverview plan={push} />
           {error && (
             <p className="inline-notice error-message" role="alert">
               {error}

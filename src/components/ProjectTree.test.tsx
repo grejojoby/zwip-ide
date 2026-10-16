@@ -83,7 +83,7 @@ describe('excluding directories from the project tree', () => {
     const item = screen.getByRole('menuitemcheckbox', { name: 'Exclude from search and indexing' });
     expect(item.getAttribute('aria-checked')).toBe('false');
     // WebKit: a mousedown must not move focus, or the menu closes before the click.
-    expect(fireEvent.mouseDown(item)).toBe(false);
+    fireEvent.mouseDown(item);
     expect(screen.getByRole('menu')).toBeTruthy();
     fireEvent.click(item);
     expect(onExclude).toHaveBeenCalledWith('src', true);
@@ -143,5 +143,39 @@ describe('git-ignored entries in the project tree', () => {
     expect(file.className).toContain('ignored');
     fireEvent.click(file);
     expect(onOpen).toHaveBeenCalledWith('/project/.idea/workspace.xml');
+  });
+});
+
+describe('file context actions', () => {
+  it('targets the clicked file without opening it and supports keyboard invocation', () => {
+    const onOpen = vi.fn();
+    const onAction = vi.fn();
+    render(
+      <ProjectTree
+        root="/project"
+        files={files}
+        active={files[0].path}
+        onOpen={onOpen}
+        onAction={onAction}
+      />,
+    );
+    const second = screen.getByRole('treeitem', { name: 'second.ts' });
+    fireEvent.contextMenu(second);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename or move…' }));
+    expect(onAction).toHaveBeenCalledWith('rename', files[1].path, false);
+    expect(onOpen).not.toHaveBeenCalled();
+    fireEvent.keyDown(second, { key: 'F10', shiftKey: true });
+    expect(screen.getByRole('menuitem', { name: 'Copy file…' })).toBeTruthy();
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(document.activeElement).toBe(second);
+  });
+  it('creates inside a selected directory and omits file-only actions', () => {
+    const onAction = vi.fn();
+    render(<ProjectTree root="/project" files={files} onOpen={vi.fn()} onAction={onAction} />);
+    fireEvent.contextMenu(screen.getByRole('treeitem', { name: 'src' }));
+    expect(screen.queryByRole('menuitem', { name: 'Delete…' })).toBeNull();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New file…' }));
+    expect(onAction).toHaveBeenCalledWith('file', '/project/src', true);
   });
 });

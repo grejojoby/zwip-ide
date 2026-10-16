@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { GitPanel, type Selection } from './GitPanel';
@@ -16,6 +16,20 @@ vi.mock('../api', () => ({
       branch: 'main',
       fingerprint: repository.fingerprint,
       files: repository.paths.map((path) => ({ path, indexStatus: ' ', worktreeStatus: 'M' })),
+    }),
+    pushPlan: async () => ({
+      fingerprint: 'push1',
+      remote: 'origin',
+      branch: 'main',
+      upstream: 'origin/main',
+      commits: [{ id: 'abc12345', subject: 'Update app', author: 'Author' }],
+      files: ['src/app.ts', 'src/lib/helper.ts', 'README.md'],
+      filePatches: {
+        'src/app.ts': '+app change',
+        'src/lib/helper.ts': '+helper change',
+        'README.md': '+readme change',
+      },
+      diff: '+app change\n+helper change\n+readme change',
     }),
     changelists: async () => [],
     gitConflicts: async () => [],
@@ -84,4 +98,30 @@ it('reloads the change list when Git changed outside Zwip and the window regains
     fingerprint: 'f1',
     paths: ['renderly/app/cmd/app.go', 'renderly/app/pkg/fetch.go', 'README.md'],
   });
+});
+
+it('shows outgoing commits beside a nested file tree and previews only the selected file below', async () => {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.setAttribute('open', '');
+  };
+  render(<Harness />);
+  await screen.findByTitle('README.md');
+  fireEvent.click(screen.getByRole('button', { name: 'Push…' }));
+  const dialog = within(await screen.findByRole('dialog', { name: 'Push overview' }));
+  expect(dialog.getByRole('complementary', { name: 'Outgoing commits' }).textContent).toContain(
+    'Update app',
+  );
+  expect(dialog.queryByRole('region', { name: 'Code changes' })).toBeNull();
+  fireEvent.click(dialog.getByRole('button', { name: 'src/app.ts' }));
+  let preview = dialog.getByRole('region', { name: 'Code changes' });
+  expect(preview.textContent).toContain('+app change');
+  expect(preview.textContent).not.toContain('+helper change');
+  fireEvent.click(dialog.getByRole('button', { name: 'src/lib/helper.ts' }));
+  preview = dialog.getByRole('region', { name: 'Code changes' });
+  expect(preview.textContent).toContain('+helper change');
+  expect(preview.textContent).not.toContain('+app change');
+  fireEvent.click(dialog.getByRole('button', { name: 'src', expanded: true }));
+  expect(dialog.queryByRole('button', { name: 'src/app.ts' })).toBeNull();
+  fireEvent.click(dialog.getByRole('button', { name: 'src', expanded: false }));
+  expect(dialog.getByRole('button', { name: 'src/app.ts' })).toBeTruthy();
 });

@@ -121,3 +121,9 @@ Fetch runs without interactive prompts, has a 60-second limit and stops at appli
 shutdown. Failed refreshes retain the last fetched refs and report failure separately from
 incoming counts. The workspace UI observes changes every five seconds while visible and
 on focus, so branch switches/pulls made in another application are detected when observed.
+
+### Explorer file actions
+
+The explorer context menu uses the existing `workspace.filePreview` / `workspace.fileApply` review flow for rename, recoverable trash, and `copy`. A copy preview takes `path` and a project-relative `destination`; applying returns `{ path }`. Copies require a clean source, validate preview content and workspace generation, preserve permissions, create an independent file, and reject existing destinations. Source document overlays remain open for copies. Rename does not rewrite imports or references.
+
+`workspace.revealFile` accepts `{ path }`, validates the canonical path against the current workspace, and reveals it in macOS Finder. Other platforms return an unsupported error. File formatting and refactor/code actions use the owning language provider at the start of the selected file and retain explicit result coverage and edit preview requirements.

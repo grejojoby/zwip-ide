@@ -441,6 +441,44 @@ fn stale_push_review_never_pushes_later_commits() {
 }
 
 #[test]
+fn push_plan_pairs_each_path_with_its_patch() {
+    let (root, _data, core) = fixture();
+    let remote = tempfile::tempdir().unwrap();
+    git(remote.path(), &["init", "--bare"]);
+    git(
+        root.path(),
+        &["remote", "add", "origin", remote.path().to_str().unwrap()],
+    );
+    git(root.path(), &["push", "-u", "origin", "main"]);
+    fs::create_dir_all(root.path().join("src/lib")).unwrap();
+    fs::write(
+        root.path().join("src/lib/quoted \"é\".txt"),
+        "unique nested text\n",
+    )
+    .unwrap();
+    fs::write(root.path().join("binary.bin"), [0, 1, 2]).unwrap();
+    git(root.path(), &["mv", "file.txt", "renamed.txt"]);
+    git(root.path(), &["add", "."]);
+    git(root.path(), &["commit", "-m", "outgoing"]);
+    let plan = core.request("git.pushPlan", json!({})).unwrap();
+    let patches = plan["filePatches"].as_object().unwrap();
+    assert_eq!(patches.len(), plan["files"].as_array().unwrap().len());
+    assert!(patches["src/lib/quoted \"é\".txt"]
+        .as_str()
+        .unwrap()
+        .contains("+unique nested text"));
+    assert!(patches["binary.bin"]
+        .as_str()
+        .unwrap()
+        .contains("Binary files"));
+    assert!(!patches.contains_key("file.txt"));
+    assert!(patches["renamed.txt"]
+        .as_str()
+        .unwrap()
+        .contains("rename from file.txt"));
+}
+
+#[test]
 fn push_plan_checks_actual_push_url_not_fetch_url() {
     let (root, _data, core) = fixture();
     let fetch_remote = tempfile::tempdir().unwrap();
