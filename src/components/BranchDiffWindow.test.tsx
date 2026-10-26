@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { DiffActionsContext } from './DiffActions';
 import { BranchDiffWindow } from './BranchDiffWindow';
 
 const calls: Record<string, unknown>[] = [];
@@ -20,6 +21,12 @@ vi.mock('../api', () => ({
     );
     return {
       path: params.path,
+      before: 'old\n',
+      after: 'new\n',
+      fingerprint: 'f1',
+      kind: 'text',
+      partialAllowed: true,
+      base: 'base-commit',
       binary: false,
       hunks: [
         {
@@ -96,4 +103,20 @@ describe('branch diff window', () => {
     fireEvent.keyDown(tree, { key: 'ArrowUp' });
     expect(screen.getByRole('treeitem', { selected: true }).textContent).toBe('a.ts');
   });
+});
+
+it('offers file and current-difference revert, and edits the selected branch comparison', async () => {
+  const edit = vi.fn(async () => {});
+  const close = vi.fn();
+  render(
+    <DiffActionsContext.Provider value={{ edit }}>
+      <BranchDiffWindow branch="main" files={[{ path: 'a.ts', status: 'M' }]} onClose={close} />
+    </DiffActionsContext.Provider>,
+  );
+  await screen.findByLabelText('main version');
+  expect(screen.getByRole('button', { name: 'Revert file…' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Revert current difference…' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit file' }));
+  await vi.waitFor(() => expect(close).toHaveBeenCalled());
+  expect(edit).toHaveBeenCalledWith(expect.objectContaining({ path: 'a.ts', base: 'base-commit' }));
 });

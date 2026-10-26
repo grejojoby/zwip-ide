@@ -57,6 +57,7 @@ import { IncomingChanges, incomingBranches } from './components/IncomingChanges'
 import { useGitRemote } from './model/git-remote';
 import { IntelliJImport } from './components/IntelliJImport';
 import { PartialDiff } from './components/PartialDiff';
+import { DiffActionsContext, revertDiff } from './components/DiffActions';
 import { MarkdownPreview } from './components/MarkdownPreview';
 import { Modal } from './components/Modal';
 import { isMarkdownPath } from './model/markdown';
@@ -82,6 +83,7 @@ import {
 } from './components/FileActions';
 import { HierarchyTree, type HierarchyOperation } from './components/HierarchyTree';
 import { NavigationResults } from './components/NavigationResults';
+import { SearchPanel } from './components/SearchPanel';
 import { TargetChooser } from './components/TargetChooser';
 import { UsagesPopup, type PopupAnchor } from './components/UsagesPopup';
 import { FileSearch } from './components/FileSearch';
@@ -476,6 +478,7 @@ export function App() {
   const [tabs, setTabs] = useState<string[]>([]);
   const [active, setActive] = useState<string>();
   const [split, setSplit] = useState<string>();
+  const [diffBases, setDiffBases] = useState<Record<string, string>>({});
   const [diffTabs, setDiffTabs] = useState<GitDiff[]>([]);
   const [activeDiff, setActiveDiff] = useState<string>();
   const [gitSelection, setGitSelection] = useState(new Map<string, GitSelection>());
@@ -564,6 +567,8 @@ export function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [matches, setMatches] = useState<SearchMatch[]>([]);
   const [searching, setSearching] = useState(false);
+  const [resultQuery, setResultQuery] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState('');
   const [diagnostics, setDiagnostics] = useState(new Map<string, SemanticDiagnostic[]>());
   const [editPreview, setEditPreview] = useState<WorkspaceEditPreview | null>(null);
   const [editTitle, setEditTitle] = useState('Preview changes');
@@ -805,6 +810,7 @@ export function App() {
       sqlOpenVersions.current.clear();
       setActive(undefined);
       setDiffTabs([]);
+      setDiffBases({});
       setActiveDiff(undefined);
       setSplit(undefined);
       setFocusPane('main');
@@ -814,6 +820,8 @@ export function App() {
       setCodeActions(null);
       setRename(false);
       setMatches([]);
+      setResultQuery(null);
+      setSearchError('');
       setTool(null);
       setTreeWidth(248);
       setToolHeight(280);
@@ -963,6 +971,15 @@ export function App() {
     if (!path) return;
     try {
       await documents.documents.get(path)?.session.save();
+      setGitRevision((current) => current + 1);
+      if (diffTabs.length) {
+        const { root } = await api.gitStatus();
+        if (path.startsWith(`${root}/`)) {
+          const relative = path.slice(root.length + 1);
+          const next = await api.gitDiff(relative);
+          setDiffTabs((current) => current.map((item) => (item.path === relative ? next : item)));
+        }
+      }
       setStatus('Saved');
     } catch (e) {
       report(e);
@@ -1096,6 +1113,51 @@ export function App() {
         : [...current, diff],
     );
     setActiveDiff(diff.path);
+  }
+  async function editDiff(diff: GitDiff) {
+    if (!workspaceRef.current) return;
+    const { root } = await api.gitStatus();
+    const path = `${root}/${diff.path}`;
+    await documents.open(path);
+    setDiffBases((current) => ({ ...current, [path]: diff.before }));
+    await openFile(path, undefined, true, 'main');
+  }
+  async function revertReviewedDiff(diff: GitDiff, changeIds?: string[]) {
+    if (!workspaceRef.current || lifecycleBusy.current)
+      throw new Error('Workspace is changing; try again.');
+    lifecycleBusy.current = true;
+    const unlock = documents.lockEditing();
+    try {
+      const { root } = await api.gitStatus();
+      const path = `${root}/${diff.path}`;
+      await documents.flushAll();
+      if (documents.documents.get(path)?.session.dirty)
+        throw new Error('Save or close unsaved editor changes before reverting this file.');
+      await revertDiff(diff, changeIds);
+      const result = await documents.synchronize(path);
+      if (result === 'conflict' && documents.documents.has(path)) {
+        // Reverting a newly added file removes it. Release its clean editor mirror too.
+        const doc = documents.documents.get(path)!;
+        if (!doc.session.dirty) {
+          await documents.close(path);
+          setTabs((current) => current.filter((item) => item !== path));
+          setActive((current) => (current === path ? undefined : current));
+          setSplit((current) => (current === path ? undefined : current));
+        }
+      }
+      const next = await api.gitDiff(diff.path);
+      setDiffTabs((current) => current.map((item) => (item.path === diff.path ? next : item)));
+      setGitSelection((current) => {
+        const next = new Map(current);
+        next.delete(diff.path);
+        return next;
+      });
+      setGitRevision((current) => current + 1);
+      setStatus(`Reverted changes in ${diff.path}`);
+    } finally {
+      unlock();
+      lifecycleBusy.current = false;
+    }
   }
   function chooseDiffLines(diff: GitDiff, ids: Set<string>) {
     setGitSelection((current) => {
@@ -1482,14 +1544,24 @@ export function App() {
       void openFile(target.path, target.position, false, focusPane, target.sourceContextId);
   }
   async function search() {
+    if (!searchQuery.trim()) return;
+    const query = searchQuery;
     const id = ++searchId.current;
     setSearching(true);
+    setMatches([]);
+    setSearchError('');
     setError('');
     try {
-      const found = await api.search(searchQuery);
-      if (id === searchId.current) setMatches(found);
+      const found = await api.search(query);
+      if (id === searchId.current) {
+        setMatches(found);
+        setResultQuery(query);
+      }
     } catch (e) {
-      if (id === searchId.current) report(e);
+      if (id === searchId.current) {
+        setSearchError(e instanceof Error ? e.message : String(e));
+        report(e);
+      }
     } finally {
       if (id === searchId.current) setSearching(false);
     }
@@ -1849,871 +1921,872 @@ export function App() {
     { id: 'theme', label: dark ? 'Use light theme' : 'Use dark theme', run: () => setDark(!dark) },
   ];
   return (
-    <div className="ide">
-      <header className="topbar">
-        <button
-          className="project-button"
-          onClick={() => void chooseWorkspace()}
-          disabled={opening}
-        >
-          <span className="app-mark">Z</span>
-          <strong>{workspace?.name || 'Zwip'}</strong>
-          <Icon name="chevron" />
-        </button>
-        {workspace && (
-          <>
-            <span className="topbar-divider" />
-            <button className="branch-button" onClick={() => changeAuxiliary('git')}>
-              <Icon name="branch" />
-              {branch || 'Git'}
-              <IncomingChanges
-                count={branchesWithIncoming}
-                label={`Updates to pull on ${branchesWithIncoming} ${branchesWithIncoming === 1 ? 'branch' : 'branches'}`}
-              />
-            </button>
-          </>
-        )}
-        <div className="spacer" />
-        {workspace && (
-          <>
-            <button
-              className="icon-button"
-              aria-label="Navigation back"
-              title={`Back (${shortcutLabel(shortcuts.back)})`}
-              onClick={() => goHistory('back')}
-            >
-              <Icon name="back" />
-            </button>
-            <button
-              className="icon-button"
-              aria-label="Navigation forward"
-              title={`Forward (${shortcutLabel(shortcuts.forward)})`}
-              onClick={() => goHistory('forward')}
-            >
-              <Icon name="forward" />
-            </button>
-            <select
-              className="run-configuration-select"
-              aria-label="Run configuration"
-              value={workspaceTasks.state.settings.selectedId ?? ''}
-              disabled={!workspaceTasks.state.ready || workspaceTasks.state.saving}
-              onChange={(event) => void workspaceTasks.session.select(event.target.value || null)}
-            >
-              <option value="">Workspace command…</option>
-              {workspaceTasks.state.settings.configurations.map((config) => (
-                <option key={config.id} value={config.id}>
-                  {config.name}
-                </option>
-              ))}
-            </select>
-            <button
-              aria-label="Run selected configuration"
-              disabled={
-                workspaceTasks.state.saving ||
-                workspaceTasks.state.starting ||
-                workspaceTasks.state.task?.running
-              }
-              onClick={() => {
-                setTool('run');
-                void workspaceTasks.session.runSelected();
-              }}
-            >
-              <Icon name="play" />
-              Run
-            </button>
-            <button
-              aria-label="Debug selected configuration"
-              title={
-                selectedRunConfiguration?.debug
-                  ? `Debug '${selectedRunConfiguration.name}'`
-                  : 'Debug needs a run configuration with a Go target'
-              }
-              disabled={
-                !selectedRunConfiguration?.debug ||
-                workspaceTasks.state.saving ||
-                workspaceTasks.state.starting
-              }
-              onClick={() => debugSelectedConfiguration()}
-            >
-              <Icon name="bug" />
-              Debug
-            </button>
-            <button
-              className="icon-button"
-              aria-label="Database tools"
-              title="Database tools"
-              aria-pressed={sidebarVisible('database')}
-              onClick={() => changeSidebar({ kind: 'toggle', tool: 'database' })}
-            >
-              <Icon name="database" />
-            </button>
-            <button
-              className="icon-button"
-              aria-label="HTTP client"
-              title="HTTP client"
-              aria-pressed={sidebarVisible('http')}
-              onClick={() => changeSidebar({ kind: 'toggle', tool: 'http' })}
-            >
-              <Icon name="http" />
-            </button>
-            <button className="global-search" onClick={() => setShowFiles(true)}>
-              <Icon name="search" />
-              Go to file<kbd>{shortcutLabel(shortcuts.files)}</kbd>
-            </button>
-          </>
-        )}
-        <button
-          className="icon-button"
-          aria-label="Manage packages"
-          title="Language & tool packages"
-          onClick={() => setShowPackages(true)}
-        >
-          <Icon name="package" />
-        </button>
-        <button
-          className="icon-button"
-          aria-label={dark ? 'Use light theme' : 'Use dark theme'}
-          onClick={() => setDark(!dark)}
-        >
-          <Icon name={dark ? 'sun' : 'moon'} />
-        </button>
-      </header>
-      {error && (
-        <div className="error-banner" role="alert">
-          <span>{error}</span>
-          <button className="icon-button" aria-label="Dismiss error" onClick={() => setError('')}>
-            <Icon name="close" />
+    <DiffActionsContext.Provider value={{ edit: editDiff, revert: revertReviewedDiff }}>
+      <div className="ide">
+        <header className="topbar">
+          <button
+            className="project-button"
+            onClick={() => void chooseWorkspace()}
+            disabled={opening}
+          >
+            <span className="app-mark">Z</span>
+            <strong>{workspace?.name || 'Zwip'}</strong>
+            <Icon name="chevron" />
           </button>
-        </div>
-      )}
-      {!workspace ? (
-        <main className="welcome">
-          <div className="welcome-inner">
-            <div className="welcome-brand">
-              <span className="app-mark large">Z</span>
-              <div>
-                <h1>Zwip</h1>
-                <p>Modern lean IDE for faster productivity.</p>
-              </div>
-            </div>
-            <button
-              className="primary open-project"
-              onClick={() => void chooseWorkspace()}
-              disabled={opening}
-            >
-              <Icon name="folder" />
-              {opening ? 'Opening workspace…' : 'Open project…'}
-            </button>
-            {recentRoots.length > 0 && (
-              <div className="recent-projects">
-                <h2>Recent projects</h2>
-                {recentRoots.map((root) => (
-                  <button
-                    key={root}
-                    disabled={opening}
-                    title="⌘-click opens it in a new window"
-                    onClick={(event) =>
-                      void (event.metaKey ? newWindow(root).catch(report) : loadWorkspace(root))
-                    }
-                  >
-                    <Icon name="folder" />
-                    <span>
-                      <strong>{root.split('/').pop()}</strong>
-                      <small>{root}</small>
-                    </span>
-                    <Icon name="chevron" />
-                  </button>
-                ))}
-              </div>
-            )}
-            <p className="welcome-note">
-              Add Go, web, and developer tools through{' '}
-              <button className="text-button" onClick={() => setShowPackages(true)}>
-                packages
+          {workspace && (
+            <>
+              <span className="topbar-divider" />
+              <button className="branch-button" onClick={() => changeAuxiliary('git')}>
+                <Icon name="branch" />
+                {branch || 'Git'}
+                <IncomingChanges
+                  count={branchesWithIncoming}
+                  label={`Updates to pull on ${branchesWithIncoming} ${branchesWithIncoming === 1 ? 'branch' : 'branches'}`}
+                />
               </button>
-              .
-            </p>
-            {!('__TAURI_INTERNALS__' in window) && (
-              <p className="inline-notice">
-                Desktop services are available in the native app. Start it with{' '}
-                <code>npm run dev</code>.
-              </p>
-            )}
-          </div>
-        </main>
-      ) : (
-        <div className="workspace-layout">
-          {(['left', 'right'] as const).map((side) => (
-            <SidebarRail
-              key={side}
-              side={side}
-              tools={sidebarTools.filter((item) => sidebarLayout.placements[item] === side)}
-              active={sidebarLayout.active[side]}
-              disabled={hydratedWorkspace !== workspace.root}
-              onToggle={(item) => changeSidebar({ kind: 'toggle', tool: item })}
-              onMove={moveTool}
-            />
-          ))}
-          {/* Stable keyed hosts keep drafts and tree state intact when their visual order changes. */}
-          {sidebarTools.map((item) => {
-            const side = sidebarLayout.placements[item];
-            const visible = sidebarVisible(item);
-            const mounted =
-              item === 'project' ||
-              (item === 'git'
-                ? gitVisited
-                : item === 'database'
-                  ? visible || sqlTabs.length > 0
-                  : visible);
-            if (!mounted) return null;
-            return (
-              <aside
-                key={`${workspace.root}:${item}`}
-                id={`sidebar-panel-${item}`}
-                className={`sidebar-panel ${item === 'project' ? 'project-panel' : 'auxiliary-panel'}`}
-                aria-label={`${sidebarLabels[item]} tool window`}
-                data-sidebar-side={side}
-                hidden={!visible}
-                style={{
-                  width: sidebarWidth(side, side === 'left' ? treeWidth : auxiliaryWidth),
-                  order: side === 'left' ? 1 : 5,
+            </>
+          )}
+          <div className="spacer" />
+          {workspace && (
+            <>
+              <button
+                className="icon-button"
+                aria-label="Navigation back"
+                title={`Back (${shortcutLabel(shortcuts.back)})`}
+                onClick={() => goHistory('back')}
+              >
+                <Icon name="back" />
+              </button>
+              <button
+                className="icon-button"
+                aria-label="Navigation forward"
+                title={`Forward (${shortcutLabel(shortcuts.forward)})`}
+                onClick={() => goHistory('forward')}
+              >
+                <Icon name="forward" />
+              </button>
+              <select
+                className="run-configuration-select"
+                aria-label="Run configuration"
+                value={workspaceTasks.state.settings.selectedId ?? ''}
+                disabled={!workspaceTasks.state.ready || workspaceTasks.state.saving}
+                onChange={(event) => void workspaceTasks.session.select(event.target.value || null)}
+              >
+                <option value="">Workspace command…</option>
+                {workspaceTasks.state.settings.configurations.map((config) => (
+                  <option key={config.id} value={config.id}>
+                    {config.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                aria-label="Run selected configuration"
+                disabled={
+                  workspaceTasks.state.saving ||
+                  workspaceTasks.state.starting ||
+                  workspaceTasks.state.task?.running
+                }
+                onClick={() => {
+                  setTool('run');
+                  void workspaceTasks.session.runSelected();
                 }}
               >
-                <div className="panel-title">
-                  <strong>{sidebarLabels[item]}</strong>
-                  {item === 'project' ? (
-                    <>
-                      <div className="spacer" />
-                      <FileActions
-                        ref={fileActions}
-                        root={workspace.root}
-                        activePath={focusPath}
-                        beforeMutation={() => documents.flushAll()}
-                        onApplied={fileActionApplied}
-                      />
-                      <button
-                        className="icon-button"
-                        aria-label="Refresh project"
-                        onClick={() => void refreshProject()}
-                      >
-                        <Icon name="refresh" />
-                      </button>
-                    </>
-                  ) : (
-                    <div className="spacer" />
-                  )}
-                  <SidebarMoveButton
-                    tool={item}
-                    side={side}
-                    onMove={moveTool}
-                    disabled={hydratedWorkspace !== workspace.root}
-                  />
-                  <button
-                    className="icon-button"
-                    aria-label={`Close ${sidebarLabels[item]} tool`}
-                    title={`Close ${sidebarLabels[item]}`}
-                    onClick={() => changeSidebar({ kind: 'close', side })}
-                  >
-                    <Icon name="close" />
-                  </button>
-                </div>
-                {item === 'project' ? (
-                  <ProjectTree
-                    files={workspace.files}
-                    directories={workspace.directories}
-                    ignoredFiles={workspace.ignoredFiles}
-                    ignoredDirectories={workspace.ignoredDirectories}
-                    excludedDirectories={workspace.excludedDirectories}
-                    root={workspace.root}
-                    active={focusPath}
-                    onOpen={(path) => void openFile(path)}
-                    onAction={(action, path, directory) =>
-                      void projectFileAction(action, path, directory)
-                    }
-                    onExclude={(path, excluded) => void setDirectoryExcluded(path, excluded)}
-                  />
-                ) : null}
-                {item === 'project' && (
-                  <ScratchList
-                    files={scratches.files}
-                    active={focusPath}
-                    onOpen={(path) => void openFile(path)}
-                    onDelete={(path) => void deleteScratch(path)}
-                    onNew={() => setShowNewScratch(true)}
-                  />
-                )}
-                {item === 'project' ? null : (
-                  <Suspense fallback={<p className="empty-note">Opening tools…</p>}>
-                    {item === 'git' ? (
-                      <GitPanel
-                        generation={workspace.generation}
-                        onBranch={branchChanged}
-                        revision={gitRevision}
-                        remoteStatus={gitRemote}
-                        onOpenDiff={openDiff}
-                        onOpenFile={(path) => void openFile(path)}
-                        onFileAction={(action, path, directory) =>
-                          void projectFileAction(action, path, directory)
-                        }
-                        selected={gitSelection}
-                        onSelectedChange={setGitSelection}
-                      />
-                    ) : item === 'database' ? (
-                      <DatabasePanel
-                        dirty={databaseDirty}
-                        onOpenConsole={openSqlConsole}
-                        onRemoveConsole={closeSqlConsole}
-                        onResultsHost={registerSqlResults}
-                        requestedConnection={requestedSqlConnection}
-                      />
-                    ) : (
-                      <HttpPanel source={httpSource} />
-                    )}
-                  </Suspense>
-                )}
-              </aside>
-            );
-          })}
-          {(['left', 'right'] as const).map(
-            (side) =>
-              sidebarLayout.active[side] && (
-                <div
-                  key={`resize-${side}`}
-                  className="resize-handle vertical"
-                  role="separator"
-                  style={{ order: side === 'left' ? 2 : 4 }}
-                  aria-label={`Resize ${side} sidebar`}
-                  aria-orientation="vertical"
-                  tabIndex={0}
-                  onPointerDown={(event) => resize(event, side === 'left' ? 'tree' : 'auxiliary')}
-                  onKeyDown={(event) => {
-                    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-                    event.preventDefault();
-                    const delta =
-                      (event.key === 'ArrowRight' ? 16 : -16) * (side === 'left' ? 1 : -1);
-                    if (side === 'left') setTreeWidth((width) => sidebarWidth(side, width + delta));
-                    else setAuxiliaryWidth((width) => sidebarWidth(side, width + delta));
-                  }}
-                />
-              ),
+                <Icon name="play" />
+                Run
+              </button>
+              <button
+                aria-label="Debug selected configuration"
+                title={
+                  selectedRunConfiguration?.debug
+                    ? `Debug '${selectedRunConfiguration.name}'`
+                    : 'Debug needs a run configuration with a Go target'
+                }
+                disabled={
+                  !selectedRunConfiguration?.debug ||
+                  workspaceTasks.state.saving ||
+                  workspaceTasks.state.starting
+                }
+                onClick={() => debugSelectedConfiguration()}
+              >
+                <Icon name="bug" />
+                Debug
+              </button>
+              <button
+                className="icon-button"
+                aria-label="Database tools"
+                title="Database tools"
+                aria-pressed={sidebarVisible('database')}
+                onClick={() => changeSidebar({ kind: 'toggle', tool: 'database' })}
+              >
+                <Icon name="database" />
+              </button>
+              <button
+                className="icon-button"
+                aria-label="HTTP client"
+                title="HTTP client"
+                aria-pressed={sidebarVisible('http')}
+                onClick={() => changeSidebar({ kind: 'toggle', tool: 'http' })}
+              >
+                <Icon name="http" />
+              </button>
+              <button className="global-search" onClick={() => setShowFiles(true)}>
+                <Icon name="search" />
+                Go to file<kbd>{shortcutLabel(shortcuts.files)}</kbd>
+              </button>
+            </>
           )}
-          <main className="workspace-main" style={{ order: 3 }}>
-            <div className="editor-tabs" role="tablist" aria-label="Open files">
-              {tabs.map((path) => (
-                <div
-                  className={`editor-tab ${path === active && !diffView && !activeSql ? 'active' : ''}`}
-                  key={path}
-                >
-                  <button
-                    role="tab"
-                    aria-selected={path === active && !diffView && !activeSql}
-                    title={path}
-                    onClick={() => {
-                      setActiveSql(undefined);
-                      setActive(path);
-                      setActiveDiff(undefined);
-                      setFocusPane('main');
-                    }}
-                  >
-                    <Icon name="file" />
-                    {path.split('/').pop()}
-                    {documents.documents.get(path)?.session.dirty && (
-                      <span className="dirty-dot" aria-label="Unsaved changes" />
-                    )}
-                  </button>
-                  <button
-                    className="tab-close"
-                    aria-label={`Close ${path.split('/').pop()}`}
-                    onClick={() => closeTab(path)}
-                  >
-                    <Icon name="close" />
-                  </button>
+          <button
+            className="icon-button"
+            aria-label="Manage packages"
+            title="Language & tool packages"
+            onClick={() => setShowPackages(true)}
+          >
+            <Icon name="package" />
+          </button>
+          <button
+            className="icon-button"
+            aria-label={dark ? 'Use light theme' : 'Use dark theme'}
+            onClick={() => setDark(!dark)}
+          >
+            <Icon name={dark ? 'sun' : 'moon'} />
+          </button>
+        </header>
+        {error && (
+          <div className="error-banner" role="alert">
+            <span>{error}</span>
+            <button className="icon-button" aria-label="Dismiss error" onClick={() => setError('')}>
+              <Icon name="close" />
+            </button>
+          </div>
+        )}
+        {!workspace ? (
+          <main className="welcome">
+            <div className="welcome-inner">
+              <div className="welcome-brand">
+                <span className="app-mark large">Z</span>
+                <div>
+                  <h1>Zwip</h1>
+                  <p>Modern lean IDE for faster productivity.</p>
                 </div>
-              ))}
-              {diffTabs.map((item) => (
-                <div
-                  className={`editor-tab ${item.path === activeDiff && !activeSql ? 'active' : ''}`}
-                  key={`diff:${item.path}`}
-                >
-                  <button
-                    role="tab"
-                    aria-selected={item.path === activeDiff && !activeSql}
-                    title={`Changes in ${item.path}`}
-                    onClick={() => {
-                      setActiveSql(undefined);
-                      setActiveDiff(item.path);
-                    }}
-                  >
-                    <Icon name="git" />
-                    {item.path.split('/').pop()} (changes)
-                  </button>
-                  <button
-                    className="tab-close"
-                    aria-label={`Close changes in ${item.path.split('/').pop()}`}
-                    onClick={() => closeDiff(item.path)}
-                  >
-                    <Icon name="close" />
-                  </button>
+              </div>
+              <button
+                className="primary open-project"
+                onClick={() => void chooseWorkspace()}
+                disabled={opening}
+              >
+                <Icon name="folder" />
+                {opening ? 'Opening workspace…' : 'Open project…'}
+              </button>
+              {recentRoots.length > 0 && (
+                <div className="recent-projects">
+                  <h2>Recent projects</h2>
+                  {recentRoots.map((root) => (
+                    <button
+                      key={root}
+                      disabled={opening}
+                      title="⌘-click opens it in a new window"
+                      onClick={(event) =>
+                        void (event.metaKey ? newWindow(root).catch(report) : loadWorkspace(root))
+                      }
+                    >
+                      <Icon name="folder" />
+                      <span>
+                        <strong>{root.split('/').pop()}</strong>
+                        <small>{root}</small>
+                      </span>
+                      <Icon name="chevron" />
+                    </button>
+                  ))}
                 </div>
-              ))}
-              {sqlTabs.map((connection) => (
-                <div
-                  className={`editor-tab ${activeSql === connection.id ? 'active' : ''}`}
-                  key={`sql:${connection.id}`}
-                >
-                  <button
-                    role="tab"
-                    aria-selected={activeSql === connection.id}
-                    title={`SQL console · ${connection.name}`}
-                    onClick={() => {
-                      openSqlConsole(connection);
-                      setRequestedSqlConnection({ id: connection.id });
-                    }}
-                  >
-                    <Icon name="database" />
-                    {connection.name}
-                  </button>
-                  <button
-                    className="tab-close"
-                    aria-label={`Close SQL console ${connection.name}`}
-                    onClick={() => closeSqlConsole(connection.id)}
-                  >
-                    <Icon name="close" />
-                  </button>
-                </div>
-              ))}
-              <div className="spacer" />
-              {active && !diffView && !activeSql && isMarkdownPath(active) && (
-                <button
-                  className="icon-button"
-                  aria-pressed={markdownPreview}
-                  aria-label="Toggle Markdown preview"
-                  title="Show a live Markdown preview beside the editor"
-                  onClick={() => setMarkdownPreview((current) => !current)}
-                >
-                  <Icon name="eye" />
-                </button>
               )}
-              {active && !diffView && !activeSql && (
-                <button
-                  className="icon-button"
-                  aria-label={split ? 'Close split editor' : 'Split editor'}
-                  onClick={() => {
-                    setSplit(split ? undefined : active);
-                    if (split) setFocusPane('main');
-                  }}
-                >
-                  <Icon name="split" />
+              <p className="welcome-note">
+                Add Go, web, and developer tools through{' '}
+                <button className="text-button" onClick={() => setShowPackages(true)}>
+                  packages
                 </button>
+                .
+              </p>
+              {!('__TAURI_INTERNALS__' in window) && (
+                <p className="inline-notice">
+                  Desktop services are available in the native app. Start it with{' '}
+                  <code>npm run dev</code>.
+                </p>
               )}
             </div>
-            {active && !diffView && !activeSql && (
-              <div className="breadcrumbs">
-                <span>{workspace.name}</span>
-                {active
-                  .replace(`${workspace.root}/`, '')
-                  .split('/')
-                  .map((part, index) => (
-                    <span key={index}>
-                      <Icon name="chevron" />
-                      {part}
-                    </span>
-                  ))}
-                <div className="spacer" />
-                {focusPath && (
-                  <BuildContextSelector
-                    path={focusPath}
-                    contexts={workspace.contexts}
-                    value={documents.documents.get(focusPath)?.sourceContextId}
-                    onChange={(context) =>
-                      void selectSourceContext(focusPath, context).catch(report)
-                    }
-                  />
-                )}
-                <details className="navigation-menu">
-                  <summary>Navigate</summary>
-                  <div>
-                    {(Object.entries(titles) as [NavigationOperation, string][]).map(
-                      ([operation, title]) => (
+          </main>
+        ) : (
+          <div className="workspace-layout">
+            {(['left', 'right'] as const).map((side) => (
+              <SidebarRail
+                key={side}
+                side={side}
+                tools={sidebarTools.filter((item) => sidebarLayout.placements[item] === side)}
+                active={sidebarLayout.active[side]}
+                disabled={hydratedWorkspace !== workspace.root}
+                onToggle={(item) => changeSidebar({ kind: 'toggle', tool: item })}
+                onMove={moveTool}
+              />
+            ))}
+            {/* Stable keyed hosts keep drafts and tree state intact when their visual order changes. */}
+            {sidebarTools.map((item) => {
+              const side = sidebarLayout.placements[item];
+              const visible = sidebarVisible(item);
+              const mounted =
+                item === 'project' ||
+                (item === 'git'
+                  ? gitVisited
+                  : item === 'database'
+                    ? visible || sqlTabs.length > 0
+                    : visible);
+              if (!mounted) return null;
+              return (
+                <aside
+                  key={`${workspace.root}:${item}`}
+                  id={`sidebar-panel-${item}`}
+                  className={`sidebar-panel ${item === 'project' ? 'project-panel' : 'auxiliary-panel'}`}
+                  aria-label={`${sidebarLabels[item]} tool window`}
+                  data-sidebar-side={side}
+                  hidden={!visible}
+                  style={{
+                    width: sidebarWidth(side, side === 'left' ? treeWidth : auxiliaryWidth),
+                    order: side === 'left' ? 1 : 5,
+                  }}
+                >
+                  <div className="panel-title">
+                    <strong>{sidebarLabels[item]}</strong>
+                    {item === 'project' ? (
+                      <>
+                        <div className="spacer" />
+                        <FileActions
+                          ref={fileActions}
+                          root={workspace.root}
+                          activePath={focusPath}
+                          beforeMutation={() => documents.flushAll()}
+                          onApplied={fileActionApplied}
+                        />
                         <button
-                          key={operation}
-                          onClick={(e) => {
-                            e.currentTarget.closest('details')?.removeAttribute('open');
-                            void navigate(operation);
-                          }}
+                          className="icon-button"
+                          aria-label="Refresh project"
+                          onClick={() => void refreshProject()}
                         >
-                          {title}
+                          <Icon name="refresh" />
                         </button>
-                      ),
+                      </>
+                    ) : (
+                      <div className="spacer" />
                     )}
-                    {(['format', 'rename', 'codeActions'] as const).map((action) => (
-                      <button
-                        key={action}
-                        onClick={(e) => {
-                          e.currentTarget.closest('details')?.removeAttribute('open');
-                          void editorAction(action);
-                        }}
-                      >
-                        {action === 'codeActions'
-                          ? 'Quick fixes'
-                          : action === 'rename'
-                            ? 'Rename…'
-                            : 'Format file'}
-                      </button>
-                    ))}
+                    <SidebarMoveButton
+                      tool={item}
+                      side={side}
+                      onMove={moveTool}
+                      disabled={hydratedWorkspace !== workspace.root}
+                    />
                     <button
-                      onClick={(e) => {
-                        e.currentTarget.closest('details')?.removeAttribute('open');
-                        setTool('history');
-                      }}
+                      className="icon-button"
+                      aria-label={`Close ${sidebarLabels[item]} tool`}
+                      title={`Close ${sidebarLabels[item]}`}
+                      onClick={() => changeSidebar({ kind: 'close', side })}
                     >
-                      Local History
+                      <Icon name="close" />
                     </button>
                   </div>
-                </details>
-              </div>
-            )}
-            <div className="editors">
-              <Suspense fallback={<p className="empty-note">Opening SQL editor…</p>}>
-                {sqlTabs.map((connection) => (
-                  <SqlBrowser
-                    key={connection.id}
-                    connection={connection}
-                    visible={activeSql === connection.id}
-                    focusRequest={sqlFocusRequest}
-                    resultsTarget={
-                      sqlResultsHost?.id === connection.id ? sqlResultsHost.host : null
-                    }
-                    onDirty={sqlDirtyChanged}
-                    onRegisterClose={registerSqlClose}
-                    discardEdits={discardSqlEdits}
-                    onShowResults={() => {
-                      setRequestedSqlConnection({ id: connection.id });
-                      changeSidebar({ kind: 'open', tool: 'database' });
+                  {item === 'project' ? (
+                    <ProjectTree
+                      files={workspace.files}
+                      directories={workspace.directories}
+                      ignoredFiles={workspace.ignoredFiles}
+                      ignoredDirectories={workspace.ignoredDirectories}
+                      excludedDirectories={workspace.excludedDirectories}
+                      root={workspace.root}
+                      active={focusPath}
+                      onOpen={(path) => void openFile(path)}
+                      onAction={(action, path, directory) =>
+                        void projectFileAction(action, path, directory)
+                      }
+                      onExclude={(path, excluded) => void setDirectoryExcluded(path, excluded)}
+                    />
+                  ) : null}
+                  {item === 'project' && (
+                    <ScratchList
+                      files={scratches.files}
+                      active={focusPath}
+                      onOpen={(path) => void openFile(path)}
+                      onDelete={(path) => void deleteScratch(path)}
+                      onNew={() => setShowNewScratch(true)}
+                    />
+                  )}
+                  {item === 'project' ? null : (
+                    <Suspense fallback={<p className="empty-note">Opening tools…</p>}>
+                      {item === 'git' ? (
+                        <GitPanel
+                          generation={workspace.generation}
+                          onBranch={branchChanged}
+                          revision={gitRevision}
+                          remoteStatus={gitRemote}
+                          onOpenDiff={openDiff}
+                          onOpenFile={(path) => void openFile(path)}
+                          onFileAction={(action, path, directory) =>
+                            void projectFileAction(action, path, directory)
+                          }
+                          selected={gitSelection}
+                          onSelectedChange={setGitSelection}
+                        />
+                      ) : item === 'database' ? (
+                        <DatabasePanel
+                          dirty={databaseDirty}
+                          onOpenConsole={openSqlConsole}
+                          onRemoveConsole={closeSqlConsole}
+                          onResultsHost={registerSqlResults}
+                          requestedConnection={requestedSqlConnection}
+                        />
+                      ) : (
+                        <HttpPanel source={httpSource} />
+                      )}
+                    </Suspense>
+                  )}
+                </aside>
+              );
+            })}
+            {(['left', 'right'] as const).map(
+              (side) =>
+                sidebarLayout.active[side] && (
+                  <div
+                    key={`resize-${side}`}
+                    className="resize-handle vertical"
+                    role="separator"
+                    style={{ order: side === 'left' ? 2 : 4 }}
+                    aria-label={`Resize ${side} sidebar`}
+                    aria-orientation="vertical"
+                    tabIndex={0}
+                    onPointerDown={(event) => resize(event, side === 'left' ? 'tree' : 'auxiliary')}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+                      event.preventDefault();
+                      const delta =
+                        (event.key === 'ArrowRight' ? 16 : -16) * (side === 'left' ? 1 : -1);
+                      if (side === 'left')
+                        setTreeWidth((width) => sidebarWidth(side, width + delta));
+                      else setAuxiliaryWidth((width) => sidebarWidth(side, width + delta));
                     }}
                   />
-                ))}
-              </Suspense>
-              {activeSql ? null : diffView ? (
-                <div className="diff-editor">
-                  <div className="diff-editor-body">
-                    <PartialDiff
-                      diff={diffView}
-                      selected={
-                        gitSelection.get(diffView.path)?.changes ??
-                        (gitSelection.has(diffView.path) ? null : new Set())
-                      }
-                      onSelect={(ids) => chooseDiffLines(diffView, ids)}
-                    />
-                  </div>
-                </div>
-              ) : mainDoc ? (
-                <>
-                  <div className={`editor-pane ${focusPane === 'main' ? 'focused' : ''}`}>
-                    <Suspense fallback={<p className="empty-note">Opening editor…</p>}>
-                      <CodeEditor
-                        shortcuts={shortcuts}
-                        breakpoints={breakpoints[mainDoc.session.path]}
-                        coverage={coverageLines[mainDoc.session.path]}
-                        executionLine={
-                          execution?.path === mainDoc.session.path ? execution.line : null
-                        }
-                        onBreakpoints={(lines, edited) =>
-                          updateBreakpoints(mainDoc.session.path, lines, edited)
-                        }
-                        blame={blame[mainDoc.session.path] ?? null}
-                        stickyLines={stickyLines}
-                        onCopyReference={(line) => copyReference(mainDoc.session.path, line)}
-                        onContextMenu={(x, y, view) =>
-                          setEditorMenu({ x, y, view, path: mainDoc.session.path })
-                        }
-                        document={mainDoc}
-                        dark={dark}
-                        readOnly={
-                          !mainDoc.session.path.startsWith(`${workspace.root}/`) &&
-                          !isScratch(mainDoc.session.path)
-                        }
-                        onNavigate={(operation, at) => void navigate(operation, at, active)}
-                        onPosition={setPosition}
-                        onFocus={() => setFocusPane('main')}
-                        onRequest={(operation, at) =>
-                          editorRequest(operation, mainDoc.session.path, at)
-                        }
-                        onApplyEdits={(edits, title) => void previewEdits(edits, title)}
-                        onAction={(action) => void editorAction(action, active)}
-                        onSave={() => void save(active)}
-                      />
-                    </Suspense>
-                  </div>
-                  {splitDoc && (
-                    <div
-                      className={`editor-pane secondary ${focusPane === 'split' ? 'focused' : ''}`}
+                ),
+            )}
+            <main className="workspace-main" style={{ order: 3 }}>
+              <div className="editor-tabs" role="tablist" aria-label="Open files">
+                {tabs.map((path) => (
+                  <div
+                    className={`editor-tab ${path === active && !diffView && !activeSql ? 'active' : ''}`}
+                    key={path}
+                  >
+                    <button
+                      role="tab"
+                      aria-selected={path === active && !diffView && !activeSql}
+                      title={path}
+                      onClick={() => {
+                        setActiveSql(undefined);
+                        setActive(path);
+                        setActiveDiff(undefined);
+                        setFocusPane('main');
+                      }}
                     >
-                      <div className="split-heading">{split?.split('/').pop()}</div>
+                      <Icon name="file" />
+                      {path.split('/').pop()}
+                      {documents.documents.get(path)?.session.dirty && (
+                        <span className="dirty-dot" aria-label="Unsaved changes" />
+                      )}
+                    </button>
+                    <button
+                      className="tab-close"
+                      aria-label={`Close ${path.split('/').pop()}`}
+                      onClick={() => closeTab(path)}
+                    >
+                      <Icon name="close" />
+                    </button>
+                  </div>
+                ))}
+                {diffTabs.map((item) => (
+                  <div
+                    className={`editor-tab ${item.path === activeDiff && !activeSql ? 'active' : ''}`}
+                    key={`diff:${item.path}`}
+                  >
+                    <button
+                      role="tab"
+                      aria-selected={item.path === activeDiff && !activeSql}
+                      title={`Changes in ${item.path}`}
+                      onClick={() => {
+                        setActiveSql(undefined);
+                        setActiveDiff(item.path);
+                        void api
+                          .gitDiff(item.path)
+                          .then((next) =>
+                            setDiffTabs((current) =>
+                              current.map((diff) => (diff.path === next.path ? next : diff)),
+                            ),
+                          )
+                          .catch(report);
+                      }}
+                    >
+                      <Icon name="git" />
+                      {item.path.split('/').pop()} (changes)
+                    </button>
+                    <button
+                      className="tab-close"
+                      aria-label={`Close changes in ${item.path.split('/').pop()}`}
+                      onClick={() => closeDiff(item.path)}
+                    >
+                      <Icon name="close" />
+                    </button>
+                  </div>
+                ))}
+                {sqlTabs.map((connection) => (
+                  <div
+                    className={`editor-tab ${activeSql === connection.id ? 'active' : ''}`}
+                    key={`sql:${connection.id}`}
+                  >
+                    <button
+                      role="tab"
+                      aria-selected={activeSql === connection.id}
+                      title={`SQL console · ${connection.name}`}
+                      onClick={() => {
+                        openSqlConsole(connection);
+                        setRequestedSqlConnection({ id: connection.id });
+                      }}
+                    >
+                      <Icon name="database" />
+                      {connection.name}
+                    </button>
+                    <button
+                      className="tab-close"
+                      aria-label={`Close SQL console ${connection.name}`}
+                      onClick={() => closeSqlConsole(connection.id)}
+                    >
+                      <Icon name="close" />
+                    </button>
+                  </div>
+                ))}
+                <div className="spacer" />
+                {active && !diffView && !activeSql && isMarkdownPath(active) && (
+                  <button
+                    className="icon-button"
+                    aria-pressed={markdownPreview}
+                    aria-label="Toggle Markdown preview"
+                    title="Show a live Markdown preview beside the editor"
+                    onClick={() => setMarkdownPreview((current) => !current)}
+                  >
+                    <Icon name="eye" />
+                  </button>
+                )}
+                {active && !diffView && !activeSql && diffBases[active] !== undefined && (
+                  <button
+                    onClick={() =>
+                      setDiffBases((current) => {
+                        const next = { ...current };
+                        delete next[active];
+                        return next;
+                      })
+                    }
+                  >
+                    Hide change highlighting
+                  </button>
+                )}
+                {active && !diffView && !activeSql && (
+                  <button
+                    className="icon-button"
+                    aria-label={split ? 'Close split editor' : 'Split editor'}
+                    onClick={() => {
+                      setSplit(split ? undefined : active);
+                      if (split) setFocusPane('main');
+                    }}
+                  >
+                    <Icon name="split" />
+                  </button>
+                )}
+              </div>
+              {active && !diffView && !activeSql && (
+                <div className="breadcrumbs">
+                  <span>{workspace.name}</span>
+                  {active
+                    .replace(`${workspace.root}/`, '')
+                    .split('/')
+                    .map((part, index) => (
+                      <span key={index}>
+                        <Icon name="chevron" />
+                        {part}
+                      </span>
+                    ))}
+                  <div className="spacer" />
+                  {focusPath && (
+                    <BuildContextSelector
+                      path={focusPath}
+                      contexts={workspace.contexts}
+                      value={documents.documents.get(focusPath)?.sourceContextId}
+                      onChange={(context) =>
+                        void selectSourceContext(focusPath, context).catch(report)
+                      }
+                    />
+                  )}
+                  <details className="navigation-menu">
+                    <summary>Navigate</summary>
+                    <div>
+                      {(Object.entries(titles) as [NavigationOperation, string][]).map(
+                        ([operation, title]) => (
+                          <button
+                            key={operation}
+                            onClick={(e) => {
+                              e.currentTarget.closest('details')?.removeAttribute('open');
+                              void navigate(operation);
+                            }}
+                          >
+                            {title}
+                          </button>
+                        ),
+                      )}
+                      {(['format', 'rename', 'codeActions'] as const).map((action) => (
+                        <button
+                          key={action}
+                          onClick={(e) => {
+                            e.currentTarget.closest('details')?.removeAttribute('open');
+                            void editorAction(action);
+                          }}
+                        >
+                          {action === 'codeActions'
+                            ? 'Quick fixes'
+                            : action === 'rename'
+                              ? 'Rename…'
+                              : 'Format file'}
+                        </button>
+                      ))}
+                      <button
+                        onClick={(e) => {
+                          e.currentTarget.closest('details')?.removeAttribute('open');
+                          setTool('history');
+                        }}
+                      >
+                        Local History
+                      </button>
+                    </div>
+                  </details>
+                </div>
+              )}
+              <div className="editors">
+                <Suspense fallback={<p className="empty-note">Opening SQL editor…</p>}>
+                  {sqlTabs.map((connection) => (
+                    <SqlBrowser
+                      key={connection.id}
+                      connection={connection}
+                      visible={activeSql === connection.id}
+                      focusRequest={sqlFocusRequest}
+                      resultsTarget={
+                        sqlResultsHost?.id === connection.id ? sqlResultsHost.host : null
+                      }
+                      onDirty={sqlDirtyChanged}
+                      onRegisterClose={registerSqlClose}
+                      discardEdits={discardSqlEdits}
+                      onShowResults={() => {
+                        setRequestedSqlConnection({ id: connection.id });
+                        changeSidebar({ kind: 'open', tool: 'database' });
+                      }}
+                    />
+                  ))}
+                </Suspense>
+                {activeSql ? null : diffView ? (
+                  <div className="diff-editor">
+                    <div className="diff-editor-body">
+                      <PartialDiff
+                        diff={diffView}
+                        selected={
+                          gitSelection.get(diffView.path)?.changes ??
+                          (gitSelection.has(diffView.path) ? null : new Set())
+                        }
+                        onSelect={(ids) => chooseDiffLines(diffView, ids)}
+                      />
+                    </div>
+                  </div>
+                ) : mainDoc ? (
+                  <>
+                    <div className={`editor-pane ${focusPane === 'main' ? 'focused' : ''}`}>
                       <Suspense fallback={<p className="empty-note">Opening editor…</p>}>
                         <CodeEditor
                           shortcuts={shortcuts}
-                          breakpoints={breakpoints[splitDoc.session.path]}
-                          coverage={coverageLines[splitDoc.session.path]}
+                          breakpoints={breakpoints[mainDoc.session.path]}
+                          coverage={coverageLines[mainDoc.session.path]}
                           executionLine={
-                            execution?.path === splitDoc.session.path ? execution.line : null
+                            execution?.path === mainDoc.session.path ? execution.line : null
                           }
                           onBreakpoints={(lines, edited) =>
-                            updateBreakpoints(splitDoc.session.path, lines, edited)
+                            updateBreakpoints(mainDoc.session.path, lines, edited)
                           }
-                          blame={blame[splitDoc.session.path] ?? null}
+                          blame={blame[mainDoc.session.path] ?? null}
                           stickyLines={stickyLines}
-                          onCopyReference={(line) => copyReference(splitDoc.session.path, line)}
+                          onCopyReference={(line) => copyReference(mainDoc.session.path, line)}
                           onContextMenu={(x, y, view) =>
-                            setEditorMenu({ x, y, view, path: splitDoc.session.path })
+                            setEditorMenu({ x, y, view, path: mainDoc.session.path })
                           }
-                          document={splitDoc}
+                          diffBase={diffBases[mainDoc.session.path]}
+                          document={mainDoc}
                           dark={dark}
                           readOnly={
-                            !splitDoc.session.path.startsWith(`${workspace.root}/`) &&
-                            !isScratch(splitDoc.session.path)
+                            !mainDoc.session.path.startsWith(`${workspace.root}/`) &&
+                            !isScratch(mainDoc.session.path)
                           }
-                          onNavigate={(operation, at) => void navigate(operation, at, split)}
+                          onNavigate={(operation, at) => void navigate(operation, at, active)}
                           onPosition={setPosition}
-                          onFocus={() => setFocusPane('split')}
+                          onFocus={() => setFocusPane('main')}
                           onRequest={(operation, at) =>
-                            editorRequest(operation, splitDoc.session.path, at)
+                            editorRequest(operation, mainDoc.session.path, at)
                           }
                           onApplyEdits={(edits, title) => void previewEdits(edits, title)}
-                          onAction={(action) => void editorAction(action, split)}
-                          onSave={() => void save(split)}
+                          onAction={(action) => void editorAction(action, active)}
+                          onSave={() => void save(active)}
                         />
                       </Suspense>
                     </div>
-                  )}
-                  {markdownPreview && mainDoc && isMarkdownPath(mainDoc.session.path) && (
-                    <div className="editor-pane secondary">
-                      <div className="split-heading">
-                        Preview · {mainDoc.session.path.split('/').pop()}
-                      </div>
-                      <MarkdownPreview key={mainDoc.session.path} document={mainDoc} />
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="editor-empty">
-                  <span className="app-mark muted-mark">Z</span>
-                  <p>Open a file to start editing</p>
-                  <button onClick={() => setShowFiles(true)}>
-                    Go to file <kbd>{shortcutLabel(shortcuts.files)}</kbd>
-                  </button>
-                  <span>
-                    Navigate with ⌘Click · Find usages with {shortcutLabel(shortcuts.usages)}
-                  </span>
-                </div>
-              )}
-            </div>
-            {(tool || terminalOpen || goOpen) && (
-              <>
-                <div
-                  style={{ display: tool ? undefined : 'none' }}
-                  className="resize-handle horizontal"
-                  role="separator"
-                  aria-label="Resize tool panel"
-                  aria-orientation="horizontal"
-                  tabIndex={0}
-                  onPointerDown={(e) => resize(e, 'tools')}
-                  onKeyDown={(e) => {
-                    if (e.key === 'ArrowUp')
-                      setToolHeight((h) => Math.min(window.innerHeight - 200, h + 16));
-                    if (e.key === 'ArrowDown') setToolHeight((h) => Math.max(160, h - 16));
-                  }}
-                />
-                <div
-                  className="tool-content"
-                  style={{ height: tool ? toolHeight : 0, display: tool ? undefined : 'none' }}
-                >
-                  {terminalOpen && (
-                    <div
-                      className="terminal-container"
-                      style={{ display: tool === 'terminal' ? 'flex' : 'none' }}
-                    >
-                      <Suspense fallback={<p className="empty-note">Opening terminal…</p>}>
-                        <TerminalPanel
-                          visible={tool === 'terminal'}
-                          dark={dark}
-                          onClose={() => {
-                            setTerminalOpen(false);
-                            setTool(null);
-                          }}
-                        />
-                      </Suspense>
-                    </div>
-                  )}
-                  {goOpen && (
-                    <div
-                      className="go-tools-container"
-                      style={{ display: tool === 'go' ? 'flex' : 'none' }}
-                    >
-                      <Suspense fallback={<p className="empty-note">Opening Go tools…</p>}>
-                        <GoTools
-                          contexts={workspace.contexts}
-                          configuredTarget={configuredGoTarget}
-                          runConfigurations={workspaceTasks.state.settings.configurations}
-                          root={workspace.root}
-                          path={focusPath}
-                          breakpoints={breakpoints}
-                          beforeStart={() => documents.flushAll()}
-                          onCoverage={(report) => {
-                            void showCoverage(report).catch((e) => setStatus(asError(e).message));
-                          }}
-                          onOpen={(path, position) => void openFile(path, position)}
-                          onExecution={setExecution}
-                          onClose={() => {
-                            setGoOpen(false);
-                            setConfiguredGoTarget(undefined);
-                            setTool(null);
-                          }}
-                        />
-                      </Suspense>
-                    </div>
-                  )}
-                  {tool === 'usages' &&
-                    (['typeHierarchy', 'incomingCalls', 'outgoingCalls'].includes(
-                      navigationOperation,
-                    ) ? (
-                      <HierarchyTree
-                        key={batch?.id ?? 'empty'}
-                        batch={batch}
-                        operation={navigationOperation as HierarchyOperation}
-                        title={navigationTitle}
-                        loading={navigating}
-                        onExpand={expandHierarchy}
-                        onOpen={(location) =>
-                          void openFile(
-                            location.path,
-                            location.range.start,
-                            true,
-                            focusPane,
-                            location.contextIds[0],
-                          )
-                        }
-                        onCancel={cancelNavigation}
-                      />
-                    ) : (
-                      <NavigationResults
-                        batch={batch}
-                        title={navigationTitle}
-                        loading={navigating}
-                        onOpen={(location) =>
-                          void openFile(
-                            location.path,
-                            location.range.start,
-                            true,
-                            focusPane,
-                            location.contextIds[0],
-                            location.range.end,
-                          )
-                        }
-                        onCancel={cancelNavigation}
-                      />
-                    ))}
-                  {tool === 'problems' && (
-                    <section className="results-panel" aria-label="Problems">
-                      <div className="results-summary">
-                        <strong>Problems</strong>
-                        <span>Diagnostics for opened files</span>
-                      </div>
-                      <div className="results-list">
-                        {[...diagnostics].flatMap(([path, items]) =>
-                          items.map((item, index) => (
-                            <button
-                              key={`${path}:${index}`}
-                              className="search-match"
-                              onClick={() => void openFile(path, item.range.start)}
-                            >
-                              <span>
-                                {item.severity} · {path.split('/').pop()}:
-                                {item.range.start.line + 1}
-                              </span>
-                              <span>{item.message}</span>
-                            </button>
-                          )),
-                        )}
-                        {![...diagnostics.values()].some((items) => items.length) && (
-                          <p className="empty-note">
-                            No diagnostics reported by enabled language packages.
-                          </p>
-                        )}
-                      </div>
-                    </section>
-                  )}
-                  {tool === 'run' && (
-                    <TaskPanel
-                      session={workspaceTasks.session}
-                      state={workspaceTasks.state}
-                      onImport={() => setShowRunImport(true)}
-                    />
-                  )}
-                  {tool === 'history' &&
-                    (focusPath ? (
-                      <HistoryPanel
-                        path={focusPath}
-                        onRestore={(content) => {
-                          const doc = documents.documents.get(focusPath);
-                          const view = doc && [...doc.views][0];
-                          if (view) {
-                            view.dispatch({
-                              changes: { from: 0, to: view.state.doc.length, insert: content },
-                            });
-                            setStatus('Revision restored to editor. Save to write it to disk.');
-                          }
-                        }}
-                      />
-                    ) : (
-                      <p className="empty-note">Open a file to inspect Local History.</p>
-                    ))}
-                  {tool === 'search' && (
-                    <section className="search-panel">
-                      <form
-                        className="task-command"
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          void search();
-                        }}
+                    {splitDoc && (
+                      <div
+                        className={`editor-pane secondary ${focusPane === 'split' ? 'focused' : ''}`}
                       >
-                        <Icon name="search" />
-                        <input
-                          autoFocus
-                          aria-label="Search text in workspace"
-                          placeholder="Search workspace text…"
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                        />
-                        <button disabled={searching || !searchQuery.trim()}>
-                          {searching ? 'Searching…' : 'Find'}
-                        </button>
-                        <span>{matches.length} matches</span>
-                      </form>
-                      <div className="results-list">
-                        {matches.map((match, index) => (
-                          <button
-                            className="search-match"
-                            key={`${match.path}:${index}`}
-                            onClick={() =>
-                              void openFile(match.path, { line: match.line, character: 0 })
+                        <div className="split-heading">{split?.split('/').pop()}</div>
+                        <Suspense fallback={<p className="empty-note">Opening editor…</p>}>
+                          <CodeEditor
+                            shortcuts={shortcuts}
+                            breakpoints={breakpoints[splitDoc.session.path]}
+                            coverage={coverageLines[splitDoc.session.path]}
+                            executionLine={
+                              execution?.path === splitDoc.session.path ? execution.line : null
                             }
-                          >
-                            <span>
-                              {match.path.replace(`${workspace.root}/`, '')}:{match.line + 1}
-                            </span>
-                            <code>{match.text}</code>
-                          </button>
-                        ))}
+                            onBreakpoints={(lines, edited) =>
+                              updateBreakpoints(splitDoc.session.path, lines, edited)
+                            }
+                            blame={blame[splitDoc.session.path] ?? null}
+                            stickyLines={stickyLines}
+                            onCopyReference={(line) => copyReference(splitDoc.session.path, line)}
+                            onContextMenu={(x, y, view) =>
+                              setEditorMenu({ x, y, view, path: splitDoc.session.path })
+                            }
+                            diffBase={diffBases[splitDoc.session.path]}
+                            document={splitDoc}
+                            dark={dark}
+                            readOnly={
+                              !splitDoc.session.path.startsWith(`${workspace.root}/`) &&
+                              !isScratch(splitDoc.session.path)
+                            }
+                            onNavigate={(operation, at) => void navigate(operation, at, split)}
+                            onPosition={setPosition}
+                            onFocus={() => setFocusPane('split')}
+                            onRequest={(operation, at) =>
+                              editorRequest(operation, splitDoc.session.path, at)
+                            }
+                            onApplyEdits={(edits, title) => void previewEdits(edits, title)}
+                            onAction={(action) => void editorAction(action, split)}
+                            onSave={() => void save(split)}
+                          />
+                        </Suspense>
                       </div>
-                    </section>
-                  )}
-                </div>
-              </>
-            )}
-            <nav className="tool-tabs" aria-label="Tool windows">
-              {(['usages', 'search', 'problems', 'terminal', 'run', 'go', 'history'] as Tool[]).map(
-                (item) => (
+                    )}
+                    {markdownPreview && mainDoc && isMarkdownPath(mainDoc.session.path) && (
+                      <div className="editor-pane secondary">
+                        <div className="split-heading">
+                          Preview · {mainDoc.session.path.split('/').pop()}
+                        </div>
+                        <MarkdownPreview key={mainDoc.session.path} document={mainDoc} />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="editor-empty">
+                    <span className="app-mark muted-mark">Z</span>
+                    <p>Open a file to start editing</p>
+                    <button onClick={() => setShowFiles(true)}>
+                      Go to file <kbd>{shortcutLabel(shortcuts.files)}</kbd>
+                    </button>
+                    <span>
+                      Navigate with ⌘Click · Find usages with {shortcutLabel(shortcuts.usages)}
+                    </span>
+                  </div>
+                )}
+              </div>
+              {(tool || terminalOpen || goOpen) && (
+                <>
+                  <div
+                    style={{ display: tool ? undefined : 'none' }}
+                    className="resize-handle horizontal"
+                    role="separator"
+                    aria-label="Resize tool panel"
+                    aria-orientation="horizontal"
+                    tabIndex={0}
+                    onPointerDown={(e) => resize(e, 'tools')}
+                    onKeyDown={(e) => {
+                      if (e.key === 'ArrowUp')
+                        setToolHeight((h) => Math.min(window.innerHeight - 200, h + 16));
+                      if (e.key === 'ArrowDown') setToolHeight((h) => Math.max(160, h - 16));
+                    }}
+                  />
+                  <div
+                    className="tool-content"
+                    style={{ height: tool ? toolHeight : 0, display: tool ? undefined : 'none' }}
+                  >
+                    {terminalOpen && (
+                      <div
+                        className="terminal-container"
+                        style={{ display: tool === 'terminal' ? 'flex' : 'none' }}
+                      >
+                        <Suspense fallback={<p className="empty-note">Opening terminal…</p>}>
+                          <TerminalPanel
+                            visible={tool === 'terminal'}
+                            dark={dark}
+                            onClose={() => {
+                              setTerminalOpen(false);
+                              setTool(null);
+                            }}
+                          />
+                        </Suspense>
+                      </div>
+                    )}
+                    {goOpen && (
+                      <div
+                        className="go-tools-container"
+                        style={{ display: tool === 'go' ? 'flex' : 'none' }}
+                      >
+                        <Suspense fallback={<p className="empty-note">Opening Go tools…</p>}>
+                          <GoTools
+                            contexts={workspace.contexts}
+                            configuredTarget={configuredGoTarget}
+                            runConfigurations={workspaceTasks.state.settings.configurations}
+                            root={workspace.root}
+                            path={focusPath}
+                            breakpoints={breakpoints}
+                            beforeStart={() => documents.flushAll()}
+                            onCoverage={(report) => {
+                              void showCoverage(report).catch((e) => setStatus(asError(e).message));
+                            }}
+                            onOpen={(path, position) => void openFile(path, position)}
+                            onExecution={setExecution}
+                            onClose={() => {
+                              setGoOpen(false);
+                              setConfiguredGoTarget(undefined);
+                              setTool(null);
+                            }}
+                          />
+                        </Suspense>
+                      </div>
+                    )}
+                    {tool === 'usages' &&
+                      (['typeHierarchy', 'incomingCalls', 'outgoingCalls'].includes(
+                        navigationOperation,
+                      ) ? (
+                        <HierarchyTree
+                          key={batch?.id ?? 'empty'}
+                          batch={batch}
+                          operation={navigationOperation as HierarchyOperation}
+                          title={navigationTitle}
+                          loading={navigating}
+                          onExpand={expandHierarchy}
+                          onOpen={(location) =>
+                            void openFile(
+                              location.path,
+                              location.range.start,
+                              true,
+                              focusPane,
+                              location.contextIds[0],
+                            )
+                          }
+                          onCancel={cancelNavigation}
+                        />
+                      ) : (
+                        <NavigationResults
+                          batch={batch}
+                          title={navigationTitle}
+                          loading={navigating}
+                          onOpen={(location) =>
+                            void openFile(
+                              location.path,
+                              location.range.start,
+                              true,
+                              focusPane,
+                              location.contextIds[0],
+                              location.range.end,
+                            )
+                          }
+                          onCancel={cancelNavigation}
+                        />
+                      ))}
+                    {tool === 'problems' && (
+                      <section className="results-panel" aria-label="Problems">
+                        <div className="results-summary">
+                          <strong>Problems</strong>
+                          <span>Diagnostics for opened files</span>
+                        </div>
+                        <div className="results-list">
+                          {[...diagnostics].flatMap(([path, items]) =>
+                            items.map((item, index) => (
+                              <button
+                                key={`${path}:${index}`}
+                                className="search-match"
+                                onClick={() => void openFile(path, item.range.start)}
+                              >
+                                <span>
+                                  {item.severity} · {path.split('/').pop()}:
+                                  {item.range.start.line + 1}
+                                </span>
+                                <span>{item.message}</span>
+                              </button>
+                            )),
+                          )}
+                          {![...diagnostics.values()].some((items) => items.length) && (
+                            <p className="empty-note">
+                              No diagnostics reported by enabled language packages.
+                            </p>
+                          )}
+                        </div>
+                      </section>
+                    )}
+                    {tool === 'run' && (
+                      <TaskPanel
+                        session={workspaceTasks.session}
+                        state={workspaceTasks.state}
+                        onImport={() => setShowRunImport(true)}
+                      />
+                    )}
+                    {tool === 'history' &&
+                      (focusPath ? (
+                        <HistoryPanel
+                          path={focusPath}
+                          onRestore={(content) => {
+                            const doc = documents.documents.get(focusPath);
+                            const view = doc && [...doc.views][0];
+                            if (view) {
+                              view.dispatch({
+                                changes: { from: 0, to: view.state.doc.length, insert: content },
+                              });
+                              setStatus('Revision restored to editor. Save to write it to disk.');
+                            }
+                          }}
+                        />
+                      ) : (
+                        <p className="empty-note">Open a file to inspect Local History.</p>
+                      ))}
+                    {tool === 'search' && (
+                      <SearchPanel
+                        query={searchQuery}
+                        resultQuery={resultQuery}
+                        matches={matches}
+                        searching={searching}
+                        error={searchError}
+                        workspaceRoot={workspace.root}
+                        onQueryChange={setSearchQuery}
+                        onSearch={() => void search()}
+                        onOpen={(match, character) =>
+                          void openFile(match.path, { line: match.line, character })
+                        }
+                      />
+                    )}
+                  </div>
+                </>
+              )}
+              <nav className="tool-tabs" aria-label="Tool windows">
+                {(
+                  ['usages', 'search', 'problems', 'terminal', 'run', 'go', 'history'] as Tool[]
+                ).map((item) => (
                   <button
                     key={item}
                     className={tool === item ? 'active' : ''}
@@ -2741,386 +2814,386 @@ export function App() {
                           ? 'Local History'
                           : item[0].toUpperCase() + item.slice(1)}
                   </button>
-                ),
-              )}
-              <div className="spacer" />
-              {tool && (
-                <button
-                  className="icon-button"
-                  aria-label="Hide tool window"
-                  onClick={() => setTool(null)}
-                >
-                  <Icon name="close" />
-                </button>
-              )}
-            </nav>
-          </main>
-        </div>
-      )}
-      <footer className="statusbar">
-        <span className={`status-dot ${navigating || opening ? 'busy' : ''}`} />
-        <span role="status">{navigating ? 'Searching semantic contexts…' : status}</span>
-        <div className="spacer" />
-        <IndexingStatus
-          scannedFiles={scannedFiles}
-          validatingFiles={scanProgress?.validating}
-          contexts={workspace?.contexts ?? []}
-          root={workspace?.root}
-        />
-        {focusPath && (
-          <>
-            <span>
-              {position.line + 1}:{position.character + 1}
-            </span>
-            <span>UTF-8</span>
-            <span>
-              {documents.documents.get(focusPath)?.session.error
-                ? 'Sync failed · buffer retained'
-                : documents.documents.get(focusPath)?.session.dirty
-                  ? 'Modified'
-                  : 'Saved'}
-            </span>
-          </>
+                ))}
+                <div className="spacer" />
+                {tool && (
+                  <button
+                    className="icon-button"
+                    aria-label="Hide tool window"
+                    onClick={() => setTool(null)}
+                  >
+                    <Icon name="close" />
+                  </button>
+                )}
+              </nav>
+            </main>
+          </div>
         )}
-        <button onClick={() => setShowSettings(true)}>Settings</button>
-        {workspace && (
-          <button onClick={() => setShowContexts(true)}>
-            {workspace.contexts.filter((context) => context.state === 'ready').length}/
-            {workspace.contexts.length} contexts ready
+        <footer className="statusbar">
+          <span className={`status-dot ${navigating || opening ? 'busy' : ''}`} />
+          <span role="status">{navigating ? 'Searching semantic contexts…' : status}</span>
+          <div className="spacer" />
+          <IndexingStatus
+            scannedFiles={scannedFiles}
+            validatingFiles={scanProgress?.validating}
+            contexts={workspace?.contexts ?? []}
+            root={workspace?.root}
+          />
+          {focusPath && (
+            <>
+              <span>
+                {position.line + 1}:{position.character + 1}
+              </span>
+              <span>UTF-8</span>
+              <span>
+                {documents.documents.get(focusPath)?.session.error
+                  ? 'Sync failed · buffer retained'
+                  : documents.documents.get(focusPath)?.session.dirty
+                    ? 'Modified'
+                    : 'Saved'}
+              </span>
+            </>
+          )}
+          <button onClick={() => setShowSettings(true)}>Settings</button>
+          {workspace && (
+            <button onClick={() => setShowContexts(true)}>
+              {workspace.contexts.filter((context) => context.state === 'ready').length}/
+              {workspace.contexts.length} contexts ready
+            </button>
+          )}
+          {workspace && <button onClick={() => setShowRecovery(true)}>Recovery</button>}
+          <button onClick={() => setShowPackages(true)}>Packages</button>
+          <button aria-label="What’s new" onClick={() => setShowWhatsNew(true)}>
+            What’s new{hasNewUpdates && <span className="update-new">New</span>}
           </button>
-        )}
-        {workspace && <button onClick={() => setShowRecovery(true)}>Recovery</button>}
-        <button onClick={() => setShowPackages(true)}>Packages</button>
-        <button aria-label="What’s new" onClick={() => setShowWhatsNew(true)}>
-          What’s new{hasNewUpdates && <span className="update-new">New</span>}
-        </button>
-      </footer>
-      {showWhatsNew && <WhatsNew onClose={closeWhatsNew} />}
-      {showContexts && workspace && (
-        <Modal title="Workspace analysis coverage" onClose={() => setShowContexts(false)}>
-          <div className="modal-body">
-            <p>
-              Language packages activate when you use their tools. Loading or failed contexts remain
-              visible in semantic search coverage.
-            </p>
-            <div style={{ maxHeight: 400, overflow: 'auto' }}>
-              {workspace.contexts.map((context) => (
-                <p key={context.id}>
-                  <strong>{context.id}</strong> · {context.state}
-                  {context.reason && <> — {context.reason}</>}
-                </p>
-              ))}
+        </footer>
+        {showWhatsNew && <WhatsNew onClose={closeWhatsNew} />}
+        {showContexts && workspace && (
+          <Modal title="Workspace analysis coverage" onClose={() => setShowContexts(false)}>
+            <div className="modal-body">
+              <p>
+                Language packages activate when you use their tools. Loading or failed contexts
+                remain visible in semantic search coverage.
+              </p>
+              <div style={{ maxHeight: 400, overflow: 'auto' }}>
+                {workspace.contexts.map((context) => (
+                  <p key={context.id}>
+                    <strong>{context.id}</strong> · {context.state}
+                    {context.reason && <> — {context.reason}</>}
+                  </p>
+                ))}
+              </div>
             </div>
-          </div>
-        </Modal>
-      )}
-      {showRecovery && workspace && (
-        <Recovery
-          root={workspace.root}
-          onClose={() => setShowRecovery(false)}
-          onOpen={(path) => {
-            setShowRecovery(false);
-            void openFile(path);
-          }}
-        />
-      )}
-      {pendingSidebar && (
-        <Modal title="Discard pending row edits?" onClose={() => setPendingSidebar(null)}>
-          <div className="modal-body">
-            <p>Your database edits have not been applied. Closing this tool will discard them.</p>
-          </div>
-          <div className="modal-actions">
-            <button onClick={() => setPendingSidebar(null)}>Keep editing</button>
-            <button
-              className="danger"
-              onClick={() => {
-                setDiscardSqlEdits((value) => value + 1);
-                sqlDirty.current.clear();
-                setDatabaseDirty(false);
-                changeSidebar(pendingSidebar, true);
-              }}
-            >
-              Discard and close
-            </button>
-          </div>
-        </Modal>
-      )}
-      {showSymbols && workspace && (
-        <SymbolSearch
-          key={workspace.generation}
-          onSearch={searchSymbols}
-          onChoose={(location) => {
-            setShowSymbols(false);
-            void openFile(
-              location.path,
-              location.range.start,
-              true,
-              focusPane,
-              location.contextIds[0],
-            );
-          }}
-          onClose={() => setShowSymbols(false)}
-        />
-      )}
-      {showFiles && workspace && (
-        <FileSearch
-          files={workspace.files}
-          recent={recentFiles}
-          onOpen={(path) => {
-            setShowFiles(false);
-            void openFile(path);
-          }}
-          onClose={() => setShowFiles(false)}
-        />
-      )}
-      {editPreview && (
-        <EditPreview
-          preview={editPreview}
-          title={editTitle}
-          error={error}
-          busy={editBusy}
-          onApply={() => void applyEdits()}
-          onClose={() => setEditPreview(null)}
-        />
-      )}
-      {rename && !editPreview && (
-        <RenameDialog
-          error={error}
-          busy={editBusy}
-          onRename={(name) => void renameSymbol(name)}
-          onClose={() => setRename(false)}
-        />
-      )}
-      {codeActions && (
-        <Modal title="Quick fixes and code actions" onClose={() => setCodeActions(null)}>
-          <div className="modal-body">
-            {codeActions.map((action, index) => (
+          </Modal>
+        )}
+        {showRecovery && workspace && (
+          <Recovery
+            root={workspace.root}
+            onClose={() => setShowRecovery(false)}
+            onOpen={(path) => {
+              setShowRecovery(false);
+              void openFile(path);
+            }}
+          />
+        )}
+        {pendingSidebar && (
+          <Modal title="Discard pending row edits?" onClose={() => setPendingSidebar(null)}>
+            <div className="modal-body">
+              <p>Your database edits have not been applied. Closing this tool will discard them.</p>
+            </div>
+            <div className="modal-actions">
+              <button onClick={() => setPendingSidebar(null)}>Keep editing</button>
               <button
-                className="action-row"
-                key={index}
-                onClick={() => void previewEdits(action.edits, action.title)}
+                className="danger"
+                onClick={() => {
+                  setDiscardSqlEdits((value) => value + 1);
+                  sqlDirty.current.clear();
+                  setDatabaseDirty(false);
+                  changeSidebar(pendingSidebar, true);
+                }}
               >
-                {action.title}
+                Discard and close
               </button>
-            ))}
-            {!codeActions.length && (
-              <p className="empty-note">No code actions are available here.</p>
-            )}
-          </div>
-        </Modal>
-      )}
-      {showBranches && workspace && (
-        <BranchPopup
-          remoteStatus={gitRemote}
-          onFetch={refreshGitRemote}
-          onClose={() => setShowBranches(false)}
-          onChanged={(change) => {
-            setBranch(change.branch);
-            setGitRevision((value) => value + 1);
-            setStatus(
-              change.conflicts
-                ? `${change.message} Conflicts need resolving in the Git panel.`
-                : change.message,
-            );
-            if (change.conflicts) changeAuxiliary('git');
-          }}
-        />
-      )}
-      {showRunImport && workspace && (
-        <IntelliJImport
-          runOnly
-          shortcuts={shortcuts}
-          workspaceRoot={workspace.root}
-          runSession={workspaceTasks.session}
-          onClose={() => setShowRunImport(false)}
-        />
-      )}
-      {showSettings && (
-        <Settings
-          shortcuts={shortcuts}
-          workspaceRoot={workspace?.root}
-          runSession={workspace ? workspaceTasks.session : undefined}
-          excludedDirectories={workspace?.excludedDirectories}
-          onInclude={(path) => setDirectoryExcluded(path, false)}
-          history={historyPreferences}
-          dark={dark}
-          stickyLines={stickyLines}
-          onStickyLines={changeStickyLines}
-          indexOnOpen={indexOnOpen}
-          onIndexOnOpen={changeIndexOnOpen}
-          onTheme={setDark}
-          onSave={async (keys, history) => {
-            await api.setSetting('history', history);
-            await api.setSetting('shortcuts', keys);
-            setShortcuts(keys);
-            setHistoryPreferences(history);
-          }}
-          onClose={() => setShowSettings(false)}
-        />
-      )}
-      {showNewScratch && (
-        <NewScratchDialog
-          onCreate={(type) => void createScratch(type)}
-          onClose={() => setShowNewScratch(false)}
-        />
-      )}
-      {editorMenu && (
-        <EditorContextMenu
-          x={editorMenu.x}
-          y={editorMenu.y}
-          entries={editorMenuEntries(editorMenu.view, editorMenu.path)}
-          onClose={() => setEditorMenu(null)}
-        />
-      )}
-      {showActions && <CommandSearch commands={commands} onClose={() => setShowActions(false)} />}
-      {showPackages && <Packages onClose={() => setShowPackages(false)} />}
-      {targets && (
-        <TargetChooser
-          locations={targets}
-          onClose={() => setTargets(null)}
-          onChoose={(location) => {
-            setTargets(null);
-            void openFile(
-              location.path,
-              location.range.start,
-              true,
-              focusPane,
-              location.contextIds[0],
-              location.range.end,
-            );
-          }}
-        />
-      )}
-      {usagesPopup && (
-        <UsagesPopup
-          key={usagesPopup.id}
-          anchor={usagesPopup.anchor}
-          symbol={usagesPopup.symbol}
-          workspaceRoot={workspace?.root}
-          batch={batch}
-          loading={navigating}
-          dark={dark}
-          loadPreview={async (path) => {
-            const doc = await documents.open(path);
-            previewDocuments.current.add(path);
-            return doc.state?.doc.toString() ?? doc.initial;
-          }}
-          onNavigate={(path, at) => void navigate('smart', at, path)}
-          onOpen={(location) => {
-            setUsagesPopup(null);
-            void openFile(
-              location.path,
-              location.range.start,
-              true,
-              focusPane,
-              location.contextIds[0],
-              location.range.end,
-            );
-          }}
-          onDock={() => {
-            setUsagesPopup(null);
-            setTool('usages');
-            usagesPopup.editor?.focus();
-          }}
-          onClose={() => {
-            setUsagesPopup(null);
-            usagesPopup.editor?.focus();
-          }}
-        />
-      )}
-      {closePath && (
-        <Modal title="Save changes before closing?" onClose={() => setClosePath(undefined)}>
-          <div className="modal-body">
-            <p>{closePath.split('/').pop()} has unsaved changes.</p>
-          </div>
-          <div className="modal-actions">
-            <button onClick={() => setClosePath(undefined)}>Keep editing</button>
-            <button
-              className="primary"
-              onClick={() => {
-                const path = closePath;
-                documents.documents
-                  .get(path)
-                  ?.session.save()
-                  .then(() => removeTab(path))
-                  .catch(report);
-              }}
-            >
-              Save and close
-            </button>
-          </div>
-        </Modal>
-      )}
-      {chosenRoot && (
-        <Modal title="Open project" onClose={() => setChosenRoot(undefined)}>
-          <div className="modal-body">
-            <p>Open {chosenRoot.split('/').pop()} in this window or a new window?</p>
-          </div>
-          <div className="modal-actions">
-            <button onClick={() => setChosenRoot(undefined)}>Cancel</button>
-            <button
-              onClick={() => {
-                const root = chosenRoot;
-                setChosenRoot(undefined);
-                void newWindow(root).catch(report);
-              }}
-            >
-              New window
-            </button>
-            <button
-              className="primary"
-              data-autofocus
-              onClick={() => {
-                const root = chosenRoot;
-                setChosenRoot(undefined);
-                void loadWorkspace(root);
-              }}
-            >
-              This window
-            </button>
-          </div>
-        </Modal>
-      )}
-      {pendingRoot && (
-        <Modal title="Save workspace changes?" onClose={() => setPendingRoot(undefined)}>
-          <div className="modal-body">
-            <p>Save open changes before switching to {pendingRoot.split('/').pop()}.</p>
-          </div>
-          <div className="modal-actions">
-            <button onClick={() => setPendingRoot(undefined)}>Keep editing</button>
-            <button
-              className="primary"
-              onClick={() => {
-                const root = pendingRoot;
-                documents
-                  .saveAll()
-                  .then(() => {
-                    setPendingRoot(undefined);
-                    return loadWorkspace(root);
-                  })
-                  .catch(report);
-              }}
-            >
-              Save all and open
-            </button>
-          </div>
-        </Modal>
-      )}
-      {(opening || closing) && (
-        <Modal
-          title={opening ? 'Opening workspace' : 'Closing editor'}
-          dismissible={false}
-          onClose={() => {}}
-        >
-          <div className="modal-body" role="status">
-            {opening
-              ? scannedFiles
-                ? `${scanProgress?.validating ? 'Validating saved index…' : 'Indexing files…'} ${scannedFiles.toLocaleString()}`
-                : 'Synchronizing documents and opening the workspace…'
-              : 'Synchronizing and releasing the editor…'}
-          </div>
-        </Modal>
-      )}
-    </div>
+            </div>
+          </Modal>
+        )}
+        {showSymbols && workspace && (
+          <SymbolSearch
+            key={workspace.generation}
+            onSearch={searchSymbols}
+            onChoose={(location) => {
+              setShowSymbols(false);
+              void openFile(
+                location.path,
+                location.range.start,
+                true,
+                focusPane,
+                location.contextIds[0],
+              );
+            }}
+            onClose={() => setShowSymbols(false)}
+          />
+        )}
+        {showFiles && workspace && (
+          <FileSearch
+            files={workspace.files}
+            recent={recentFiles}
+            onOpen={(path) => {
+              setShowFiles(false);
+              void openFile(path);
+            }}
+            onClose={() => setShowFiles(false)}
+          />
+        )}
+        {editPreview && (
+          <EditPreview
+            preview={editPreview}
+            title={editTitle}
+            error={error}
+            busy={editBusy}
+            onApply={() => void applyEdits()}
+            onClose={() => setEditPreview(null)}
+          />
+        )}
+        {rename && !editPreview && (
+          <RenameDialog
+            error={error}
+            busy={editBusy}
+            onRename={(name) => void renameSymbol(name)}
+            onClose={() => setRename(false)}
+          />
+        )}
+        {codeActions && (
+          <Modal title="Quick fixes and code actions" onClose={() => setCodeActions(null)}>
+            <div className="modal-body">
+              {codeActions.map((action, index) => (
+                <button
+                  className="action-row"
+                  key={index}
+                  onClick={() => void previewEdits(action.edits, action.title)}
+                >
+                  {action.title}
+                </button>
+              ))}
+              {!codeActions.length && (
+                <p className="empty-note">No code actions are available here.</p>
+              )}
+            </div>
+          </Modal>
+        )}
+        {showBranches && workspace && (
+          <BranchPopup
+            remoteStatus={gitRemote}
+            onFetch={refreshGitRemote}
+            onClose={() => setShowBranches(false)}
+            onChanged={(change) => {
+              setBranch(change.branch);
+              setGitRevision((value) => value + 1);
+              setStatus(
+                change.conflicts
+                  ? `${change.message} Conflicts need resolving in the Git panel.`
+                  : change.message,
+              );
+              if (change.conflicts) changeAuxiliary('git');
+            }}
+          />
+        )}
+        {showRunImport && workspace && (
+          <IntelliJImport
+            runOnly
+            shortcuts={shortcuts}
+            workspaceRoot={workspace.root}
+            runSession={workspaceTasks.session}
+            onClose={() => setShowRunImport(false)}
+          />
+        )}
+        {showSettings && (
+          <Settings
+            shortcuts={shortcuts}
+            workspaceRoot={workspace?.root}
+            runSession={workspace ? workspaceTasks.session : undefined}
+            excludedDirectories={workspace?.excludedDirectories}
+            onInclude={(path) => setDirectoryExcluded(path, false)}
+            history={historyPreferences}
+            dark={dark}
+            stickyLines={stickyLines}
+            onStickyLines={changeStickyLines}
+            indexOnOpen={indexOnOpen}
+            onIndexOnOpen={changeIndexOnOpen}
+            onTheme={setDark}
+            onSave={async (keys, history) => {
+              await api.setSetting('history', history);
+              await api.setSetting('shortcuts', keys);
+              setShortcuts(keys);
+              setHistoryPreferences(history);
+            }}
+            onClose={() => setShowSettings(false)}
+          />
+        )}
+        {showNewScratch && (
+          <NewScratchDialog
+            onCreate={(type) => void createScratch(type)}
+            onClose={() => setShowNewScratch(false)}
+          />
+        )}
+        {editorMenu && (
+          <EditorContextMenu
+            x={editorMenu.x}
+            y={editorMenu.y}
+            entries={editorMenuEntries(editorMenu.view, editorMenu.path)}
+            onClose={() => setEditorMenu(null)}
+          />
+        )}
+        {showActions && <CommandSearch commands={commands} onClose={() => setShowActions(false)} />}
+        {showPackages && <Packages onClose={() => setShowPackages(false)} />}
+        {targets && (
+          <TargetChooser
+            locations={targets}
+            onClose={() => setTargets(null)}
+            onChoose={(location) => {
+              setTargets(null);
+              void openFile(
+                location.path,
+                location.range.start,
+                true,
+                focusPane,
+                location.contextIds[0],
+                location.range.end,
+              );
+            }}
+          />
+        )}
+        {usagesPopup && (
+          <UsagesPopup
+            key={usagesPopup.id}
+            anchor={usagesPopup.anchor}
+            symbol={usagesPopup.symbol}
+            workspaceRoot={workspace?.root}
+            batch={batch}
+            loading={navigating}
+            dark={dark}
+            loadPreview={async (path) => {
+              const doc = await documents.open(path);
+              previewDocuments.current.add(path);
+              return doc.state?.doc.toString() ?? doc.initial;
+            }}
+            onNavigate={(path, at) => void navigate('smart', at, path)}
+            onOpen={(location) => {
+              setUsagesPopup(null);
+              void openFile(
+                location.path,
+                location.range.start,
+                true,
+                focusPane,
+                location.contextIds[0],
+                location.range.end,
+              );
+            }}
+            onDock={() => {
+              setUsagesPopup(null);
+              setTool('usages');
+              usagesPopup.editor?.focus();
+            }}
+            onClose={() => {
+              setUsagesPopup(null);
+              usagesPopup.editor?.focus();
+            }}
+          />
+        )}
+        {closePath && (
+          <Modal title="Save changes before closing?" onClose={() => setClosePath(undefined)}>
+            <div className="modal-body">
+              <p>{closePath.split('/').pop()} has unsaved changes.</p>
+            </div>
+            <div className="modal-actions">
+              <button onClick={() => setClosePath(undefined)}>Keep editing</button>
+              <button
+                className="primary"
+                onClick={() => {
+                  const path = closePath;
+                  documents.documents
+                    .get(path)
+                    ?.session.save()
+                    .then(() => removeTab(path))
+                    .catch(report);
+                }}
+              >
+                Save and close
+              </button>
+            </div>
+          </Modal>
+        )}
+        {chosenRoot && (
+          <Modal title="Open project" onClose={() => setChosenRoot(undefined)}>
+            <div className="modal-body">
+              <p>Open {chosenRoot.split('/').pop()} in this window or a new window?</p>
+            </div>
+            <div className="modal-actions">
+              <button onClick={() => setChosenRoot(undefined)}>Cancel</button>
+              <button
+                onClick={() => {
+                  const root = chosenRoot;
+                  setChosenRoot(undefined);
+                  void newWindow(root).catch(report);
+                }}
+              >
+                New window
+              </button>
+              <button
+                className="primary"
+                data-autofocus
+                onClick={() => {
+                  const root = chosenRoot;
+                  setChosenRoot(undefined);
+                  void loadWorkspace(root);
+                }}
+              >
+                This window
+              </button>
+            </div>
+          </Modal>
+        )}
+        {pendingRoot && (
+          <Modal title="Save workspace changes?" onClose={() => setPendingRoot(undefined)}>
+            <div className="modal-body">
+              <p>Save open changes before switching to {pendingRoot.split('/').pop()}.</p>
+            </div>
+            <div className="modal-actions">
+              <button onClick={() => setPendingRoot(undefined)}>Keep editing</button>
+              <button
+                className="primary"
+                onClick={() => {
+                  const root = pendingRoot;
+                  documents
+                    .saveAll()
+                    .then(() => {
+                      setPendingRoot(undefined);
+                      return loadWorkspace(root);
+                    })
+                    .catch(report);
+                }}
+              >
+                Save all and open
+              </button>
+            </div>
+          </Modal>
+        )}
+        {(opening || closing) && (
+          <Modal
+            title={opening ? 'Opening workspace' : 'Closing editor'}
+            dismissible={false}
+            onClose={() => {}}
+          >
+            <div className="modal-body" role="status">
+              {opening
+                ? scannedFiles
+                  ? `${scanProgress?.validating ? 'Validating saved index…' : 'Indexing files…'} ${scannedFiles.toLocaleString()}`
+                  : 'Synchronizing documents and opening the workspace…'
+                : 'Synchronizing and releasing the editor…'}
+            </div>
+          </Modal>
+        )}
+      </div>
+    </DiffActionsContext.Provider>
   );
 }

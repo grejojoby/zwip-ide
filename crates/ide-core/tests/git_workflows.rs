@@ -736,3 +736,170 @@ fn overlapping_hook_edit_reports_created_commit_and_keeps_original_staging_for_r
     );
     assert!(!root.path().join(".git/index.lock").exists());
 }
+
+#[test]
+fn reverting_a_hunk_preserves_other_work_and_staging_and_rejects_stale_previews() {
+    let (root, _data, core) = fixture();
+    let base = fs::read_to_string(root.path().join("file.txt")).unwrap();
+    fs::write(
+        root.path().join("file.txt"),
+        base.replace("one\n", "changed one\n"),
+    )
+    .unwrap();
+    git(root.path(), &["add", "file.txt"]);
+    fs::write(
+        root.path().join("file.txt"),
+        base.replace("one\n", "changed one\n")
+            .replace("ten\n", "changed ten\n"),
+    )
+    .unwrap();
+    let diff = core
+        .request("git.diff", json!({"path":"file.txt"}))
+        .unwrap();
+    let params = json!({"path":"file.txt", "fingerprint":diff["fingerprint"], "changeIds":change_ids(&diff, 10)});
+    core.request("git.revertDiff", params.clone()).unwrap();
+    assert_eq!(
+        fs::read_to_string(root.path().join("file.txt")).unwrap(),
+        base.replace("one\n", "changed one\n")
+    );
+    assert_eq!(
+        git(root.path(), &["show", ":file.txt"]),
+        base.replace("one\n", "changed one\n")
+    );
+    assert!(core.request("git.revertDiff", params).is_err());
+    let diff = core
+        .request("git.diff", json!({"path":"file.txt"}))
+        .unwrap();
+    core.request(
+        "git.revertDiff",
+        json!({"path":"file.txt", "fingerprint":diff["fingerprint"]}),
+    )
+    .unwrap();
+    assert_eq!(
+        fs::read_to_string(root.path().join("file.txt")).unwrap(),
+        base
+    );
+    assert!(git(root.path(), &["status", "--porcelain"]).is_empty());
+}
+
+#[test]
+fn reverting_outgoing_changes_preserves_later_local_edits() {
+    let (root, _data, core) = fixture();
+    let base = fs::read_to_string(root.path().join("file.txt")).unwrap();
+    git(root.path(), &["branch", "baseline"]);
+    fs::write(
+        root.path().join("file.txt"),
+        base.replace("one\n", "committed one\n"),
+    )
+    .unwrap();
+    git(root.path(), &["commit", "-am", "change"]);
+    fs::write(
+        root.path().join("file.txt"),
+        base.replace("one\n", "committed one\n")
+            .replace("ten\n", "local ten\n"),
+    )
+    .unwrap();
+    let diff = core
+        .request(
+            "git.compareFile",
+            json!({"branch":"baseline", "revision":"HEAD", "path":"file.txt"}),
+        )
+        .unwrap();
+    core.request("git.revertDiff", json!({"path":"file.txt", "base":diff["base"], "revision":diff["revision"], "fingerprint":diff["fingerprint"]})).unwrap();
+    assert_eq!(
+        fs::read_to_string(root.path().join("file.txt")).unwrap(),
+        base.replace("ten\n", "local ten\n")
+    );
+    assert_eq!(
+        git(root.path(), &["show", "HEAD:file.txt"]),
+        base.replace("one\n", "committed one\n")
+    );
+}
+
+#[test]
+fn reverting_refuses_unsaved_buffers_and_invalid_lines_without_mutating_disk_or_index() {
+    let (root, _data, core) = fixture();
+    let path = root.path().join("file.txt");
+    fs::write(&path, "changed\n").unwrap();
+    let diff = core
+        .request("git.diff", json!({"path":"file.txt"}))
+        .unwrap();
+    let invalid = core.request(
+        "git.revertDiff",
+        json!({"path":"file.txt", "fingerprint":diff["fingerprint"], "changeIds":["invalid"]}),
+    );
+    assert!(invalid.is_err());
+    assert_eq!(fs::read_to_string(&path).unwrap(), "changed\n");
+    core.request("document.open", json!({"path":path})).unwrap();
+    core.request(
+        "document.change",
+        json!({"path":path,"revision":1,"changes":[{"from":0,"to":0,"insert":"unsaved "}]}),
+    )
+    .unwrap();
+    let error = core
+        .request(
+            "git.revertDiff",
+            json!({"path":"file.txt", "fingerprint":diff["fingerprint"]}),
+        )
+        .unwrap_err();
+    assert!(error.contains("unsaved"));
+    assert_eq!(fs::read_to_string(&path).unwrap(), "changed\n");
+    assert!(git(root.path(), &["diff", "--cached"]).is_empty());
+}
+
+#[test]
+fn reverting_added_and_deleted_files_restores_existence_and_index() {
+    let (root, _data, core) = fixture();
+    fs::write(root.path().join("added.txt"), "new\n").unwrap();
+    git(root.path(), &["add", "added.txt"]);
+    let diff = core
+        .request("git.diff", json!({"path":"added.txt"}))
+        .unwrap();
+    core.request("git.revertDiff", json!({"path":"added.txt", "fingerprint":diff["fingerprint"], "changeIds":change_ids(&diff, 1)})).unwrap();
+    assert!(!root.path().join("added.txt").exists());
+    git(root.path(), &["rm", "other.txt"]);
+    let diff = core
+        .request("git.diff", json!({"path":"other.txt"}))
+        .unwrap();
+    core.request(
+        "git.revertDiff",
+        json!({"path":"other.txt", "fingerprint":diff["fingerprint"]}),
+    )
+    .unwrap();
+    assert_eq!(
+        fs::read_to_string(root.path().join("other.txt")).unwrap(),
+        "other base\n"
+    );
+    assert!(git(root.path(), &["status", "--porcelain"]).is_empty());
+}
+
+#[test]
+fn revert_protects_dirty_files_when_workspace_is_inside_repository() {
+    let (root, _data, core) = fixture();
+    let nested = root.path().join("nested");
+    fs::create_dir(&nested).unwrap();
+    let path = nested.join("inside.txt");
+    fs::write(&path, "base\n").unwrap();
+    git(root.path(), &["add", "nested/inside.txt"]);
+    git(root.path(), &["commit", "-m", "nested"]);
+    core.request("workspace.open", json!({"root":nested}))
+        .unwrap();
+    fs::write(&path, "disk change\n").unwrap();
+    core.request("document.open", json!({"path":path})).unwrap();
+    core.request(
+        "document.change",
+        json!({"path":path,"revision":1,"changes":[{"from":0,"to":0,"insert":"unsaved "}]}),
+    )
+    .unwrap();
+    let diff = core
+        .request("git.diff", json!({"path":"nested/inside.txt"}))
+        .unwrap();
+    let error = core
+        .request(
+            "git.revertDiff",
+            json!({"path":"nested/inside.txt", "fingerprint":diff["fingerprint"]}),
+        )
+        .unwrap_err();
+    assert!(error.contains("unsaved"));
+    assert_eq!(fs::read_to_string(path).unwrap(), "disk change\n");
+}

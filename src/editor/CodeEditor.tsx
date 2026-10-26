@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { unifiedMergeView } from '@codemirror/merge';
 import { Annotation, Compartment, EditorState, type Extension } from '@codemirror/state';
 import {
   EditorView,
@@ -88,6 +89,8 @@ interface Props extends SemanticCallbacks {
   dark: boolean;
   shortcuts?: Shortcuts;
   readOnly?: boolean;
+  /** Keep a live diff visible while editing the working file. */
+  diffBase?: string;
   breakpoints?: number[];
   coverage?: { line: number; count: number }[];
   executionLine?: number | null;
@@ -114,6 +117,7 @@ export function CodeEditor(props: Props) {
   const commandKeys = useRef(new Compartment());
   const editing = useRef(new Compartment());
   const sticky = useRef(new Compartment());
+  const comparison = useRef(new Compartment());
   function editorKeys() {
     const shortcuts = callbacks.current.shortcuts ?? defaultShortcuts;
     return keymap.of(
@@ -223,6 +227,11 @@ export function CodeEditor(props: Props) {
         );
       }),
       blameGutter(),
+      comparison.current.of(
+        props.diffBase === undefined
+          ? []
+          : unifiedMergeView({ original: props.diffBase, mergeControls: false }),
+      ),
       lineNumbers(),
       highlightSpecialChars(),
       sticky.current.of(callbacks.current.stickyLines ? stickyLines() : []),
@@ -405,6 +414,15 @@ export function CodeEditor(props: Props) {
       ],
     });
   }, [props.document, props.breakpoints, props.coverage, props.executionLine]);
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: comparison.current.reconfigure(
+        props.diffBase === undefined
+          ? []
+          : unifiedMergeView({ original: props.diffBase, mergeControls: false }),
+      ),
+    });
+  }, [props.document, props.diffBase]);
   return <div className="code-editor" ref={container} />;
 }
 // Reconfigure retains history state fields when extensions are retained by identity.

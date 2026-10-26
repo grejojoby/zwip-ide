@@ -2,6 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getChunks } from '@codemirror/merge';
 import { undo } from '@codemirror/commands';
 import { CodeEditor } from './CodeEditor';
 import { externalDocumentChange } from './external-change';
@@ -55,10 +56,11 @@ afterEach(async () => {
   container.remove();
   vi.unstubAllGlobals();
 });
-function Editor() {
+function Editor({ diffBase }: { diffBase?: string } = {}) {
   return (
     <CodeEditor
       document={doc}
+      diffBase={diffBase}
       dark
       onNavigate={() => {}}
       onPosition={() => {}}
@@ -137,4 +139,22 @@ describe('editor lifecycle', () => {
     expect(second.state.doc.toString()).toBe('original!');
     expect(doc.session.revision).toBe(2);
   });
+});
+
+it('updates diff highlighting while editing and keeps normal undo history', async () => {
+  await act(async () => root.render(<Editor diffBase="before" />));
+  const view = [...doc.views][0];
+  expect(getChunks(view.state)?.chunks).toHaveLength(1);
+  await act(async () =>
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: 'before' } }),
+  );
+  expect(getChunks(view.state)?.chunks).toHaveLength(0);
+  await act(async () => {
+    undo(view);
+  });
+  expect(view.state.doc.toString()).toBe('original');
+  expect(getChunks(view.state)?.chunks).toHaveLength(1);
+  await act(async () => root.render(<Editor />));
+  expect(getChunks(view.state)).toBeNull();
+  expect(view.state.doc.toString()).toBe('original');
 });

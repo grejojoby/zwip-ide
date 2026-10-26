@@ -964,7 +964,7 @@ pub fn push_plan(root: &str) -> Result<Value, String> {
         .as_bytes(),
     );
     Ok(
-        json!({"fingerprint":fingerprint,"head":snapshot["head"],"remote":remote,"branch":branch,"upstream":upstream,"remoteRef":remote_ref,"commits":commits,"files":files,"diff":diff,"filePatches":file_patches}),
+        json!({"fingerprint":fingerprint,"head":snapshot["head"],"base":upstream_oid,"remote":remote,"branch":branch,"upstream":upstream,"remoteRef":remote_ref,"commits":commits,"files":files,"diff":diff,"filePatches":file_patches}),
     )
 }
 pub fn push(root: &str, fingerprint: &str) -> Result<Value, String> {
@@ -1856,21 +1856,246 @@ fn compare_file(root: &str, params: &Value) -> Result<Value, String> {
     let path = string(params, "path")?;
     path_arg(path)?;
     let root = repo_root(root)?;
+    let snapshot = status(&root)?;
     let target = resolve_commit(&root, branch)?;
     let entry = tree_entry(&root, &target, path)?;
-    let before = blob(&root, entry.as_ref())?;
-    let after = worktree_bytes(&root, path)?;
-    let is_binary =
-        entry.as_ref().is_some_and(|e| e.mode == "160000") || binary(&before) || binary(&after);
+    let before = if let Some(entry) = entry.as_ref() {
+        checkout_blob(&root, path, entry)?
+    } else {
+        Vec::new()
+    };
+    let revision = params["revision"]
+        .as_str()
+        .map(|rev| resolve_commit(&root, rev))
+        .transpose()?;
+    let after_entry = revision
+        .as_ref()
+        .map(|rev| tree_entry(&root, rev, path))
+        .transpose()?
+        .flatten();
+    let after = if revision.is_some() {
+        if let Some(entry) = after_entry.as_ref() {
+            checkout_blob(&root, path, entry)?
+        } else {
+            Vec::new()
+        }
+    } else {
+        worktree_bytes(&root, path)?
+    };
+    let special = [entry.as_ref(), after_entry.as_ref()]
+        .into_iter()
+        .flatten()
+        .any(|e| !matches!(e.mode.as_str(), "100644" | "100755"));
+    let special =
+        special || fs::symlink_metadata(safe_path(&root, path)?).is_ok_and(|m| !m.is_file());
+    let is_binary = special || binary(&before) || binary(&after);
+    let patch = if is_binary {
+        String::new()
+    } else {
+        text_patch(&before, &after)?
+    };
     let hunks = if is_binary {
         Vec::new()
     } else {
         let lines = |bytes: &[u8]| bytes.iter().filter(|b| **b == b'\n').count() + 1;
-        let context = lines(&before).max(lines(&after));
-        parse_hunks(&patch_with_context(&before, &after, context)?)?
+        parse_hunks(&patch_with_context(
+            &before,
+            &after,
+            lines(&before).max(lines(&after)),
+        )?)?
     };
-    Ok(json!({"branch": branch, "path": path, "binary": is_binary, "hunks": hunks}))
+    if status(&root)?["fingerprint"] != snapshot["fingerprint"] {
+        return Err("Repository changed while reading the diff; refresh and review again".into());
+    }
+    let fingerprint = hash(
+        format!(
+            "{}:{target}:{}",
+            snapshot["fingerprint"],
+            revision.as_deref().unwrap_or("")
+        )
+        .as_bytes(),
+    );
+    Ok(
+        json!({"branch":branch,"base":target,"revision":revision,"path":path,"binary":is_binary,"kind":if is_binary {"binary"} else {"text"},"partialAllowed":!is_binary,"before":String::from_utf8_lossy(&before),"after":String::from_utf8_lossy(&after),"patch":patch,"hunks":hunks,"fingerprint":fingerprint}),
+    )
 }
+/// Restore reviewed text changes, retaining unrelated staged and working content.
+fn revert_diff(root: &str, params: &Value) -> Result<Value, String> {
+    let root = repo_root(root)?;
+    let path = string(params, "path")?;
+    let full = safe_path(&root, path)?;
+    let mut lock = IndexLock::acquire(&root)?;
+    let comparison = params["base"].as_str();
+    let preview = if let Some(base) = comparison {
+        compare_file(
+            &root,
+            &json!({"branch":base,"revision":params["revision"],"path":path}),
+        )?
+    } else {
+        diff(&root, path)?
+    };
+    if preview["fingerprint"] != params["fingerprint"] {
+        return Err("Diff is stale; refresh and review the changes again".into());
+    }
+    if preview["kind"] != "text" || !preview["partialAllowed"].as_bool().unwrap_or(false) {
+        return Err(
+            "Revert requires an ordinary UTF-8 text file without renames or conflicts".into(),
+        );
+    }
+    if index_entries(&root, Some(path), None)?
+        .iter()
+        .any(|(_, entry)| entry.stage > 0)
+    {
+        return Err("Resolve file conflicts before reverting".into());
+    }
+    let before = string(&preview, "before")?.as_bytes();
+    let after = string(&preview, "after")?.as_bytes();
+    if std::str::from_utf8(&worktree_bytes(&root, path)?).is_err() {
+        return Err("Revert requires UTF-8 text".into());
+    }
+    let ids = params
+        .get("changeIds")
+        .map(|value| {
+            serde_json::from_value::<Vec<String>>(value.clone()).map_err(|e| e.to_string())
+        })
+        .transpose()?;
+    let target = if let Some(ids) = &ids {
+        // Validate every requested ID before taking the complement.
+        selected_content(&preview, ids)?;
+        let remaining: Vec<String> = preview["hunks"]
+            .as_array()
+            .ok_or("Missing hunks")?
+            .iter()
+            .flat_map(|h| h["lines"].as_array().into_iter().flatten())
+            .filter(|line| line["kind"] != "context")
+            .filter_map(|line| line["id"].as_str())
+            .filter(|id| !ids.iter().any(|chosen| chosen == id))
+            .map(str::to_owned)
+            .collect();
+        if remaining.is_empty() {
+            before.to_vec()
+        } else {
+            selected_content(&preview, &remaining)?
+        }
+    } else {
+        before.to_vec()
+    };
+    let make_entry = |bytes: &[u8]| -> Result<Entry, String> {
+        Ok(Entry {
+            mode: "100644".into(),
+            oid: write_raw_blob(&root, bytes)?,
+            stage: 0,
+        })
+    };
+    let base_entry = make_entry(after)?;
+    let target_entry = make_entry(&target)?;
+    let current = worktree_bytes(&root, path)?;
+    let working = if params["revision"].is_string() {
+        merge_staged(
+            &root,
+            Some(&make_entry(&current)?),
+            Some(&base_entry),
+            &target_entry,
+        )
+        .map_err(|_| "Outgoing changes overlap local edits; resolve them in the editor first")?
+    } else {
+        target.clone()
+    };
+    let head = head_entry(&root, path)?;
+    let original_entry = if let Some(base) = comparison {
+        tree_entry(&root, base, path)?
+    } else {
+        head.clone()
+    };
+    let working = if ids.is_none() && params["revision"].is_null() {
+        if let Some(entry) = original_entry.as_ref() {
+            checkout_blob(&root, path, entry)?
+        } else {
+            working
+        }
+    } else {
+        working
+    };
+    let remove = working.is_empty() && original_entry.is_none();
+    let index = temporary_index(&root, true)?;
+    if comparison.is_none() {
+        let staged = index_entries(&root, Some(path), None)?
+            .into_iter()
+            .next()
+            .map(|(_, e)| e);
+        if ids.is_none() {
+            set_entry(&root, &index, path, head.as_ref())?;
+        } else {
+            let staged_bytes = blob(&root, staged.as_ref())?;
+            let merged = if staged_bytes == before {
+                staged_bytes
+            } else {
+                merge_staged(&root, staged.as_ref(), Some(&base_entry), &target_entry)
+                    .map_err(|_| "Revert overlaps different staged content; unstage that change and review again")?
+            };
+            let mut entry = make_entry(&merged)?;
+            entry.mode = staged
+                .as_ref()
+                .map(|e| e.mode.clone())
+                .unwrap_or_else(|| "100644".into());
+            set_entry(
+                &root,
+                &index,
+                path,
+                if merged.is_empty() && head.is_none() {
+                    None
+                } else {
+                    Some(&entry)
+                },
+            )?;
+        }
+    }
+    lock.prepare(&index)?;
+    let reviewed = if let Some(base) = comparison {
+        compare_file(
+            &root,
+            &json!({"branch":base,"revision":params["revision"],"path":path}),
+        )?
+    } else {
+        diff(&root, path)?
+    };
+    if reviewed["fingerprint"] != params["fingerprint"] {
+        return Err("Repository changed while preparing revert; review again".into());
+    }
+    if remove {
+        if full.exists() {
+            fs::remove_file(&full).map_err(|e| e.to_string())?;
+        }
+    } else {
+        let parent = full.parent().ok_or("Missing parent directory")?;
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        let mut temp = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
+        temp.write_all(&working).map_err(|e| e.to_string())?;
+        if let Ok(metadata) = fs::metadata(&full) {
+            temp.as_file()
+                .set_permissions(metadata.permissions())
+                .map_err(|e| e.to_string())?;
+        }
+        #[cfg(unix)]
+        if ids.is_none() {
+            use std::os::unix::fs::PermissionsExt;
+            if let Some(entry) = original_entry.as_ref() {
+                temp.as_file()
+                    .set_permissions(fs::Permissions::from_mode(if entry.mode == "100755" {
+                        0o755
+                    } else {
+                        0o644
+                    }))
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        temp.as_file().sync_all().map_err(|e| e.to_string())?;
+        temp.persist(&full).map_err(|e| e.to_string())?;
+    }
+    lock.install()?;
+    status(&root)
+}
+
 fn daily_action(root: &str, method: &str, params: &Value) -> Result<Value, String> {
     let root = reviewed_root(root, params)?;
     match method {
@@ -2020,6 +2245,7 @@ pub fn dispatch(root: &str, data: &Path, method: &str, params: &Value) -> Result
     match method {
         "git.status" => status(root),
         "git.diff" => diff(root, string(params, "path")?),
+        "git.revertDiff" => revert_diff(root, params),
         "git.commit" => commit(
             root,
             &serde_json::from_value::<Vec<String>>(params["paths"].clone())

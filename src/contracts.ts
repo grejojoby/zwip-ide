@@ -241,6 +241,9 @@ export interface DiffHunk {
   lines: DiffLine[];
 }
 export interface GitDiff {
+  /** Immutable comparison commits; omitted for HEAD vs working tree. */
+  base?: string;
+  revision?: string | null;
   path: string;
   before: string;
   after: string;
@@ -285,6 +288,8 @@ export interface PushCommit {
   author: string;
 }
 export interface PushPlan {
+  base?: string;
+  head?: string;
   fingerprint: string;
   remote: string;
   branch: string;

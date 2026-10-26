@@ -3641,3 +3641,30 @@ path.current {
 .branch-remote-summary button {
   margin-left: auto;
 }
+
+/* Git review actions stay accessible as narrow toolbars wrap. */
+.diff-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  white-space: normal;
+}
+.diff-revert-confirm {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: normal;
+}
+.diff-title,
+.bdiff-toolbar {
+  flex-wrap: wrap;
+}
+.diff-hunk-title .diff-actions {
+  margin-left: auto;
+}

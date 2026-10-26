@@ -22,6 +22,48 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-26-grouped-find-results',
+    version: '0.1.0',
+    date: '2026-10-26',
+    title: 'Clearer Find results',
+    summary: 'Scan workspace text matches in compact, collapsible file groups.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'Find results grouped by file',
+        description:
+          'File icons, relative folders, matching-line counts, line numbers, and highlighted search text make results easier to scan. Expand or collapse files, move through visible rows with arrow keys, and open the first match on a line. Long previews start near the match.',
+      },
+      {
+        type: 'improved',
+        title: 'Clear search feedback',
+        description:
+          'Loading, empty, and failed searches have distinct states. Results retain their submitted query while you edit the next search. Search remains literal and case-sensitive across saved workspace files; a notice appears when the existing 1,000-line result limit is reached.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-26-diff-revert-and-edit',
+    version: '0.1.0',
+    date: '2026-10-26',
+    title: 'Revert and edit Git changes',
+    summary: 'Revert reviewed file changes or hunks and edit files with live diff highlighting.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Revert from Git reviews',
+        description:
+          'Revert text files and hunks in unified, split, commit, branch comparison, and outgoing push reviews, or start from a changed file’s context menu. Confirmation, stale-preview checks, and unsaved-buffer protection keep changes explicit. Outgoing reverts create local changes without rewriting commits. Binary files, renames, symlinks, submodules, and unresolved conflicts require their dedicated workflows.',
+      },
+      {
+        type: 'added',
+        title: 'Edit with changes highlighted',
+        description:
+          'Edit file opens the working file in the editor with live additions and deletions against the reviewed version. Highlights update as you edit or remove changes; normal save and undo remain available.',
+      },
+    ],
+  },
+  {
     id: '2026-10-16-git-change-context-actions',
     version: '0.1.0',
     date: '2026-10-16',

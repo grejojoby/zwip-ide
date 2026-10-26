@@ -1,19 +1,15 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { request } from '../api';
-import type { DiffHunk, DiffLine } from '../contracts';
+import type { DiffHunk, DiffLine, GitDiff } from '../contracts';
 import { asError } from '../model/document-session';
 import { renderTokens, useHighlightedLines, type Token } from '../editor/highlight';
 import { FileIcon } from './FileIcon';
 import { Modal } from './Modal';
+import { DiffActions } from './DiffActions';
 
 export interface ComparedFile {
   status: string;
   path: string;
-}
-interface FileDiff {
-  path: string;
-  binary: boolean;
-  hunks: DiffHunk[];
 }
 type ChangeKind = 'modified' | 'inserted' | 'deleted';
 interface Segment {
@@ -184,7 +180,7 @@ export function BranchDiffWindow({
 }) {
   const ordered = useMemo(() => [...files].sort((a, b) => a.path.localeCompare(b.path)), [files]);
   const [selected, setSelected] = useState(0);
-  const [diffs, setDiffs] = useState<Map<string, FileDiff>>(new Map());
+  const [diffs, setDiffs] = useState<Map<string, GitDiff>>(new Map());
   const [error, setError] = useState('');
   const [collapse, setCollapse] = useState(true);
   // Unfolded unchanged runs, by segment index, for the file they were opened in.
@@ -201,7 +197,7 @@ export function BranchDiffWindow({
     if (!file || diffs.has(file.path)) return;
     let active = true;
     setError('');
-    request<FileDiff>('git.compareFile', { branch, path: file.path })
+    request<GitDiff>('git.compareFile', { branch, path: file.path })
       .then((result) => active && setDiffs((map) => new Map(map).set(file.path, result)))
       .catch((e) => active && setError(asError(e).message));
     return () => {
@@ -286,6 +282,8 @@ export function BranchDiffWindow({
     return [...map];
   }, [ordered]);
 
+  const currentPart = parts.filter((part) => part.change)[current];
+
   const pane = (side: 'left' | 'right', rows: Row[]): ReactNode =>
     rows.map((row, index) => {
       if (row.kind === 'gap')
@@ -351,6 +349,31 @@ export function BranchDiffWindow({
           </button>
           <button aria-pressed={collapse} onClick={() => setCollapse(!collapse)}>
             Collapse Unchanged Fragments
+          </button>
+          {diff && currentPart && (
+            <DiffActions
+              key={`hunk:${diff.path}:${diff.fingerprint}:${current}`}
+              diff={diff}
+              changeIds={currentPart.left.concat(currentPart.right).map((line) => line.id)}
+              label="Revert current difference…"
+              onReverted={() => setDiffs(new Map())}
+            />
+          )}
+          {diff && (
+            <DiffActions
+              key={`${diff.path}:${diff.fingerprint}`}
+              diff={diff}
+              onEdit={onClose}
+              onReverted={() => setDiffs(new Map())}
+            />
+          )}
+          <button
+            onClick={() => {
+              setError('');
+              setDiffs(new Map());
+            }}
+          >
+            Refresh diff
           </button>
           <span className="spacer" />
           <span className="muted">

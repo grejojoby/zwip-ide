@@ -611,7 +611,29 @@ impl Core {
                         .git_remote
                         .snapshot(&workspace.root, method == "git.refreshRemote");
                 }
+                // Hold document ownership through the disk mutation so a synchronized edit
+                // cannot arrive between the dirty check and the revert.
+                let documents = if method == "git.revertDiff" {
+                    let docs = self.documents.lock().map_err(|e| e.to_string())?;
+                    let snapshot = git::status(&workspace.root)?;
+                    let root = snapshot["root"].as_str().ok_or("Missing repository root")?;
+                    let path = PathBuf::from(root).join(string(&params, "path")?);
+                    if docs
+                        .open
+                        .values()
+                        .any(|doc| std::path::Path::new(&doc.path) == path && doc.dirty)
+                    {
+                        return Err(
+                            "Save or close unsaved editor changes before reverting this file"
+                                .into(),
+                        );
+                    }
+                    Some(docs)
+                } else {
+                    None
+                };
                 let result = git::dispatch(&workspace.root, &self.data, method, &params);
+                drop(documents);
                 if result.is_ok()
                     && matches!(
                         method,

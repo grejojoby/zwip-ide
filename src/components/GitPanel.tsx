@@ -2,6 +2,7 @@ import {
   lazy,
   Suspense,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type Dispatch,
@@ -26,6 +27,7 @@ import { Modal } from './Modal';
 import { FileIcon } from './FileIcon';
 import { Icon } from './Icon';
 import { PartialDiff } from './PartialDiff';
+import { DiffActions } from './DiffActions';
 import { GitOperations } from './GitOperations';
 import { PushOverview } from './PushOverview';
 import { EditorContextMenu, type MenuEntry } from './EditorContextMenu';
@@ -71,7 +73,8 @@ export function GitPanel({
     trigger: HTMLElement;
   } | null>(null);
   const [snapshot, setSnapshot] = useState<GitSnapshot | null>(null);
-  useEffect(() => setMenu(null), [generation, revision, snapshot?.fingerprint]);
+  useLayoutEffect(() => setMenu(null), [generation, revision, snapshot?.fingerprint]);
+  const [revertPreview, setRevertPreview] = useState<GitDiff | null>(null);
   const [diffPath, setDiffPath] = useState<string>();
   const [push, setPush] = useState<PushPlan | null>(null);
   const [merge, setMerge] = useState<MergeSession | null>(null);
@@ -407,6 +410,13 @@ export function GitPanel({
     const entries: MenuEntry[] = [];
     if (!directory) {
       entries.push({ label: 'Show diff', disabled: busy, run: () => void showDiff(path) });
+      entries.push({
+        label: 'Revert changes…',
+        disabled: busy || conflicted,
+        run: () => {
+          void api.gitDiff(path).then(setRevertPreview).catch(report);
+        },
+      });
       if (conflicted)
         entries.push({
           label: 'Resolve conflicts…',
@@ -655,6 +665,21 @@ export function GitPanel({
       {menu && (
         <EditorContextMenu x={menu.x} y={menu.y} entries={contextEntries()} onClose={closeMenu} />
       )}
+      {revertPreview && (
+        <Modal title={`Revert ${revertPreview.path}`} onClose={() => setRevertPreview(null)}>
+          <div className="modal-body">
+            <p>Review the file diff or revert its changes.</p>
+            <DiffActions
+              diff={revertPreview}
+              onEdit={() => setRevertPreview(null)}
+              onReverted={() => {
+                setRevertPreview(null);
+                void refresh();
+              }}
+            />
+          </div>
+        </Modal>
+      )}
       {newList && (
         <Modal title="New changelist" onClose={() => setNewList(false)}>
           <form
@@ -725,6 +750,11 @@ export function GitPanel({
                   selected={selected.get(commit[preview].path)?.changes ?? null}
                   onSelect={() => {}}
                   readOnly
+                  onEdit={() => setCommit(null)}
+                  onReverted={() => {
+                    setCommit(null);
+                    void refresh();
+                  }}
                 />
               )}
             </div>
@@ -767,7 +797,7 @@ export function GitPanel({
             </strong>
             <span>{push.upstream}</span>
           </div>
-          <PushOverview plan={push} />
+          <PushOverview plan={push} onEdit={() => setPush(null)} />
           {error && (
             <p className="inline-notice error-message" role="alert">
               {error}

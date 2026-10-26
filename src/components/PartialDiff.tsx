@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { DiffLine, GitDiff } from '../contracts';
 import { PatchView } from './PatchView';
+import { DiffActions } from './DiffActions';
 interface SideRow {
   left?: DiffLine;
   right?: DiffLine;
@@ -31,11 +32,15 @@ export function PartialDiff({
   selected,
   onSelect,
   readOnly = false,
+  onReverted,
+  onEdit,
 }: {
   diff: GitDiff;
   selected: Set<string> | null;
   onSelect(ids: Set<string>): void;
   readOnly?: boolean;
+  onReverted?(): void | Promise<void>;
+  onEdit?(): void;
 }) {
   const [mode, setMode] = useState<'unified' | 'side'>('unified');
   const changes = diff.hunks.flatMap((hunk) =>
@@ -54,6 +59,12 @@ export function PartialDiff({
       <div className="diff-title">
         <strong>{diff.path}</strong>
         <div className="spacer" />
+        <DiffActions
+          key={`${diff.path}:${diff.fingerprint}`}
+          diff={diff}
+          onReverted={onReverted}
+          onEdit={onEdit}
+        />
         <button aria-pressed={mode === 'unified'} onClick={() => setMode('unified')}>
           Unified
         </button>
@@ -106,6 +117,13 @@ export function PartialDiff({
                   <code>
                     @@ −{hunk.oldStart} +{hunk.newStart} @@
                   </code>
+                  <DiffActions
+                    key={`${diff.path}:${diff.fingerprint}:${hunk.id}`}
+                    diff={diff}
+                    changeIds={ids}
+                    label={`Revert hunk at line ${hunk.newStart}…`}
+                    onReverted={onReverted}
+                  />
                 </div>
                 {mode === 'side'
                   ? sideRows(hunk.lines).map((row, index) => (

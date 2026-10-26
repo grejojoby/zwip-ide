@@ -1,11 +1,14 @@
-import { useState } from 'react';
-import type { PushPlan } from '../contracts';
+import { useEffect, useState } from 'react';
+import { request } from '../api';
+import type { GitDiff, PushPlan } from '../contracts';
 import { changeTree } from '../model/change-tree';
 import { FileIcon } from './FileIcon';
 import { Icon } from './Icon';
 import { PatchView } from './PatchView';
+import { PartialDiff } from './PartialDiff';
+import { asError } from '../model/document-session';
 
-export function PushOverview({ plan }: { plan: PushPlan }) {
+export function PushOverview({ plan, onEdit }: { plan: PushPlan; onEdit?(): void }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(new Set<string>());
   const rows = changeTree(
@@ -79,7 +82,7 @@ export function PushOverview({ plan }: { plan: PushPlan }) {
               <span>{selected}</span>
             </h3>
             {Object.hasOwn(plan.filePatches, selected) ? (
-              <PatchView key={selected} patch={plan.filePatches[selected]} />
+              <OutgoingDiff key={selected} path={selected} plan={plan} onEdit={onEdit} />
             ) : (
               <p role="alert" className="empty-note">
                 Preview unavailable. Close and reopen the push overview.
@@ -91,5 +94,52 @@ export function PushOverview({ plan }: { plan: PushPlan }) {
         )}
       </div>
     </div>
+  );
+}
+
+function OutgoingDiff({ path, plan, onEdit }: { path: string; plan: PushPlan; onEdit?(): void }) {
+  const [diff, setDiff] = useState<GitDiff | null>(null);
+  const [error, setError] = useState('');
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    let active = true;
+    request<GitDiff>('git.compareFile', {
+      branch: plan.base ?? plan.upstream,
+      revision: plan.head ?? 'HEAD',
+      path,
+    })
+      .then((result) => {
+        if (active && result.path) setDiff(result);
+      })
+      .catch((e) => {
+        if (active) setError(asError(e).message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [path, plan, revision]);
+  return (
+    <>
+      {error && (
+        <p role="alert" className="error-message">
+          {error}
+        </p>
+      )}
+      {diff ? (
+        <PartialDiff
+          diff={diff}
+          selected={null}
+          onSelect={() => {}}
+          readOnly
+          onEdit={onEdit}
+          onReverted={() => {
+            setDiff(null);
+            setRevision((value) => value + 1);
+          }}
+        />
+      ) : (
+        <PatchView patch={plan.filePatches[path]} />
+      )}
+    </>
   );
 }

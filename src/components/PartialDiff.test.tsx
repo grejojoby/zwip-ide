@@ -82,3 +82,13 @@ describe('side by side diff', () => {
     expect([...select.mock.calls[0][0]]).toEqual(['a1']);
   });
 });
+
+describe('diff editing actions', () => {
+  it('offers file and hunk revert in both layouts', () => {
+    render(<PartialDiff diff={diff} selected={new Set()} onSelect={() => {}} />);
+    expect(screen.getByRole('button', { name: 'Revert file…' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Revert hunk at line 1…' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Side by side' }));
+    expect(screen.getByRole('button', { name: 'Revert hunk at line 1…' })).toBeTruthy();
+  });
+});
