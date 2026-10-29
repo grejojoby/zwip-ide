@@ -521,12 +521,32 @@ impl Core {
                 if query.is_empty() {
                     return Ok(json!([]));
                 }
+                let directory = match params.get("directory") {
+                    None | Some(Value::Null) => "",
+                    Some(Value::String(directory)) => directory.as_str(),
+                    _ => return Err("Search directory must be a path string".into()),
+                };
+                let root = std::path::Path::new(&workspace.root);
+                let scope = root
+                    .join(directory)
+                    .canonicalize()
+                    .map_err(|_| "Search directory does not exist or cannot be read")?;
+                if !scope.starts_with(root) {
+                    return Err("Search directory must be inside the current workspace".into());
+                }
+                if !scope.is_dir() {
+                    return Err("Choose a directory to search, rather than a file".into());
+                }
                 let mut matches = Vec::new();
-                for file in workspace
-                    .files
-                    .iter()
-                    .filter(|file| file.size <= 2 * 1024 * 1024)
-                {
+                for file in workspace.files.iter().filter(|file| {
+                    file.size <= 2 * 1024 * 1024
+                        && std::path::Path::new(&file.path).starts_with(&scope)
+                }) {
+                    // A file may have been replaced by a symlink since the workspace scan.
+                    if !std::fs::canonicalize(&file.path).is_ok_and(|path| path.starts_with(&scope))
+                    {
+                        continue;
+                    }
                     if let Ok(content) = std::fs::read_to_string(&file.path) {
                         for (line, text) in content.lines().enumerate() {
                             if text.contains(query) {

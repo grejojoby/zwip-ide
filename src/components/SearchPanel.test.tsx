@@ -17,6 +17,9 @@ function show(overrides: Partial<Parameters<typeof SearchPanel>[0]> = {}) {
     searching: false,
     error: '',
     workspaceRoot: '/project',
+    directory: '',
+    resultDirectory: '',
+    onDirectoryChange: vi.fn(),
     onQueryChange: vi.fn(),
     onSearch: vi.fn(),
     onOpen: vi.fn(),
@@ -114,4 +117,35 @@ it('shows the result cap and highlights literal punctuation without regex interp
   expect(screen.getByText(/Search stopped at 1,000 matching lines/)).toBeTruthy();
   expect(container.querySelectorAll('mark')).toHaveLength(1000);
   expect(container.querySelector('mark')?.textContent).toBe('a.b');
+});
+
+it('offers directory and module suggestions, includes subdirectories, and clears back to workspace', () => {
+  const onDirectoryChange = vi.fn();
+  show({
+    directory: 'src',
+    resultDirectory: '',
+    directories: ['/project/src', '/project/src/nested'],
+    modules: [{ root: '/project/frontend', language: 'web' }],
+    onDirectoryChange,
+  });
+  const scope = screen.getByRole('combobox', { name: 'Directory / module' });
+  expect((scope as HTMLInputElement).value).toBe('src');
+  const list = document.getElementById(scope.getAttribute('list')!);
+  expect([...list!.querySelectorAll('option')].map((option) => option.value)).toEqual([
+    'frontend',
+    'src',
+    'src/nested',
+  ]);
+  expect(screen.getByText('Includes nested directories · saved files')).toBeTruthy();
+  expect(screen.getByText('Press Enter to update results.')).toBeTruthy();
+  fireEvent.change(scope, { target: { value: 'src/nested' } });
+  expect(onDirectoryChange).toHaveBeenCalledWith('src/nested');
+  fireEvent.click(screen.getByRole('button', { name: 'Search whole workspace' }));
+  expect(onDirectoryChange).toHaveBeenCalledWith('');
+});
+
+it('keeps the submitted scope visible while the next scope is being edited', () => {
+  show({ directory: 'test', resultDirectory: 'src' });
+  expect(screen.getByText('Results in src')).toBeTruthy();
+  expect(screen.getByText('Press Enter to update results.')).toBeTruthy();
 });

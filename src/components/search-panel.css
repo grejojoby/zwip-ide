@@ -183,3 +183,28 @@
   max-width: 65ch;
   overflow-wrap: anywhere;
 }
+
+.find-directory-scope {
+  display: flex;
+  flex: 1 0 100%;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.find-directory-scope label {
+  display: flex;
+  align-items: center;
+  flex: 0 1 560px;
+  min-width: 0;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.find-directory-scope label span {
+  flex-shrink: 0;
+}
+.find-directory-scope input {
+  flex: 1;
+  min-width: 100px;
+}

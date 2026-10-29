@@ -270,7 +270,9 @@ fn fetch_then_fast_forward_pull_revalidates_updated_tracking_refs() {
     assert!(core
         .request("git.pull", json!({"fingerprint":before["fingerprint"]}))
         .is_err());
-    action(&core, "git.pull", json!({}));
+    let result = action(&core, "git.pull", json!({}));
+    assert_eq!(result["update"]["fileCount"], 1);
+    assert_eq!(result["update"]["commitCount"], 1);
     assert_eq!(
         fs::read_to_string(root.path().join("file.txt")).unwrap(),
         "upstream\n"
@@ -402,7 +404,10 @@ fn branch_popup_actions_cover_remote_checkout_compare_update_push_rename_and_del
     git(other.path(), &["push", "origin", "feature"]);
     git(root.path(), &["branch", "feature", "origin/feature"]);
     git(root.path(), &["branch", "-u", "origin/feature", "feature"]);
-    action(&core, "git.updateBranch", json!({"branch":"feature"}));
+    let result = action(&core, "git.updateBranch", json!({"branch":"feature"}));
+    assert_eq!(result["update"]["branch"], "feature");
+    assert_eq!(result["update"]["fileCount"], 1);
+    assert_eq!(result["update"]["commitCount"], 1);
     assert!(git(root.path(), &["log", "-1", "--format=%s", "feature"]).starts_with("remote work"));
     let status = core.request("git.status", json!({})).unwrap();
     assert!(core
@@ -488,4 +493,106 @@ fn branches_report_incoming_and_diverged_upstreams_without_marking_untracked_bra
         .find(|b| b["name"] == "main")
         .unwrap()["behind"]
         .is_null());
+}
+
+#[test]
+fn update_project_merges_or_rebases_and_reports_only_incoming_commits() {
+    for strategy in ["merge", "rebase"] {
+        let (root, _data, core) = fixture();
+        let remote = tempfile::tempdir().unwrap();
+        git(remote.path(), &["init", "--bare", "-b", "main"]);
+        git(
+            root.path(),
+            &["remote", "add", "origin", remote.path().to_str().unwrap()],
+        );
+        git(root.path(), &["push", "-u", "origin", "main"]);
+        let writer = tempfile::tempdir().unwrap();
+        git(
+            writer.path(),
+            &["clone", remote.path().to_str().unwrap(), "."],
+        );
+        git(writer.path(), &["config", "user.name", "Writer"]);
+        git(
+            writer.path(),
+            &["config", "user.email", "writer@example.test"],
+        );
+        git(writer.path(), &["config", "commit.gpgsign", "false"]);
+        fs::write(writer.path().join("incoming.txt"), "incoming\n").unwrap();
+        git(writer.path(), &["add", "."]);
+        git(writer.path(), &["commit", "-m", "incoming work"]);
+        git(writer.path(), &["push"]);
+        fs::write(root.path().join("local.txt"), "local\n").unwrap();
+        git(root.path(), &["add", "."]);
+        git(root.path(), &["commit", "-m", "local work"]);
+        // Explicit Update Project choices override a user's fast-forward-only pull default.
+        git(root.path(), &["config", "pull.ff", "only"]);
+        let before = git(root.path(), &["rev-parse", "HEAD"]).trim().to_owned();
+        let result = action(&core, "git.pull", json!({"strategy":strategy}));
+        assert_eq!(result["update"]["branch"], "main");
+        assert_eq!(result["update"]["before"], before);
+        assert_eq!(result["update"]["fileCount"], 1);
+        assert_eq!(result["update"]["commitCount"], 1);
+        assert_eq!(result["update"]["commits"][0]["subject"], "incoming work");
+        assert!(root.path().join("local.txt").exists());
+        assert!(root.path().join("incoming.txt").exists());
+        let parents = git(root.path(), &["rev-list", "--parents", "-1", "HEAD"]);
+        assert_eq!(
+            parents.split_whitespace().count(),
+            if strategy == "merge" { 3 } else { 2 }
+        );
+        let unchanged = action(&core, "git.pull", json!({"strategy":strategy}));
+        assert_eq!(unchanged["update"]["commitCount"], 0);
+        assert_eq!(unchanged["update"]["fileCount"], 0);
+    }
+}
+
+#[test]
+fn update_project_rejects_unknown_strategies_before_changing_repository() {
+    let (root, _data, core) = fixture();
+    let before = git(root.path(), &["rev-parse", "HEAD"]);
+    let fingerprint = core.request("git.status", json!({})).unwrap()["fingerprint"].clone();
+    let error = core
+        .request(
+            "git.pull",
+            json!({"fingerprint":fingerprint,"strategy":"invalid"}),
+        )
+        .unwrap_err();
+    assert!(error.contains("strategy"), "{error}");
+    assert_eq!(git(root.path(), &["rev-parse", "HEAD"]), before);
+}
+
+#[test]
+fn update_project_conflicts_remain_resolvable_and_never_report_success() {
+    for strategy in ["merge", "rebase"] {
+        let (root, _data, core) = fixture();
+        let remote = tempfile::tempdir().unwrap();
+        git(remote.path(), &["init", "--bare", "-b", "main"]);
+        git(
+            root.path(),
+            &["remote", "add", "origin", remote.path().to_str().unwrap()],
+        );
+        git(root.path(), &["push", "-u", "origin", "main"]);
+        // Publish one side, then return the local branch to the common ancestor.
+        fs::write(root.path().join("file.txt"), "remote version\n").unwrap();
+        git(root.path(), &["commit", "-am", "incoming conflict"]);
+        git(root.path(), &["push"]);
+        git(root.path(), &["reset", "--hard", "HEAD^"]);
+        fs::write(root.path().join("file.txt"), "local version\n").unwrap();
+        git(root.path(), &["commit", "-am", "local conflict"]);
+        let snapshot = core.request("git.status", json!({})).unwrap();
+        assert!(core
+            .request(
+                "git.pull",
+                json!({"fingerprint":snapshot["fingerprint"],"strategy":strategy})
+            )
+            .is_err());
+        let state = core.request("git.operationState", json!({})).unwrap();
+        assert_eq!(state["operation"], strategy);
+        assert_eq!(state["conflicts"], json!(["file.txt"]));
+        action(&core, "git.abort", json!({}));
+        assert_eq!(
+            fs::read_to_string(root.path().join("file.txt")).unwrap(),
+            "local version\n"
+        );
+    }
 }

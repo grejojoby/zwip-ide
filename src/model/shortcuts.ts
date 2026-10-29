@@ -16,6 +16,8 @@ export const shortcutActions = {
   scratch: 'New scratch file',
   breakpoint: 'Toggle breakpoint',
   branches: 'Git branches',
+  push: 'Review and push changes',
+  updateProject: 'Update Project',
 } as const;
 export type ShortcutAction = keyof typeof shortcutActions;
 export type Shortcuts = Record<ShortcutAction, string>;
@@ -37,6 +39,8 @@ export const defaultShortcuts: Shortcuts = {
   scratch: 'Mod-Shift-n',
   breakpoint: 'Mod-F8',
   branches: 'Mod-Shift-b',
+  push: 'Mod-Shift-k',
+  updateProject: 'Mod-t',
 };
 const modifierOrder = ['Mod', 'Ctrl', 'Alt', 'Shift'];
 const namedKeys = [
@@ -70,6 +74,8 @@ export const globalShortcutActions: ShortcutAction[] = [
   'back',
   'forward',
   'branches',
+  'push',
+  'updateProject',
   'scratch',
 ];
 export const isDoubleTap = (value: string) => doubleTap.test(value);

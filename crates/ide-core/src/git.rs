@@ -2096,6 +2096,62 @@ fn revert_diff(root: &str, params: &Value) -> Result<Value, String> {
     status(&root)
 }
 
+/// Capture committed changes, never infer update counts from localized Git output.
+fn updated_branch(
+    root: &str,
+    branch: &str,
+    before: &str,
+    incoming: &str,
+    mut result: Value,
+) -> Result<Value, String> {
+    let after = resolve_commit(root, branch)?;
+    let range = format!("{before}..{incoming}");
+    let count = git(root, &["rev-list", "--count", &range, "--"])?;
+    let commits = git(
+        root,
+        &[
+            "log",
+            "--max-count=500",
+            "--format=%H%x00%s%x00%an%x00",
+            &range,
+            "--",
+        ],
+    )?;
+    let fields: Vec<_> = commits.split('\0').collect();
+    let commits: Vec<_> = fields
+        .chunks(3)
+        .filter(|row| row.len() == 3)
+        .map(|row| json!({"id":row[0].trim(),"subject":row[1],"author":row[2]}))
+        .collect();
+    let files = git(root, &["diff", "--name-only", "-z", before, &after, "--"])?;
+    result["update"] = json!({
+        "branch":branch,"before":before,"after":after,
+        "fileCount":files.split('\0').filter(|path| !path.is_empty()).count(),
+        "commitCount":count.trim().parse::<u64>().map_err(|e| e.to_string())?,
+        "commits":commits,
+    });
+    Ok(result)
+}
+fn pull_current(root: &str, strategy: &str) -> Result<Value, String> {
+    let flags: &[&str] = match strategy {
+        "merge" => &["pull", "--no-rebase", "--ff", "--no-edit"],
+        // Put --ff before --rebase to override pull.ff=only for an explicit rebase.
+        "rebase" => &["pull", "--ff", "--rebase"],
+        "ff-only" => &["pull", "--ff-only"],
+        _ => return Err("Unknown update strategy".into()),
+    };
+    if operation(root) != "none" {
+        return Err("Finish the current integration operation first".into());
+    }
+    let branch = current_branch(root)?;
+    upstream(root, &branch)
+        .ok_or("Current branch has no remote upstream; configure tracking before updating")?;
+    let before = resolve_commit(root, "HEAD")?;
+    let result = action(root, flags, false)?;
+    let incoming = resolve_commit(root, "FETCH_HEAD")?;
+    updated_branch(root, &branch, &before, &incoming, result)
+}
+
 fn daily_action(root: &str, method: &str, params: &Value) -> Result<Value, String> {
     let root = reviewed_root(root, params)?;
     match method {
@@ -2142,14 +2198,17 @@ fn daily_action(root: &str, method: &str, params: &Value) -> Result<Value, Strin
             let (remote, name) = upstream(&root, branch)
                 .ok_or_else(|| format!("{branch} has no upstream branch to update from"))?;
             if branch == current_branch(&root).unwrap_or_default() {
-                action(&root, &["pull", "--ff-only"], false)
+                pull_current(&root, "ff-only")
             } else {
+                let before = resolve_commit(&root, branch)?;
                 // Without a leading '+', Git only accepts a fast-forward of the local branch.
-                action(
+                let result = action(
                     &root,
                     &["fetch", "--", &remote, &format!("{name}:{branch}")],
                     false,
-                )
+                )?;
+                let incoming = resolve_commit(&root, branch)?;
+                updated_branch(&root, branch, &before, &incoming, result)
             }
         }
         "git.pushBranch" => {
@@ -2192,7 +2251,7 @@ fn daily_action(root: &str, method: &str, params: &Value) -> Result<Value, Strin
             }
             action(&root, &["fetch", "--", remote], false)
         }
-        "git.pull" => action(&root, &["pull", "--ff-only"], false),
+        "git.pull" => pull_current(&root, params["strategy"].as_str().unwrap_or("ff-only")),
         "git.merge" | "git.rebase" | "git.cherryPick" => {
             if operation(&root) != "none" {
                 return Err("Finish the current integration operation first".into());

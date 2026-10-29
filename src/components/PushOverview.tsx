@@ -9,7 +9,7 @@ import { PartialDiff } from './PartialDiff';
 import { asError } from '../model/document-session';
 
 export function PushOverview({ plan, onEdit }: { plan: PushPlan; onEdit?(): void }) {
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(plan.files[0] ?? null);
   const [collapsed, setCollapsed] = useState(new Set<string>());
   const rows = changeTree(
     plan.files.map((path) => ({ path })),
@@ -18,10 +18,23 @@ export function PushOverview({ plan, onEdit }: { plan: PushPlan; onEdit?(): void
   return (
     <div className="push-content">
       <aside className="push-commits" aria-label="Outgoing commits">
-        <h3>{plan.commits.length} outgoing commits</h3>
+        <div className="push-branch-route">
+          <Icon name="branch" />
+          <strong>{plan.branch}</strong>
+          <span aria-hidden="true">→</span>
+          <strong>
+            {plan.remote} :{' '}
+            {plan.upstream.startsWith(`${plan.remote}/`)
+              ? plan.upstream.slice(plan.remote.length + 1)
+              : plan.upstream}
+          </strong>
+        </div>
+        <h3>
+          {plan.commits.length} outgoing {plan.commits.length === 1 ? 'commit' : 'commits'}
+        </h3>
         {plan.commits.map((commit) => (
           <div key={commit.id} className="push-commit">
-            <strong>{commit.subject}</strong>
+            <strong title={commit.subject}>{commit.subject}</strong>
             <span>
               <code>{commit.id.slice(0, 8)}</code> · {commit.author}
             </span>
@@ -31,7 +44,10 @@ export function PushOverview({ plan, onEdit }: { plan: PushPlan; onEdit?(): void
       </aside>
       <div className="push-review">
         <section className="push-files-card" aria-label="Changed files">
-          <h3>{plan.files.length} changed files</h3>
+          <h3>
+            <Icon name="folder" />
+            Changed files <span className="muted">{plan.files.length}</span>
+          </h3>
           <div className="push-file-tree">
             {rows.map((row) => {
               const directory = row.kind === 'directory';

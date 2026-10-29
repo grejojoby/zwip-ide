@@ -179,3 +179,24 @@ describe('file context actions', () => {
     expect(onAction).toHaveBeenCalledWith('file', '/project/src', true);
   });
 });
+
+it('offers Find in folder for directories using pointer and keyboard menus', () => {
+  const onAction = vi.fn();
+  render(
+    <ProjectTree
+      root="/project"
+      files={files}
+      active={files[0].path}
+      onOpen={vi.fn()}
+      onAction={onAction}
+    />,
+  );
+  fireEvent.contextMenu(screen.getByRole('treeitem', { name: 'src' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Find in folder…' }));
+  expect(onAction).toHaveBeenLastCalledWith('search', '/project/src', true);
+  fireEvent.keyDown(screen.getByRole('treeitem', { name: 'deep' }), { key: 'F10', shiftKey: true });
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Find in folder…' }));
+  expect(onAction).toHaveBeenLastCalledWith('search', '/project/src/deep', true);
+  fireEvent.contextMenu(screen.getByRole('treeitem', { name: 'first.ts' }));
+  expect(screen.queryByRole('menuitem', { name: 'Find in folder…' })).toBeNull();
+});

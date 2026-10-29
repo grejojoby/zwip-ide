@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { request } from '../api';
-import type { GitBranch as Branch, GitRemoteStatus, GitSnapshot } from '../contracts';
+import type { GitMutation, GitRemoteStatus, GitSnapshot } from '../contracts';
 import { asError } from '../model/document-session';
 import { Modal } from './Modal';
+import { branchUpdateNotice, useGitActivity } from './GitActivity';
 import { IncomingChanges, incomingBranches } from './IncomingChanges';
 interface Commit {
   id: string;
@@ -28,35 +29,34 @@ interface Operation {
   fingerprint: string;
   conflicts: string[];
 }
-interface GitMutation {
-  snapshot: GitSnapshot;
-  output: string;
-  conflicts: string[];
-}
-type Dialog = 'branches' | 'history' | 'stash' | 'blame' | null;
+type Dialog = 'history' | 'stash' | 'blame' | null;
 export function GitOperations({
   snapshot,
   path,
   onUpdate,
   remoteStatus,
+  onOpenBranches,
 }: {
   snapshot: GitSnapshot;
   remoteStatus?: GitRemoteStatus;
+  onOpenBranches?(): void;
   path?: string;
   onUpdate(): void;
 }) {
+  const gitActivity = useGitActivity();
   const [operation, setOperation] = useState<Operation | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
-  const [branches, setBranches] = useState<Branch[]>([]);
   const [commits, setCommits] = useState<Commit[]>([]);
   const [stashes, setStashes] = useState<Stash[]>([]);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [selected, setSelected] = useState('');
-  const [branchName, setBranchName] = useState('');
   const [message, setMessage] = useState('');
   const [untracked, setUntracked] = useState(false);
   const [confirm, setConfirm] = useState<'abort' | 'drop' | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [working, setBusy] = useState(false);
+  const busy = working || gitActivity.busy;
+  const locked = useRef(false);
+  const [pending, setPending] = useState('');
   const [error, setError] = useState('');
   const [output, setOutput] = useState('');
   useEffect(() => {
@@ -72,17 +72,12 @@ export function GitOperations({
       active = false;
     };
   }, [snapshot.fingerprint]);
-  useEffect(() => {
-    if (remoteStatus && dialog === 'branches') setBranches(remoteStatus.branches);
-  }, [remoteStatus, dialog]);
   const incoming = incomingBranches(remoteStatus?.branches);
   async function inspect(next: Dialog) {
     setBusy(true);
     setError('');
     setSelected('');
     try {
-      if (next === 'branches')
-        setBranches((await request<{ branches: Branch[] }>('git.branches')).branches);
       if (next === 'history') setCommits(await request<Commit[]>('git.log', { limit: 100 }));
       if (next === 'stash') setStashes(await request<Stash[]>('git.stashes'));
       if (next === 'blame' && path)
@@ -95,7 +90,30 @@ export function GitOperations({
     }
   }
   async function run(method: string, params: Record<string, unknown> = {}) {
+    if (locked.current || gitActivity.busy) return;
+    locked.current = true;
+    if (method === 'git.fetch' || method === 'git.pull') {
+      const fetching = method === 'git.fetch';
+      const started = gitActivity.run({
+        pending: fetching ? 'Fetching origin…' : `Updating '${snapshot.branch}'…`,
+        success: fetching ? 'Fetch from origin completed.' : branchUpdateNotice,
+        failure: fetching ? 'Fetch from origin failed.' : `Could not update '${snapshot.branch}'.`,
+        task: () =>
+          request<GitMutation>(method, { fingerprint: snapshot.fingerprint, ...params }).finally(
+            () => {
+              locked.current = false;
+            },
+          ),
+        onSuccess: onUpdate,
+      });
+      if (started) {
+        setDialog(null);
+        setConfirm(null);
+      } else locked.current = false;
+      return;
+    }
     setBusy(true);
+    setPending('Running Git operation…');
     setError('');
     setOutput('');
     try {
@@ -109,25 +127,48 @@ export function GitOperations({
       onUpdate();
     } catch (e) {
       setError(asError(e).message);
+      onUpdate();
     } finally {
+      locked.current = false;
       setBusy(false);
     }
   }
   const activeOperation = operation && operation.operation !== 'none';
+  const fetching = remoteStatus?.fetch.state === 'fetching';
+  const current = remoteStatus?.branches.find((branch) => branch.current && !branch.remote);
+  const diverged = (current?.ahead ?? 0) > 0 && (current?.behind ?? 0) > 0;
   return (
     <>
       <div className="git-operations">
-        <button disabled={busy} onClick={() => void inspect('branches')}>
+        <button disabled={busy || !onOpenBranches} onClick={onOpenBranches}>
           Branches…{' '}
           <IncomingChanges
             count={incoming}
             label={`Updates to pull on ${incoming} ${incoming === 1 ? 'branch' : 'branches'}`}
           />
         </button>
-        <button disabled={busy} onClick={() => void run('git.fetch')}>
+        <button
+          disabled={busy || fetching || remoteStatus?.fetch.state === 'unavailable'}
+          title="Check origin for new commits without changing local files"
+          onClick={() => void run('git.fetch')}
+        >
           Fetch
         </button>
-        <button disabled={busy} onClick={() => void run('git.pull')}>
+        <button
+          disabled={
+            busy ||
+            fetching ||
+            !!activeOperation ||
+            diverged ||
+            (remoteStatus !== undefined && !current?.upstream)
+          }
+          title={
+            diverged
+              ? 'Branches have diverged. Open Branches to compare, merge or rebase.'
+              : 'Fast-forward the current branch from its upstream'
+          }
+          onClick={() => void run('git.pull')}
+        >
           Pull (fast-forward)
         </button>
         <button disabled={busy} onClick={() => void inspect('history')}>
@@ -159,6 +200,11 @@ export function GitOperations({
           </>
         )}
       </div>
+      {working && pending && (
+        <p role="status" className="inline-notice">
+          {pending}
+        </p>
+      )}
       {error && !dialog && !confirm && (
         <p role="alert" className="inline-notice error-message">
           {error}
@@ -172,13 +218,11 @@ export function GitOperations({
       {dialog && (
         <Modal
           title={
-            dialog === 'branches'
-              ? 'Git branches'
-              : dialog === 'history'
-                ? 'Git history'
-                : dialog === 'stash'
-                  ? 'Git stashes'
-                  : `Annotate · ${path}`
+            dialog === 'history'
+              ? 'Git history'
+              : dialog === 'stash'
+                ? 'Git stashes'
+                : `Annotate · ${path}`
           }
           onClose={() => {
             if (!busy) setDialog(null);
@@ -186,56 +230,6 @@ export function GitOperations({
           wide={dialog === 'history' || dialog === 'blame'}
         >
           <div className="modal-body">
-            {dialog === 'branches' && (
-              <>
-                <div className="git-selection-list">
-                  {branches.map((branch) => (
-                    <button
-                      key={branch.name}
-                      className={selected === branch.name ? 'selected' : ''}
-                      onClick={() => setSelected(branch.name)}
-                    >
-                      <strong>
-                        {branch.current ? '● ' : ''}
-                        {branch.name}
-                      </strong>
-                      <IncomingChanges
-                        count={branch.behind ?? 0}
-                        label={`${branch.behind} incoming commit${branch.behind === 1 ? '' : 's'} ${branch.remote ? 'compared with local tracking branches' : `from ${branch.upstream}`}`}
-                      />
-                      <span>
-                        {branch.remote ? 'remote' : 'local'} · {branch.subject}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-                <div className="branch-create">
-                  <label className="field-label">
-                    New branch name
-                    <input
-                      value={branchName}
-                      onChange={(e) => setBranchName(e.target.value)}
-                      placeholder="feature/name"
-                    />
-                  </label>
-                  <button
-                    disabled={busy || !branchName.trim()}
-                    onClick={() =>
-                      void run('git.createBranch', {
-                        name: branchName.trim(),
-                        ...(selected ? { startPoint: selected } : {}),
-                      })
-                    }
-                  >
-                    Create and switch
-                  </button>
-                </div>
-                <p className="muted">
-                  New branches start from {selected || snapshot.branch}. Existing branches are
-                  changed only by an explicit action.
-                </p>
-              </>
-            )}
             {dialog === 'history' && (
               <div className="commit-history-list">
                 {commits.map((commit) => (
@@ -316,34 +310,6 @@ export function GitOperations({
             <button disabled={busy} onClick={() => setDialog(null)}>
               Close
             </button>
-            {dialog === 'branches' && (
-              <>
-                <button
-                  disabled={busy || !selected}
-                  onClick={() => void run('git.merge', { ref: selected })}
-                >
-                  Merge into {snapshot.branch}
-                </button>
-                <button
-                  disabled={busy || !selected}
-                  onClick={() => void run('git.rebase', { ref: selected })}
-                >
-                  Rebase onto selected
-                </button>
-                <button
-                  className="primary"
-                  disabled={
-                    busy ||
-                    !selected ||
-                    selected === snapshot.branch ||
-                    branches.some((branch) => branch.name === selected && branch.remote)
-                  }
-                  onClick={() => void run('git.switchBranch', { branch: selected })}
-                >
-                  Switch branch
-                </button>
-              </>
-            )}
             {dialog === 'history' && (
               <button
                 className="primary"

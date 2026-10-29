@@ -1,0 +1,108 @@
+.git-notifications {
+  position: fixed;
+  right: 16px;
+  bottom: 40px;
+  z-index: 1500;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(420px, calc(100vw - 32px));
+  max-height: 50vh;
+  overflow-y: auto;
+  pointer-events: none;
+}
+.git-notification {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--text);
+  pointer-events: auto;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.git-notification strong {
+  font-weight: 600;
+}
+.git-notification p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  white-space: pre-wrap;
+  max-height: 160px;
+  overflow: auto;
+}
+.git-notification button {
+  margin-left: auto;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+.git-notification-icon {
+  color: var(--accent);
+}
+.git-notification-success .git-notification-icon {
+  color: var(--green);
+}
+.git-notification-failed .git-notification-icon {
+  color: var(--red);
+}
+
+.git-notification-content {
+  flex: 1;
+  min-width: 0;
+}
+.git-notification .git-notification-action {
+  display: block;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  margin: 6px 0 0;
+  padding: 0;
+  font-size: 13px;
+}
+.git-notification-action:hover {
+  text-decoration: underline;
+}
+.git-notification-success .git-notification-icon {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--surface-raised);
+  font-style: normal;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.updated-commits {
+  padding: 8px 20px 20px;
+  max-height: 55vh;
+  overflow: auto;
+}
+.updated-commits p {
+  color: var(--muted);
+  font-size: 12px;
+}
+.updated-commits ol {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+}
+.updated-commits li {
+  display: grid;
+  gap: 6px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.updated-commits strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+.updated-commits li span {
+  color: var(--muted);
+  font-size: 11px;
+}

@@ -22,6 +22,150 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-10-28-update-project-and-push-preview',
+    version: '0.1.0',
+    date: '2026-10-28',
+    title: 'Update projects with Cmd+T',
+    summary: 'Choose merge or rebase, see incoming commits, and review pushes in a clearer layout.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Update Project',
+        description:
+          'Cmd+T updates the current branch from its tracked remote, normally origin. Choose merge or rebase and optionally remember the choice. Open Update Project from Find Action to change the saved options. The shortcut is configurable in Settings. Conflicts and failed updates stay visible for review.',
+      },
+      {
+        type: 'improved',
+        title: 'Branch update notifications',
+        description:
+          'Completed pulls and branch updates show file and incoming commit counts with a View Commits action. Already-current branches report no new changes. Success notices dismiss automatically and pause while hovered or focused; errors remain until dismissed.',
+      },
+      {
+        type: 'improved',
+        title: 'Push Commits dialog',
+        description:
+          'A branch-to-remote header and outgoing commit list sit beside the changed-file tree and code preview. Push still rechecks the reviewed destination and commits before sending them.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-27-background-git-notifications',
+    version: '0.1.0',
+    date: '2026-10-27',
+    title: 'Git updates stay out of your way',
+    summary: 'Pull, fetch, and push continue after their dialogs close.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'Background Git activity',
+        description:
+          'Accepting a branch update or push closes the dialog immediately. Manual fetch also closes the branch menu. A small bottom-right notification shows progress and the completed branch operation; success messages dismiss automatically. Failures remain visible until dismissed, and reopening a review uses fresh repository state. Git mutations remain guarded while a remote action is running.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-26-push-review-shortcut',
+    version: '0.1.0',
+    date: '2026-10-26',
+    title: 'Review and push with a shortcut',
+    summary: 'Press Cmd+Shift+K to review outgoing changes before pushing.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Push review shortcut',
+        description:
+          'Cmd+Shift+K opens the push review from anywhere in the workspace, including when Git is closed. The first outgoing file diff opens automatically. Confirm with Push to send the reviewed commits; Cancel sends nothing. The shortcut can be changed in Settings and is available in Find Action.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-26-branch-menu-keyboard-focus',
+    version: '0.1.0',
+    date: '2026-10-26',
+    title: 'Navigate branches immediately',
+    summary: 'The Git branch menu opens with the branch list focused.',
+    changes: [
+      {
+        type: 'fixed',
+        title: 'Arrow navigation without activating search',
+        description:
+          'Use Up and Down as soon as the branch menu opens, and Enter or Right to open branch actions. Returning from actions restores focus to the list. Type to start filtering, or select the search field explicitly.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-26-find-folder-context-menu',
+    version: '0.1.0',
+    date: '2026-10-26',
+    title: 'Find from a project folder',
+    summary: 'Right-click a directory to search inside it.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Find in folder',
+        description:
+          'Directory context menus open Find with that folder as the scope and focus the search box. The same action is available through the keyboard context menu. Searches include nested directories and keep the existing ignored/excluded-folder rules.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-26-git-branch-workflows',
+    version: '0.1.0',
+    date: '2026-10-26',
+    title: 'Smoother Git branch workflows',
+    summary: 'Manage branches and remote updates from one consistent menu.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'Branch status and sync actions',
+        description:
+          'The branch toolbar and Git panel open the same searchable menu, with incoming and outgoing commits, upstream status, fast-forward pull, publish, and fetch retry actions. Diverged branches explain how to compare and integrate changes.',
+      },
+      {
+        type: 'fixed',
+        title: 'Reliable review and recovery',
+        description:
+          'Failed actions preserve their forms, stale repository state can be refreshed explicitly, repeated submissions are blocked, background polling keeps confirmation preconditions intact, and in-flight fetch status completes even when the window is in the background. Remote checkout reuses an existing local tracking branch.',
+      },
+      {
+        type: 'improved',
+        title: 'Keyboard and smaller-window support',
+        description:
+          'Branch actions manage keyboard focus, stay inside the viewport, wrap long names, and appear inline in narrower windows. Unfinished integrations point to the Git panel for resolution.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-26-directory-module-search-scope',
+    version: '0.1.0',
+    date: '2026-10-26',
+    title: 'Search a directory or module',
+    summary: 'Limit Find to a project folder and its nested directories.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Directory and module scope',
+        description:
+          'Choose a suggested directory or module root, or enter a workspace-relative directory path. Find searches that folder and its descendants, preserving ignored and excluded folders and the saved-file search limits. Clear the scope to search the whole workspace. Results show the scope used for the submitted search, and invalid or outside-workspace directories report an error.',
+      },
+    ],
+  },
+  {
+    id: '2026-10-26-project-header-move-button',
+    version: '0.1.0',
+    date: '2026-10-26',
+    title: 'Simpler Project toolbar',
+    summary: 'Move Project by dragging its sidebar tab.',
+    changes: [
+      {
+        type: 'removed',
+        title: 'Redundant Project move button',
+        description:
+          'Removed the three-dot move button from the Project panel header. Drag its sidebar tab to move it; keyboard and sidebar arrangement controls remain available.',
+      },
+    ],
+  },
+  {
     id: '2026-10-26-grouped-find-results',
     version: '0.1.0',
     date: '2026-10-26',

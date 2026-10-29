@@ -1,4 +1,4 @@
-import { browser, $ } from '@wdio/globals';
+import { browser, $, $$ } from '@wdio/globals';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
@@ -193,16 +193,28 @@ describe('native Git daily workflows', () => {
       'selected.txt',
     );
     await panel.$('button=Push…').click();
-    const push = $('dialog[aria-label="Push overview"]');
+    const push = $('dialog[aria-label="Push Commits"]');
     await push.waitForDisplayed();
+    await push.$('.push-destination').waitForExist();
     assert.match(await push.$('.push-destination').getText(), /origin\s*\/\s*main/);
     assert.match(await push.$('.push-commits').getText(), /Selected native lines/);
-    const patch = await push.$('.patch-view').getText();
+    const preview = push.$('[aria-label="Code changes"]');
+    await preview.waitForExist();
+    const patch = await preview.getText();
     assert.match(patch, /\+selected change/);
     assert.doesNotMatch(patch, /remaining change|staged in index|staged working copy/);
     await screenshot('git-push-overview');
-    await push.$('button=Push 1 commits').click();
+    await push.$('button=Push 1 commit').click();
     await browser.waitUntil(async () => !(await push.isExisting()), { timeout: 20000 });
+    await browser.waitUntil(
+      async () => {
+        const messages = await Promise.all(
+          (await $$('.git-notification-success')).map((item) => item.getText()),
+        );
+        return messages.some((message) => message.includes("Branch 'main' pushed."));
+      },
+      { timeout: 20000 },
+    );
     assert.equal(
       git(remote, 'rev-parse', 'refs/heads/main'),
       git(partialRoot, 'rev-parse', 'HEAD'),
@@ -218,10 +230,11 @@ describe('native Git daily workflows', () => {
     await openRepository(mergeRoot);
     const panel = $('section[aria-label="Git changes"]');
     await panel.$('button=Branches…').click();
-    const branches = $('dialog[aria-label="Git branches"]');
+    const branches = $('dialog[aria-label^="Git Branches in"]');
     await branches.waitForDisplayed();
-    await branches.$('button*=incoming').click();
-    await branches.$('button=Merge into main').click();
+    await branches.$('button[role="option"]*=incoming').click();
+    await branches.$("button[role=\"menuitem\"]=Merge 'incoming' into 'main'").click();
+    await branches.$('button=Merge').click();
     await browser.waitUntil(async () => !(await branches.isExisting()), { timeout: 20000 });
     await panel.$('button=Resolve').waitForEnabled({ timeout: 20000 });
     assert.equal(git(mergeRoot, 'diff', '--name-only', '--diff-filter=U').trim(), 'conflict.txt');

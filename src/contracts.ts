@@ -220,6 +220,20 @@ export interface GitRemoteStatus {
     version: number;
   };
 }
+export interface GitUpdateSummary {
+  branch: string;
+  before: string;
+  after: string;
+  fileCount: number;
+  commitCount: number;
+  commits: PushCommit[];
+}
+export interface GitMutation {
+  snapshot: GitSnapshot;
+  output: string;
+  conflicts: string[];
+  update?: GitUpdateSummary;
+}
 export interface GitSnapshot {
   root: string;
   branch: string;

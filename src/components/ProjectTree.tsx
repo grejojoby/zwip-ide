@@ -6,6 +6,7 @@ import { Icon } from './Icon';
 import { EditorContextMenu, type MenuEntry } from './EditorContextMenu';
 export type ProjectAction =
   | 'file'
+  | 'search'
   | 'directory'
   | 'rename'
   | 'copy'
@@ -169,6 +170,7 @@ export function ProjectTree({
     const items: MenuEntry[] = [];
     if (onAction) {
       if (!entry.directory) items.push({ label: 'Open', run: () => onOpen(path) }, 'separator');
+      if (entry.directory) items.push(action('Find in folder…', 'search'), 'separator');
       items.push(action('New file…', 'file'), action('New folder…', 'directory'));
       if (!entry.directory)
         items.push(

@@ -814,3 +814,115 @@ fn scratch_files_outside_the_workspace_are_editable_and_saved() {
         )
         .is_err());
 }
+
+#[test]
+fn text_search_scope_includes_descendants_but_not_sibling_prefixes_or_excluded_files() {
+    let root = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    for directory in [
+        "module/nested",
+        "module-other",
+        "module/ignored",
+        "module/excluded",
+    ] {
+        fs::create_dir_all(root.path().join(directory)).unwrap();
+    }
+    fs::write(root.path().join(".gitignore"), "module/ignored/\n").unwrap();
+    for path in [
+        "outside.txt",
+        "module/own.txt",
+        "module/nested/deep.txt",
+        "module-other/other.txt",
+        "module/ignored/hidden.txt",
+        "module/excluded/hidden.txt",
+    ] {
+        fs::write(root.path().join(path), "scope needle\n").unwrap();
+    }
+    let core = Core::new(data.path().to_owned()).unwrap();
+    core.request("workspace.open", json!({"root":root.path()}))
+        .unwrap();
+    core.request(
+        "workspace.setExcluded",
+        json!({"path":"module/excluded","excluded":true}),
+    )
+    .unwrap();
+    let scoped = core
+        .request(
+            "workspace.search",
+            json!({"query":"scope needle","directory":"module"}),
+        )
+        .unwrap();
+    let paths: Vec<_> = scoped
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| {
+            std::path::Path::new(item["path"].as_str().unwrap())
+                .strip_prefix(root.path().canonicalize().unwrap())
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    assert_eq!(paths, ["module/nested/deep.txt", "module/own.txt"]);
+    let absolute = core
+        .request(
+            "workspace.search",
+            json!({"query":"scope needle","directory":root.path().join("module")}),
+        )
+        .unwrap();
+    assert_eq!(scoped, absolute);
+    let all = core
+        .request("workspace.search", json!({"query":"scope needle"}))
+        .unwrap();
+    assert_eq!(all.as_array().unwrap().len(), 4);
+    // Unrelated matches must not consume the cap before the scope is applied.
+    fs::write(
+        root.path().join("module-other/other.txt"),
+        "scope needle\n".repeat(1200),
+    )
+    .unwrap();
+    let scoped = core
+        .request(
+            "workspace.search",
+            json!({"query":"scope needle","directory":"module"}),
+        )
+        .unwrap();
+    assert_eq!(scoped.as_array().unwrap().len(), 2);
+    let all = core
+        .request("workspace.search", json!({"query":"scope needle"}))
+        .unwrap();
+    assert_eq!(all.as_array().unwrap().len(), 1000);
+    #[cfg(unix)]
+    {
+        let outside = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.path().join("external-link")).unwrap();
+        let outside_file = outside.path().join("file.txt");
+        fs::write(&outside_file, "scope needle\n").unwrap();
+        fs::remove_file(root.path().join("module/own.txt")).unwrap();
+        std::os::unix::fs::symlink(&outside_file, root.path().join("module/own.txt")).unwrap();
+        let scoped = core
+            .request(
+                "workspace.search",
+                json!({"query":"scope needle","directory":"module"}),
+            )
+            .unwrap();
+        assert_eq!(scoped.as_array().unwrap().len(), 1);
+        assert!(core
+            .request(
+                "workspace.search",
+                json!({"query":"scope needle","directory":"external-link"})
+            )
+            .is_err());
+    }
+    for directory in ["missing", "module/own.txt", "../", "/"] {
+        assert!(
+            core.request(
+                "workspace.search",
+                json!({"query":"scope needle","directory":directory})
+            )
+            .is_err(),
+            "accepted invalid scope {directory}"
+        );
+    }
+}

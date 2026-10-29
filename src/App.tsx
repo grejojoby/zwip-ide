@@ -44,6 +44,9 @@ const HttpPanel = lazy(() =>
 const TerminalPanel = lazy(() =>
   import('./components/TerminalPanel').then((module) => ({ default: module.TerminalPanel })),
 );
+const PushReviewDialog = lazy(() =>
+  import('./components/PushReviewDialog').then((module) => ({ default: module.PushReviewDialog })),
+);
 const CodeEditor = lazy(() =>
   import('./editor/CodeEditor').then((module) => ({ default: module.CodeEditor })),
 );
@@ -58,6 +61,8 @@ import { useGitRemote } from './model/git-remote';
 import { IntelliJImport } from './components/IntelliJImport';
 import { PartialDiff } from './components/PartialDiff';
 import { DiffActionsContext, revertDiff } from './components/DiffActions';
+import { UpdateProjectDialog } from './components/UpdateProjectDialog';
+import { GitActivityProvider, useGitActivity } from './components/GitActivity';
 import { MarkdownPreview } from './components/MarkdownPreview';
 import { Modal } from './components/Modal';
 import { isMarkdownPath } from './model/markdown';
@@ -141,6 +146,14 @@ const titles: Record<NavigationOperation, string> = {
 };
 
 export function App() {
+  return (
+    <GitActivityProvider>
+      <WorkspaceApp />
+    </GitActivityProvider>
+  );
+}
+function WorkspaceApp() {
+  const gitActivity = useGitActivity();
   const [, redraw] = useState(0);
   const store = useRef<EditorStore | null>(null);
   if (!store.current) store.current = new EditorStore(() => redraw((value) => value + 1));
@@ -485,6 +498,8 @@ export function App() {
   const [markdownPreview, setMarkdownPreview] = useState(false);
   const [showRunImport, setShowRunImport] = useState(false);
   const [showBranches, setShowBranches] = useState(false);
+  const [showPushReview, setShowPushReview] = useState(false);
+  const [updateProject, setUpdateProject] = useState<'shortcut' | 'options' | null>(null);
   const [gitRevision, setGitRevision] = useState(0);
   const [focusPane, setFocusPane] = useState<'main' | 'split'>('main');
   const focusPath = activeSql ? undefined : focusPane === 'split' ? split : active;
@@ -522,11 +537,7 @@ export function App() {
   const [execution, setExecution] = useState<{ path: string; line: number } | null>(null);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [branch, setBranch] = useState('');
-  const { remote: gitRemote, refresh: refreshGitRemote } = useGitRemote(
-    workspace?.root,
-    workspace?.generation,
-    gitRevision,
-  );
+  const { remote: gitRemote } = useGitRemote(workspace?.root, workspace?.generation, gitRevision);
   const branchesWithIncoming = incomingBranches(gitRemote?.branches);
   useEffect(() => {
     if (gitRemote) setBranch(gitRemote.current || 'Detached HEAD');
@@ -565,6 +576,9 @@ export function App() {
   const [navigating, setNavigating] = useState(false);
   const requestId = useRef<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchDirectory, setSearchDirectory] = useState('');
+  const [searchFocusRequest, setSearchFocusRequest] = useState(0);
+  const [resultDirectory, setResultDirectory] = useState('');
   const [matches, setMatches] = useState<SearchMatch[]>([]);
   const [searching, setSearching] = useState(false);
   const [resultQuery, setResultQuery] = useState<string | null>(null);
@@ -812,6 +826,8 @@ export function App() {
       setDiffTabs([]);
       setDiffBases({});
       setActiveDiff(undefined);
+      setShowPushReview(false);
+      setUpdateProject(null);
       setSplit(undefined);
       setFocusPane('main');
       setBatch(null);
@@ -821,6 +837,8 @@ export function App() {
       setRename(false);
       setMatches([]);
       setResultQuery(null);
+      setSearchDirectory('');
+      setResultDirectory('');
       setSearchError('');
       setTool(null);
       setTreeWidth(248);
@@ -988,7 +1006,16 @@ export function App() {
   const fileActions = useRef<FileActionsHandle>(null);
   async function projectFileAction(action: ProjectAction, path: string, directory: boolean) {
     try {
-      if (action === 'copyPath' || action === 'copyRelativePath') {
+      if (action === 'search') {
+        const root = workspaceRef.current?.root;
+        if (!directory || !root || !path.startsWith(`${root}/`)) return;
+        searchId.current += 1;
+        setSearching(false);
+        setSearchError('');
+        setSearchDirectory(path.slice(root.length + 1));
+        setTool('search');
+        setSearchFocusRequest((current) => current + 1);
+      } else if (action === 'copyPath' || action === 'copyRelativePath') {
         await navigator.clipboard.writeText(
           action === 'copyPath' ? path : path.slice(workspaceRef.current!.root.length + 1),
         );
@@ -1546,16 +1573,18 @@ export function App() {
   async function search() {
     if (!searchQuery.trim()) return;
     const query = searchQuery;
+    const directory = searchDirectory;
     const id = ++searchId.current;
     setSearching(true);
     setMatches([]);
     setSearchError('');
     setError('');
     try {
-      const found = await api.search(query);
+      const found = await api.search(query, directory || undefined);
       if (id === searchId.current) {
         setMatches(found);
         setResultQuery(query);
+        setResultDirectory(directory);
       }
     } catch (e) {
       if (id === searchId.current) {
@@ -1704,8 +1733,8 @@ export function App() {
     auxiliaryWidth,
     breakpoints,
   ]);
-  const actionsRef = useRef({ save, goHistory, shortcuts });
-  actionsRef.current = { save, goHistory, shortcuts };
+  const actionsRef = useRef({ save, goHistory, shortcuts, gitBusy: gitActivity.busy });
+  actionsRef.current = { save, goHistory, shortcuts, gitBusy: gitActivity.busy };
   useEffect(() => {
     const tap = doubleTapRecognizer();
     const key = (event: KeyboardEvent) => {
@@ -1735,6 +1764,24 @@ export function App() {
       } else if (matchesShortcut(event, keys.branches)) {
         event.preventDefault();
         if (workspaceRef.current) setShowBranches(true);
+      } else if (matchesShortcut(event, keys.updateProject)) {
+        event.preventDefault();
+        if (
+          workspaceRef.current &&
+          !lifecycleBusy.current &&
+          !actionsRef.current.gitBusy &&
+          !event.repeat
+        )
+          setUpdateProject('shortcut');
+      } else if (matchesShortcut(event, keys.push)) {
+        event.preventDefault();
+        if (
+          workspaceRef.current &&
+          !lifecycleBusy.current &&
+          !actionsRef.current.gitBusy &&
+          !event.repeat
+        )
+          setShowPushReview(true);
       } else if (matchesShortcut(event, keys.search)) {
         event.preventDefault();
         setTool('search');
@@ -1746,9 +1793,35 @@ export function App() {
         actions.goHistory('forward');
       }
     };
+    // Capture Git shortcuts before the editor or webview consumes them.
+    const capturePush = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        document.querySelector('dialog[open]') ||
+        !(
+          matchesKeystroke(event, actionsRef.current.shortcuts.push) ||
+          matchesKeystroke(event, actionsRef.current.shortcuts.updateProject)
+        )
+      )
+        return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (
+        workspaceRef.current &&
+        !lifecycleBusy.current &&
+        !actionsRef.current.gitBusy &&
+        !event.repeat
+      ) {
+        if (matchesKeystroke(event, actionsRef.current.shortcuts.updateProject))
+          setUpdateProject('shortcut');
+        else setShowPushReview(true);
+      }
+    };
+    window.addEventListener('keydown', capturePush, true);
     window.addEventListener('keydown', key);
     window.addEventListener('keyup', key);
     return () => {
+      window.removeEventListener('keydown', capturePush, true);
       window.removeEventListener('keydown', key);
       window.removeEventListener('keyup', key);
     };
@@ -1769,6 +1842,20 @@ export function App() {
       label: 'Rebuild workspace index',
       disabled: !workspace,
       run: () => void refreshProject(true),
+    },
+    {
+      id: 'update-project',
+      label: 'Update Project…',
+      shortcut: shortcutLabel(shortcuts.updateProject),
+      disabled: !workspace || gitActivity.busy,
+      run: () => setUpdateProject('options'),
+    },
+    {
+      id: 'push',
+      label: 'Review and push changes…',
+      shortcut: shortcutLabel(shortcuts.push),
+      disabled: !workspace || gitActivity.busy,
+      run: () => setShowPushReview(true),
     },
     { id: 'open', label: 'Open project…', run: () => void chooseWorkspace() },
     {
@@ -1936,7 +2023,13 @@ export function App() {
           {workspace && (
             <>
               <span className="topbar-divider" />
-              <button className="branch-button" onClick={() => changeAuxiliary('git')}>
+              <button
+                className="branch-button"
+                aria-haspopup="dialog"
+                aria-expanded={showBranches}
+                title={`Git branches (${shortcutLabel(shortcuts.branches)})`}
+                onClick={() => setShowBranches(true)}
+              >
                 <Icon name="branch" />
                 {branch || 'Git'}
                 <IncomingChanges
@@ -2175,12 +2268,14 @@ export function App() {
                     ) : (
                       <div className="spacer" />
                     )}
-                    <SidebarMoveButton
-                      tool={item}
-                      side={side}
-                      onMove={moveTool}
-                      disabled={hydratedWorkspace !== workspace.root}
-                    />
+                    {item !== 'project' && (
+                      <SidebarMoveButton
+                        tool={item}
+                        side={side}
+                        onMove={moveTool}
+                        disabled={hydratedWorkspace !== workspace.root}
+                      />
+                    )}
                     <button
                       className="icon-button"
                       aria-label={`Close ${sidebarLabels[item]} tool`}
@@ -2223,6 +2318,8 @@ export function App() {
                           onBranch={branchChanged}
                           revision={gitRevision}
                           remoteStatus={gitRemote}
+                          onOpenBranches={() => setShowBranches(true)}
+                          onRequestPush={() => setShowPushReview(true)}
                           onOpenDiff={openDiff}
                           onOpenFile={(path) => void openFile(path)}
                           onFileAction={(action, path, directory) =>
@@ -2773,6 +2870,12 @@ export function App() {
                         searching={searching}
                         error={searchError}
                         workspaceRoot={workspace.root}
+                        directory={searchDirectory}
+                        focusRequest={searchFocusRequest}
+                        resultDirectory={resultDirectory}
+                        directories={workspace.directories}
+                        modules={workspace.contexts}
+                        onDirectoryChange={setSearchDirectory}
                         onQueryChange={setSearchQuery}
                         onSearch={() => void search()}
                         onOpen={(match, character) =>
@@ -2981,12 +3084,60 @@ export function App() {
             </div>
           </Modal>
         )}
+        {updateProject && workspace && (
+          <UpdateProjectDialog
+            key={workspace.generation}
+            showOptions={updateProject === 'options'}
+            onClose={() => setUpdateProject(null)}
+            onUpdated={() => {
+              if (
+                workspaceRef.current?.root === workspace.root &&
+                workspaceRef.current?.generation === workspace.generation
+              )
+                setGitRevision((value) => value + 1);
+            }}
+          />
+        )}
+        {showPushReview && workspace && (
+          <Suspense fallback={<p className="empty-note">Opening push review…</p>}>
+            <PushReviewDialog
+              key={workspace.generation}
+              onClose={() => setShowPushReview(false)}
+              onPushed={(message) => {
+                if (
+                  workspaceRef.current?.root !== workspace.root ||
+                  workspaceRef.current?.generation !== workspace.generation
+                )
+                  return;
+                setStatus(message);
+                setGitRevision((value) => value + 1);
+              }}
+            />
+          </Suspense>
+        )}
         {showBranches && workspace && (
           <BranchPopup
             remoteStatus={gitRemote}
-            onFetch={refreshGitRemote}
+            onFetch={async (reviewed) => {
+              await request('git.fetch', { fingerprint: reviewed.fingerprint });
+              if (
+                workspaceRef.current?.root === workspace.root &&
+                workspaceRef.current?.generation === workspace.generation
+              )
+                setGitRevision((value) => value + 1);
+            }}
+            key={workspace.generation}
+            onOpenGit={() => {
+              setShowBranches(false);
+              changeAuxiliary('git');
+            }}
             onClose={() => setShowBranches(false)}
             onChanged={(change) => {
+              if (
+                workspaceRef.current?.root !== workspace.root ||
+                workspaceRef.current?.generation !== workspace.generation
+              )
+                return;
               setBranch(change.branch);
               setGitRevision((value) => value + 1);
               setStatus(

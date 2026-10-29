@@ -1,5 +1,5 @@
-import { Fragment, useMemo, useState } from 'react';
-import type { SearchMatch } from '../contracts';
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
+import type { BuildContext, SearchMatch } from '../contracts';
 import { FileIcon } from './FileIcon';
 import { Icon } from './Icon';
 import './search-panel.css';
@@ -33,6 +33,12 @@ export function SearchPanel({
   searching,
   error,
   workspaceRoot,
+  directory,
+  focusRequest = 0,
+  resultDirectory,
+  directories = [],
+  modules = [],
+  onDirectoryChange,
   onQueryChange,
   onSearch,
   onOpen,
@@ -43,10 +49,36 @@ export function SearchPanel({
   searching: boolean;
   error: string;
   workspaceRoot: string;
+  directory: string;
+  focusRequest?: number;
+  resultDirectory: string;
+  directories?: string[];
+  modules?: Pick<BuildContext, 'root' | 'language'>[];
+  onDirectoryChange(directory: string): void;
   onQueryChange(query: string): void;
   onSearch(): void;
   onOpen(match: SearchMatch, character: number): void;
 }) {
+  const directoryListId = useId();
+  const queryInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (focusRequest) queryInput.current?.focus();
+  }, [focusRequest]);
+  const suggestions = useMemo(() => {
+    const root = workspaceRoot.replace(/\/+$/, '');
+    const relative = (path: string) =>
+      path === root ? '.' : path.startsWith(`${root}/`) ? path.slice(root.length + 1) : null;
+    const paths = new Map<string, string>();
+    for (const path of directories) {
+      const value = relative(path);
+      if (value) paths.set(value, 'Directory');
+    }
+    for (const module of modules) {
+      const value = relative(module.root);
+      if (value) paths.set(value, `${module.language} module`);
+    }
+    return [...paths].sort(([a], [b]) => a.localeCompare(b));
+  }, [workspaceRoot, directories, modules]);
   const groups = useMemo(() => {
     const files = new Map<string, SearchMatch[]>();
     for (const match of matches) {
@@ -62,7 +94,7 @@ export function SearchPanel({
     return path.startsWith(prefix) ? path.slice(prefix.length) : path;
   };
   const count = matches.length.toLocaleString('en-US');
-  const stale = resultQuery !== null && query !== resultQuery;
+  const stale = resultQuery !== null && (query !== resultQuery || directory !== resultDirectory);
   return (
     <section className="search-panel find-panel" aria-label="Find in files" aria-busy={searching}>
       <form
@@ -76,6 +108,7 @@ export function SearchPanel({
           <Icon name="search" />
           <input
             autoFocus
+            ref={queryInput}
             aria-label="Search text in workspace"
             placeholder="Find in files…"
             value={query}
@@ -86,18 +119,48 @@ export function SearchPanel({
         <button className="find-submit" disabled={searching || !query.trim()}>
           {searching ? 'Searching…' : 'Find'}
         </button>
-        <span className="find-scope">Workspace · saved files</span>
+        <div className="find-directory-scope">
+          <label>
+            <span>Directory / module</span>
+            <input
+              aria-label="Directory / module"
+              list={directoryListId}
+              value={directory}
+              placeholder="Whole workspace"
+              onChange={(event) => onDirectoryChange(event.target.value)}
+            />
+          </label>
+          <datalist id={directoryListId}>
+            {suggestions.map(([path, label]) => (
+              <option key={path} value={path} label={label} />
+            ))}
+          </datalist>
+          <button
+            type="button"
+            aria-label="Search whole workspace"
+            disabled={!directory}
+            onClick={() => onDirectoryChange('')}
+          >
+            Whole workspace
+          </button>
+          <span className="find-scope">Includes nested directories · saved files</span>
+        </div>
       </form>
       <div className="find-summary">
         <span role="status">
           {searching
-            ? 'Searching workspace…'
+            ? directory
+              ? 'Searching directory…'
+              : 'Searching workspace…'
             : error
               ? 'Search failed'
               : resultQuery === null
                 ? 'Find in files'
                 : `${matches.length >= 1000 ? 'First ' : ''}${count} matching line${matches.length === 1 ? '' : 's'} in ${groups.length} file${groups.length === 1 ? '' : 's'}`}
         </span>
+        {resultQuery !== null && !searching && !error && (
+          <span className="find-scope">Results in {resultDirectory || 'whole workspace'}</span>
+        )}
         {stale && !searching && <span className="find-stale">Press Enter to update results.</span>}
         <div className="spacer" />
         <button
@@ -222,7 +285,7 @@ export function SearchPanel({
               </strong>
               <p>
                 {resultQuery === null ? (
-                  'Enter text above and press Enter to search saved project files.'
+                  'Enter text above, optionally choose a directory or module, and press Enter to search saved files.'
                 ) : (
                   <>
                     No results for <q>{resultQuery}</q>. Try a different term or check

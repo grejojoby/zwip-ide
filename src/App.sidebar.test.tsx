@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
-import { api } from './api';
+import { api, request } from './api';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { OpenEditor } from './editor/editor-store';
 import type { WorkspaceSnapshot } from './contracts';
@@ -45,7 +45,7 @@ vi.mock('./components/tools/SqlConsole', () => ({
 }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn() }));
 vi.mock('./api', () => ({
-  request: vi.fn(),
+  request: vi.fn(async () => ({})),
   api: {
     openWorkspace: vi.fn(),
     indexWorkspace: vi.fn(async () => ({ started: [], unavailable: [] })),
@@ -57,6 +57,9 @@ vi.mock('./api', () => ({
     getSetting: vi.fn(),
     setSetting: vi.fn(),
     gitStatus: vi.fn(),
+    search: vi.fn(),
+    pushPlan: vi.fn(),
+    push: vi.fn(),
     workspaceStatus: vi.fn(),
     workspaceChanges: vi.fn(),
     cancelNavigation: vi.fn(),
@@ -278,7 +281,11 @@ describe('sidebar panel ownership', () => {
 
   it('persists placement and active windows, then restores them when reopening the workspace', async () => {
     const view = await openWorkspace();
-    await move('Project', 'right');
+    expect(screen.queryByRole('button', { name: 'Move Project' })).toBeNull();
+    fireEvent.contextMenu(railButton('left', 'project'));
+    const projectMenu = await screen.findByRole('dialog', { name: 'Move Project' });
+    fireEvent.click(within(projectMenu).getByRole('button', { name: 'Move to right sidebar' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Move Project' })).toBeNull());
     fireEvent.click(railButton('right', 'git'));
     await screen.findByLabelText('Git commit draft');
     // Keyboard menu access must match pointer/context-menu behavior.
@@ -359,4 +366,115 @@ describe('sidebar panel ownership', () => {
     fireEvent.click(railButton('left', 'project'));
     expect(visible(panel('project'))).toBe(true);
   });
+});
+
+it('opens Find in the chosen project folder and reuses the open panel with query focus', async () => {
+  await openWorkspace();
+  vi.mocked(api.search).mockResolvedValue([]);
+  const folder = screen.getByRole('treeitem', { name: 'folder' });
+  fireEvent.contextMenu(folder);
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Find in folder…' }));
+  const query = await screen.findByRole('textbox', { name: 'Search text in workspace' });
+  expect(
+    (screen.getByRole('combobox', { name: 'Directory / module' }) as HTMLInputElement).value,
+  ).toBe('folder');
+  expect(document.activeElement).toBe(query);
+  fireEvent.change(query, { target: { value: 'needle' } });
+  fireEvent.click(screen.getByRole('button', { name: /^Find$/ }));
+  await waitFor(() => expect(api.search).toHaveBeenCalledWith('needle', 'folder'));
+  fireEvent.click(screen.getByRole('button', { name: 'Search whole workspace' }));
+  fireEvent.keyDown(folder, { key: 'F10', shiftKey: true });
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Find in folder…' }));
+  expect(
+    (screen.getByRole('combobox', { name: 'Directory / module' }) as HTMLInputElement).value,
+  ).toBe('folder');
+  expect((query as HTMLInputElement).value).toBe('needle');
+  expect(document.activeElement).toBe(query);
+});
+
+it('Cmd+Shift+K opens outgoing diffs with Git closed and pushes only after confirmation', async () => {
+  await openWorkspace();
+  vi.mocked(api.pushPlan).mockResolvedValue({
+    fingerprint: 'reviewed-push',
+    remote: 'origin',
+    branch: 'main',
+    upstream: 'origin/main',
+    commits: [{ id: 'abc12345', subject: 'Change', author: 'Author' }],
+    files: ['file.txt'],
+    filePatches: { 'file.txt': '-before\n+after' },
+    diff: '-before\n+after',
+  });
+  let finishPush!: (message: string) => void;
+  vi.mocked(api.push).mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finishPush = resolve;
+      }),
+  );
+  const editorInput = document.createElement('textarea');
+  document.body.append(editorInput);
+  const childKey = vi.fn((event: KeyboardEvent) => event.preventDefault());
+  editorInput.addEventListener('keydown', childKey);
+  const shortcut = () =>
+    fireEvent.keyDown(window, { key: 'K', code: 'KeyK', metaKey: true, shiftKey: true });
+  fireEvent.keyDown(editorInput, { key: 'K', code: 'KeyK', metaKey: true, shiftKey: true });
+  expect(childKey).not.toHaveBeenCalled();
+  editorInput.remove();
+  let dialog = within(await screen.findByRole('dialog', { name: 'Push Commits' }));
+  await dialog.findByRole('region', { name: 'Code changes' });
+  expect(dialog.getByRole('region', { name: 'Code changes' }).textContent).toContain('+after');
+  expect(api.push).not.toHaveBeenCalled();
+  shortcut();
+  expect(api.pushPlan).toHaveBeenCalledTimes(1);
+  fireEvent.click(dialog.getByRole('button', { name: 'Cancel' }));
+  expect(api.push).not.toHaveBeenCalled();
+  shortcut();
+  dialog = within(await screen.findByRole('dialog', { name: 'Push Commits' }));
+  const accept = await dialog.findByRole('button', { name: 'Push 1 commit' });
+  fireEvent.click(accept);
+  fireEvent.click(accept);
+  await waitFor(() => expect(api.push).toHaveBeenCalledTimes(1));
+  expect(api.push).toHaveBeenCalledWith('reviewed-push');
+  expect(screen.queryByRole('dialog', { name: 'Push Commits' })).toBeNull();
+  expect(screen.getByText("Pushing 'main'…")).toBeTruthy();
+  shortcut();
+  expect(screen.queryByRole('dialog', { name: 'Push Commits' })).toBeNull();
+  expect(api.pushPlan).toHaveBeenCalledTimes(2);
+  const filter = screen.getByLabelText('Filter project files');
+  fireEvent.change(filter, { target: { value: 'file' } });
+  expect((filter as HTMLInputElement).value).toBe('file');
+  await act(async () => finishPush('Push complete'));
+  expect(screen.getByText("Branch 'main' pushed.")).toBeTruthy();
+});
+
+it('Cmd+T opens Update Project with Git closed and updates only after confirmation', async () => {
+  await openWorkspace();
+  const input = document.createElement('textarea');
+  document.body.append(input);
+  const editorKey = vi.fn((event: KeyboardEvent) => event.preventDefault());
+  input.addEventListener('keydown', editorKey);
+  fireEvent.keyDown(input, { key: 't', code: 'KeyT', metaKey: true });
+  expect(editorKey).not.toHaveBeenCalled();
+  input.remove();
+  const dialog = within(await screen.findByRole('dialog', { name: 'Update Project' }));
+  await dialog.findByRole('radio', { name: 'Merge incoming changes into the current branch' });
+  expect(panels.gitMounts).toBe(0);
+  expect(vi.mocked(request).mock.calls.some(([method]) => method === 'git.pull')).toBe(false);
+  fireEvent.keyDown(window, { key: 't', code: 'KeyT', metaKey: true });
+  expect(screen.getAllByRole('dialog', { name: 'Update Project' })).toHaveLength(1);
+  fireEvent.click(dialog.getByRole('button', { name: 'Cancel' }));
+  expect(vi.mocked(request).mock.calls.some(([method]) => method === 'git.pull')).toBe(false);
+  fireEvent.keyDown(window, { key: 't', code: 'KeyT', metaKey: true });
+  const reopened = within(await screen.findByRole('dialog', { name: 'Update Project' }));
+  await reopened.findByRole('radio', { name: 'Merge incoming changes into the current branch' });
+  vi.mocked(request).mockImplementation(async () => ({
+    snapshot: { branch: 'main' },
+    output: '',
+    conflicts: [],
+  }));
+  fireEvent.click(reopened.getByRole('button', { name: 'OK' }));
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith('git.pull', { fingerprint: 'repo', strategy: 'merge' }),
+  );
+  expect(screen.queryByRole('dialog', { name: 'Update Project' })).toBeNull();
 });

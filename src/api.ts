@@ -127,7 +127,8 @@ export const api = {
   saveDocument: (path: string, revision: number) =>
     request<DocumentSnapshot>('document.save', { path, revision }),
   history: (path: string) => request<HistoryEntry[]>('document.history', { path }),
-  search: (query: string) => request<SearchMatch[]>('workspace.search', { query }),
+  search: (query: string, directory?: string) =>
+    request<SearchMatch[]>('workspace.search', { query, directory }),
   navigate: (query: NavigationQuery) => request<NavigationBatch>('navigation.query', { query }),
   navigationProgress: (id: string) =>
     request<NavigationBatch | null>('navigation.progress', { id }),

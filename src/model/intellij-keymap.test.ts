@@ -35,10 +35,12 @@ describe('IntelliJ keymap preview', () => {
   });
 
   it('supports selecting all 16 known stock bindings directly', () => {
-    // Git branches has no verified IntelliJ mapping, so the importer leaves it untouched.
+    // Actions without verified IntelliJ mappings retain their current settings.
     const empty = {
       ...Object.fromEntries(Object.keys(defaultShortcuts).map((action) => [action, ''])),
       branches: defaultShortcuts.branches,
+      push: defaultShortcuts.push,
+      updateProject: defaultShortcuts.updateProject,
     } as typeof defaultShortcuts;
     const result = previewIntelliJKeymap([], 'Mac OS X 10.5+', empty);
     expect(result.shortcuts).toEqual(defaultShortcuts);

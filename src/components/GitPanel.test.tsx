@@ -1,10 +1,21 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render as renderView,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api } from '../api';
 import type { Changelist } from '../contracts';
 import { GitPanel, type Selection } from './GitPanel';
+
+import { GitActivityProvider } from './GitActivity';
+const render = (ui: Parameters<typeof renderView>[0]) =>
+  renderView(ui, { wrapper: GitActivityProvider });
 
 const settings = new Map<string, unknown>();
 const changes = {
@@ -130,11 +141,11 @@ it('shows outgoing commits beside a nested file tree and previews only the selec
   render(<Harness />);
   await screen.findByTitle('README.md');
   fireEvent.click(screen.getByRole('button', { name: 'Push…' }));
-  const dialog = within(await screen.findByRole('dialog', { name: 'Push overview' }));
-  expect(dialog.getByRole('complementary', { name: 'Outgoing commits' }).textContent).toContain(
-    'Update app',
-  );
-  expect(dialog.queryByRole('region', { name: 'Code changes' })).toBeNull();
+  const dialog = within(await screen.findByRole('dialog', { name: 'Push Commits' }));
+  expect(
+    (await dialog.findByRole('complementary', { name: 'Outgoing commits' })).textContent,
+  ).toContain('Update app');
+  expect(await dialog.findByRole('region', { name: 'Code changes' })).toBeTruthy();
   fireEvent.click(dialog.getByRole('button', { name: 'src/app.ts' }));
   let preview = dialog.getByRole('region', { name: 'Code changes' });
   expect(preview.textContent).toContain('+app change');

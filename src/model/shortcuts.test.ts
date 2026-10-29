@@ -159,3 +159,39 @@ describe('macOS shortcuts', () => {
     expect(normalizedShortcuts({ files: 'Shift Shift' }).files).toBe('Shift Shift');
   });
 });
+
+it('defaults Push to Cmd+Shift+K and fills it into older shortcut settings', () => {
+  expect(defaultShortcuts.push).toBe('Mod-Shift-k');
+  expect(normalizedShortcuts({ save: 'Mod-s' }).push).toBe('Mod-Shift-k');
+  expect(
+    matchesShortcut(
+      {
+        key: 'K',
+        code: 'KeyK',
+        metaKey: true,
+        shiftKey: true,
+        ctrlKey: false,
+        altKey: false,
+      } as KeyboardEvent,
+      defaultShortcuts.push,
+    ),
+  ).toBe(true);
+});
+
+it('defaults Update Project to Cmd+T and preserves older shortcut settings', () => {
+  expect(defaultShortcuts.updateProject).toBe('Mod-t');
+  expect(normalizedShortcuts({ save: 'Mod-s' }).updateProject).toBe('Mod-t');
+  expect(
+    matchesShortcut(
+      {
+        key: 't',
+        code: 'KeyT',
+        metaKey: true,
+        shiftKey: false,
+        ctrlKey: false,
+        altKey: false,
+      } as KeyboardEvent,
+      defaultShortcuts.updateProject,
+    ),
+  ).toBe(true);
+});

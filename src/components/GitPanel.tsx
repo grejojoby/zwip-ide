@@ -18,7 +18,6 @@ import type {
   GitSnapshot,
   GitRemoteStatus,
   MergeSession,
-  PushPlan,
 } from '../contracts';
 import { asError } from '../model/document-session';
 import { assignmentsForMove } from '../model/changelists';
@@ -28,11 +27,14 @@ import { FileIcon } from './FileIcon';
 import { Icon } from './Icon';
 import { PartialDiff } from './PartialDiff';
 import { DiffActions } from './DiffActions';
+import { useGitActivity } from './GitActivity';
 import { GitOperations } from './GitOperations';
-import { PushOverview } from './PushOverview';
 import { EditorContextMenu, type MenuEntry } from './EditorContextMenu';
 import type { ProjectAction } from './ProjectTree';
 import type { MergeResolution } from './MergeEditor';
+const PushReviewDialog = lazy(() =>
+  import('./PushReviewDialog').then((module) => ({ default: module.PushReviewDialog })),
+);
 const MergeEditor = lazy(() =>
   import('./MergeEditor').then((module) => ({ default: module.MergeEditor })),
 );
@@ -45,6 +47,8 @@ export function GitPanel({
   onBranch,
   revision,
   remoteStatus,
+  onOpenBranches,
+  onRequestPush,
   onOpenDiff,
   onOpenFile,
   onFileAction,
@@ -56,6 +60,8 @@ export function GitPanel({
   /** Changes when Git was modified outside the panel, to trigger a refresh. */
   revision?: number;
   remoteStatus?: GitRemoteStatus;
+  onOpenBranches?(): void;
+  onRequestPush?(): void;
   /** Shows the selected change in the main editor area. */
   onOpenDiff?(diff: GitDiff): void;
   onOpenFile?(path: string): void;
@@ -64,6 +70,7 @@ export function GitPanel({
   selected: Map<string, Selection>;
   onSelectedChange: Dispatch<SetStateAction<Map<string, Selection>>>;
 }) {
+  const gitActivity = useGitActivity();
   const [menu, setMenu] = useState<{
     path: string;
     files: GitSnapshot['files'];
@@ -76,7 +83,7 @@ export function GitPanel({
   useLayoutEffect(() => setMenu(null), [generation, revision, snapshot?.fingerprint]);
   const [revertPreview, setRevertPreview] = useState<GitDiff | null>(null);
   const [diffPath, setDiffPath] = useState<string>();
-  const [push, setPush] = useState<PushPlan | null>(null);
+  const [showPush, setShowPush] = useState(false);
   const [merge, setMerge] = useState<MergeSession | null>(null);
   const [conflicts, setConflicts] = useState<string[]>([]);
   const [lists, setLists] = useState<Changelist[]>([]);
@@ -88,7 +95,8 @@ export function GitPanel({
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [working, setBusy] = useState(false);
+  const busy = working || gitActivity.busy;
   // IntelliJ's Group By › Directory (⌃P), remembered across sessions.
   const [byDirectory, setByDirectory] = useState(false);
   const [collapsed, setCollapsed] = useState(new Set<string>());
@@ -162,17 +170,6 @@ export function GitPanel({
       report(e);
     }
   }
-  async function overview() {
-    setBusy(true);
-    setError('');
-    try {
-      setPush(await api.pushPlan());
-    } catch (e) {
-      report(e);
-    } finally {
-      setBusy(false);
-    }
-  }
   function chooseFile(path: string, checked: boolean) {
     if (!snapshot) return;
     setSelected((current) => {
@@ -221,21 +218,6 @@ export function GitPanel({
       setSelected(new Map());
       setDiffPath(undefined);
       setNotice('Commit created.');
-    } catch (e) {
-      report(e);
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function performPush() {
-    if (!push) return;
-    setBusy(true);
-    setError('');
-    try {
-      const result = await api.push(push.fingerprint);
-      setNotice(result || 'Push completed.');
-      setPush(null);
-      await refresh();
     } catch (e) {
       report(e);
     } finally {
@@ -531,7 +513,10 @@ export function GitPanel({
         <button disabled={busy || !selected.size || !!stale} onClick={() => void reviewCommit()}>
           Commit changes…
         </button>
-        <button disabled={busy || !snapshot} onClick={() => void overview()}>
+        <button
+          disabled={busy || !snapshot}
+          onClick={() => (onRequestPush ? onRequestPush() : setShowPush(true))}
+        >
           <Icon name="arrow" />
           Push…
         </button>
@@ -539,6 +524,7 @@ export function GitPanel({
       {snapshot && (
         <GitOperations
           remoteStatus={remoteStatus}
+          onOpenBranches={onOpenBranches}
           snapshot={snapshot}
           path={diffPath}
           onUpdate={() => void refresh()}
@@ -782,41 +768,16 @@ export function GitPanel({
           </div>
         </Modal>
       )}
-      {push && (
-        <Modal
-          title="Push overview"
-          onClose={() => {
-            if (!busy) setPush(null);
-          }}
-          wide
-        >
-          <div className="push-destination">
-            <Icon name="arrow" />
-            <strong>
-              {push.remote} / {push.branch}
-            </strong>
-            <span>{push.upstream}</span>
-          </div>
-          <PushOverview plan={push} onEdit={() => setPush(null)} />
-          {error && (
-            <p className="inline-notice error-message" role="alert">
-              {error}
-            </p>
-          )}
-          <div className="modal-actions">
-            <span>Destination and outgoing changes are checked again before push.</span>
-            <button disabled={busy} onClick={() => setPush(null)}>
-              Cancel
-            </button>
-            <button
-              className="primary"
-              disabled={busy || !push.commits.length}
-              onClick={() => void performPush()}
-            >
-              {busy ? 'Pushing…' : `Push ${push.commits.length} commits`}
-            </button>
-          </div>
-        </Modal>
+      {showPush && (
+        <Suspense fallback={<p className="empty-note">Opening push review…</p>}>
+          <PushReviewDialog
+            onClose={() => setShowPush(false)}
+            onPushed={(message) => {
+              setNotice(message);
+              void refresh();
+            }}
+          />
+        </Suspense>
       )}
       {merge && (
         <Suspense fallback={<div className="inline-notice">Opening merge editor…</div>}>
