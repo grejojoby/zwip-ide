@@ -14,6 +14,8 @@ async function nodeNames(path: string, doc: string) {
 
 describe('built-in syntax', () => {
   it.each([
+    ['main.php', '<?php function greet() { return 1; }'],
+    ['page.phtml', '<h1><?= $title ?></h1>'],
     ['main.go', 'package main\nfunc main() {}\n'],
     ['app.tsx', 'const a: number = 1;\n'],
     ['page.html', '<p class="a">x</p>\n'],

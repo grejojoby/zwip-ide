@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useId, useState, useSyncExternalStore } from 'react';
 import { api } from '../api';
 import { asError } from '../model/document-session';
 import type { IntelliJImportPreview } from '../model/intellij-import-contracts';
@@ -99,9 +99,9 @@ export function IntelliJRunImport({
     <section aria-label="Run and debug configuration import" className="import-section">
       <h3>Run/debug configurations</h3>
       <p className="muted">
-        Review the exact commands and select the configurations to save to this workspace. Importing
-        does not run commands. Existing configurations and your current selection are kept. Go debug
-        targets open in Go tools; browser debugging uses external DevTools.
+        Choose the configurations to save to this workspace. Importing does not run commands.
+        Existing configurations and your current selection are kept. Go debug targets open in Go
+        tools; browser debugging uses external DevTools.
       </p>
       <p className="import-connection-target">Destination: {session.root}</p>
       {!state.ready && (
@@ -184,12 +184,22 @@ function RunPreview({
   disabled: boolean;
   onReveal(name: string, include: boolean): void;
 }) {
+  const [showCommand, setShowCommand] = useState(false);
+  const commandId = useId();
   return (
     <div className="import-run-preview">
       <p>
         Working directory: <code>{configuration.workingDirectory}</code>
       </p>
-      <pre>{configuration.command}</pre>
+      <button
+        type="button"
+        aria-expanded={showCommand}
+        aria-controls={commandId}
+        onClick={() => setShowCommand(!showCommand)}
+      >
+        Command details
+      </button>
+      {showCommand && <pre id={commandId}>{configuration.command}</pre>}
       {configuration.debug && (
         <p>
           Go {configuration.debug.mode === 'test' ? 'test debugger' : 'debugger'}:{' '}

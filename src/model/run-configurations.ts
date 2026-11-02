@@ -31,7 +31,7 @@ export interface RunState {
   starting: boolean;
   task: TaskResult | null;
   taskLabel: string;
-  /** What the running task executes, shown above its output like IntelliJ's console. */
+  /** Execution information for the optional details view; kept out of program output. */
   taskCommand?: { command: string; cwd: string; startedAt: number };
   error: string;
 }

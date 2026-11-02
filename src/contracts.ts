@@ -235,6 +235,8 @@ export interface GitMutation {
   update?: GitUpdateSummary;
 }
 export interface GitSnapshot {
+  /** Integration state read with this reviewed snapshot. Absent on older cores. */
+  operation?: 'none' | 'merge' | 'rebase' | 'cherryPick' | 'revert';
   root: string;
   branch: string;
   head: string;

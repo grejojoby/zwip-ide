@@ -29,6 +29,18 @@ pub struct RemoteUpdates {
 }
 impl RemoteUpdates {
     pub fn snapshot(&self, workspace: &str, force: bool) -> Result<Value, String> {
+        let (root, fetch) = self.refresh_state(workspace, force)?;
+        let mut result = super::branches(&root)?;
+        result["root"] = json!(root);
+        result["fetch"] = fetch;
+        Ok(result)
+    }
+    /// Schedule origin work after a mutation without rebuilding the branch list
+    /// on the mutation's response path. Polling will load that list separately.
+    pub fn refresh(&self, workspace: &str) -> Result<(), String> {
+        self.refresh_state(workspace, true).map(|_| ())
+    }
+    fn refresh_state(&self, workspace: &str, force: bool) -> Result<(String, Value), String> {
         let root = repo_root(workspace)?;
         let origin = git(&root, &["remote", "get-url", "origin"]).ok();
         // Local refs detect external checkouts and branch updates. FETCH_HEAD detects
@@ -118,10 +130,7 @@ impl RemoteUpdates {
             "lastFetched":state.last_fetched,"error":state.error,"version":state.version,
         });
         drop(states);
-        let mut result = super::branches(&root)?;
-        result["root"] = json!(root);
-        result["fetch"] = fetch;
-        Ok(result)
+        Ok((root, fetch))
     }
     pub fn shutdown(&self) {
         if let Ok(states) = self.states.lock() {

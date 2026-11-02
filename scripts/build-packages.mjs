@@ -11,3 +11,6 @@ await buildReactNextPackage();
 
 const { buildMakePackage } = await import('../packages/make/build.mjs');
 await buildMakePackage();
+
+const { buildPhpPackage } = await import('../packages/php/build.mjs');
+await buildPhpPackage();

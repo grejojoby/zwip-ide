@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   formatEnvironment,
   parseEnvironment,
@@ -41,7 +41,7 @@ export function TaskPanel({
               else void session.select(event.target.value || null);
             }}
           >
-            <option value="">Ad hoc command / new configuration</option>
+            <option value="">New custom configuration</option>
             {state.settings.configurations.map((config) => (
               <option key={config.id} value={config.id}>
                 {config.name}
@@ -56,13 +56,6 @@ export function TaskPanel({
           onClick={() => void session.select(null)}
         >
           New
-        </button>
-        <button
-          type="button"
-          disabled={!selected || state.saving}
-          onClick={() => selected && void session.remove(selected.id)}
-        >
-          Remove configuration
         </button>
       </div>
       <ConfigurationForm
@@ -87,21 +80,44 @@ export function TaskPanel({
           Stop
         </button>
       </div>
+      {state.taskCommand && <ExecutionDetails key={state.task?.id} command={state.taskCommand} />}
       <pre ref={output} className="task-output" aria-label="Task output">
         {state.task && state.taskCommand ? (
           <>
-            <span className="task-command-line">
-              {state.taskCommand.cwd} $ {state.taskCommand.command}
-              {'\n'}
-            </span>
             {state.task.output}
             <TaskProgress task={state.task} startedAt={state.taskCommand.startedAt} />
           </>
         ) : (
-          state.task?.output || 'Command output appears here.'
+          state.task?.output || 'Run a configuration to see its output.'
         )}
       </pre>
     </section>
+  );
+}
+
+/** Raw execution information is available on demand, separate from program output. */
+function ExecutionDetails({ command }: { command: NonNullable<RunState['taskCommand']> }) {
+  const [expanded, setExpanded] = useState(false);
+  const id = useId();
+  return (
+    <div className="task-execution-details">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={id}
+        onClick={() => setExpanded(!expanded)}
+      >
+        Execution details
+      </button>
+      {expanded && (
+        <div id={id}>
+          <p>
+            Working directory: <code>{command.cwd}</code>
+          </p>
+          <pre aria-label="Executed command">{command.command}</pre>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -125,7 +141,7 @@ function TaskProgress({
     <span className="task-progress">
       {separator}
       {task.running
-        ? `Running for ${seconds}s${task.output ? '' : ' · no output yet (builds and quiet servers print nothing)'}`
+        ? `Running for ${seconds}s${task.output ? '' : ' · no output yet'}`
         : `Process finished with exit code ${task.exitCode ?? '—'}`}
     </span>
   );
@@ -140,6 +156,10 @@ function ConfigurationForm({
   session: WorkspaceRunSession;
   state: RunState;
 }) {
+  const [editing, setEditing] = useState(!selected);
+  const [editingCommand, setEditingCommand] = useState(!selected);
+  const settingsId = useId();
+  const commandId = useId();
   const [name, setName] = useState(selected?.name ?? '');
   const [command, setCommand] = useState(selected?.command ?? '');
   const [directory, setDirectory] = useState(selected?.workingDirectory ?? '.');
@@ -164,55 +184,28 @@ function ConfigurationForm({
       className="run-configuration-form"
       onSubmit={(event) => {
         event.preventDefault();
-        if (!envError) void session.run(command, directory, name.trim() || 'Ad hoc command', env);
+        if (!envError) void session.run(command, directory, name.trim() || 'Custom command', env);
       }}
     >
-      <div className="run-configuration-fields">
-        <label>
-          Name
-          <input
-            aria-label="Run configuration name"
-            placeholder="Optional for an ad hoc command"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-          />
-        </label>
-        <label>
-          Working directory
-          <input
-            aria-label="Run working directory"
-            placeholder="Relative to workspace (.)"
-            value={directory}
-            onChange={(event) => setDirectory(event.target.value)}
-          />
-        </label>
-        <label className="run-environment">
-          Environment
-          <textarea
-            aria-label="Run environment variables"
-            placeholder="NAME=value, one per line"
-            rows={Math.min(6, Math.max(2, envText.split('\n').length))}
-            spellCheck={false}
-            value={envText}
-            onChange={(event) => setEnvText(event.target.value)}
-          />
-        </label>
-      </div>
-      {envError && (
-        <p className="error-message inline-notice" role="alert">
-          {envError}
-        </p>
-      )}
-      <div className="task-command">
-        <Icon name="terminal" />
-        <input
-          aria-label="Command to run"
-          placeholder="Run a workspace command…"
-          value={command}
-          onChange={(event) => setCommand(event.target.value)}
-        />
+      <div className="task-command run-actions">
+        <span className="run-configuration-summary">
+          Runs in {directory === '.' ? 'workspace root' : directory}
+          {!!env.length && ` · ${env.length} environment variable${env.length === 1 ? '' : 's'}`}
+        </span>
+        {dirty && <span>Unsaved changes</span>}
+        {selected && (
+          <button
+            type="button"
+            aria-expanded={editing}
+            aria-controls={settingsId}
+            onClick={() => setEditing(!editing)}
+          >
+            {editing ? 'Hide settings' : 'Edit configuration'}
+          </button>
+        )}
         <button
           type="submit"
+          className="primary"
           disabled={
             !state.ready ||
             state.saving ||
@@ -223,31 +216,107 @@ function ConfigurationForm({
           }
         >
           <Icon name="play" />
-          Run
+          {state.starting ? 'Starting…' : 'Run'}
         </button>
-        <button
-          type="button"
-          disabled={!state.ready || state.saving || !command.trim() || !name.trim() || !!envError}
-          onClick={() =>
-            void session.save({
-              id: selected?.id ?? crypto.randomUUID(),
-              name,
-              command,
-              workingDirectory: directory,
-              ...(env.length && { env }),
-              ...(!changedTarget && selected?.debug && { debug: selected.debug }),
-            })
-          }
-        >
-          Save configuration
-        </button>
-        {dirty && <span>Unsaved changes</span>}
       </div>
-      {selected?.debug && changedTarget && (
-        <p className="inline-notice" role="status">
-          Saving these changes removes the imported Go debug target. Re-import the configuration to
-          restore it.
+      {envError && (
+        <p className="error-message inline-notice" role="alert">
+          {envError}
         </p>
+      )}
+      {editing && (
+        <div id={settingsId} className="run-configuration-editor">
+          <div className="run-configuration-fields">
+            <label>
+              Name
+              <input
+                aria-label="Run configuration name"
+                placeholder="Optional for a custom command"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
+            </label>
+            <label>
+              Working directory
+              <input
+                aria-label="Run working directory"
+                placeholder="Relative to workspace (.)"
+                value={directory}
+                onChange={(event) => setDirectory(event.target.value)}
+              />
+            </label>
+            <label className="run-environment">
+              Environment
+              <textarea
+                aria-label="Run environment variables"
+                placeholder="NAME=value, one per line"
+                rows={Math.min(6, Math.max(2, envText.split('\n').length))}
+                spellCheck={false}
+                value={envText}
+                onChange={(event) => setEnvText(event.target.value)}
+              />
+            </label>
+          </div>
+          {selected && (
+            <button
+              type="button"
+              className="run-command-toggle"
+              aria-expanded={editingCommand}
+              aria-controls={commandId}
+              onClick={() => setEditingCommand(!editingCommand)}
+            >
+              {editingCommand ? 'Hide command' : 'Edit command'}
+            </button>
+          )}
+          {editingCommand && (
+            <label id={commandId} className="run-command-editor">
+              Command
+              <textarea
+                aria-label="Command to run"
+                placeholder="Enter a custom command…"
+                rows={3}
+                spellCheck={false}
+                value={command}
+                onChange={(event) => setCommand(event.target.value)}
+              />
+            </label>
+          )}
+          <div className="run-configuration-editor-actions">
+            <button
+              type="button"
+              disabled={
+                !state.ready || state.saving || !command.trim() || !name.trim() || !!envError
+              }
+              onClick={() =>
+                void session.save({
+                  id: selected?.id ?? crypto.randomUUID(),
+                  name,
+                  command,
+                  workingDirectory: directory,
+                  ...(env.length && { env }),
+                  ...(!changedTarget && selected?.debug && { debug: selected.debug }),
+                })
+              }
+            >
+              Save configuration
+            </button>
+            {selected && (
+              <button
+                type="button"
+                disabled={state.saving}
+                onClick={() => void session.remove(selected.id)}
+              >
+                Remove configuration
+              </button>
+            )}
+          </div>
+          {selected?.debug && changedTarget && (
+            <p className="inline-notice" role="status">
+              Saving these changes removes the imported Go debug target. Re-import the configuration
+              to restore it.
+            </p>
+          )}
+        </div>
       )}
     </form>
   );

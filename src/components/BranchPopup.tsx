@@ -54,7 +54,9 @@ export function BranchPopup({
   const latestRemote = useRef(remoteStatus);
   latestRemote.current = remoteStatus;
   const [snapshot, setSnapshot] = useState<GitSnapshot | null>(null);
-  const [branches, setBranches] = useState<Branch[]>([]);
+  const [branches, setBranches] = useState<Branch[]>(() =>
+    (remoteStatus?.branches ?? []).filter((branch) => !branch.name.endsWith('/HEAD')),
+  );
   const [query, setQuery] = useState('');
   const [view, setView] = useState<View>({ kind: 'list' });
   const latestView = useRef(view);
@@ -67,9 +69,12 @@ export function BranchPopup({
   const filter = useRef<HTMLInputElement>(null);
   const [showAllRemote, setShowAllRemote] = useState(false);
   const [busy, setBusy] = useState(true);
+  const [mutating, setMutating] = useState(false);
   const [error, setError] = useState('');
   const [operation, setOperation] = useState('none');
-  const [pending, setPending] = useState('Loading branches…');
+  const [pending, setPending] = useState(
+    remoteStatus?.branches.length ? 'Checking repository…' : 'Loading branches…',
+  );
   const locked = useRef(false);
   const fetchLock = useRef(false);
   const menu = useRef<HTMLDivElement>(null);
@@ -102,13 +107,18 @@ export function BranchPopup({
     };
   }, [submenu]);
 
-  async function readRepository() {
-    const [status, result, state] = await Promise.all([
+  async function readRepository(useRemote = true) {
+    const cached = useRemote ? latestRemote.current : undefined;
+    const [status, result] = await Promise.all([
       api.gitStatus(),
-      request<{ branches: Branch[] }>('git.branches'),
-      request<{ operation: string }>('git.operationState'),
+      cached
+        ? Promise.resolve({ branches: cached.branches })
+        : request<{ branches: Branch[] }>('git.branches'),
     ]);
-    return { status, branches: result.branches, operation: state.operation };
+    // Older cores do not carry integration state on their status snapshot.
+    const operation =
+      status.operation ?? (await request<{ operation: string }>('git.operationState')).operation;
+    return { status, branches: result.branches, operation };
   }
   function acceptRepository(result: Awaited<ReturnType<typeof readRepository>>, useRemote = true) {
     setSnapshot(result.status);
@@ -173,7 +183,7 @@ export function BranchPopup({
     setError('');
     setSubmenu(null);
     try {
-      acceptRepository(await readRepository(), false);
+      acceptRepository(await readRepository(false), false);
       setView({ kind: 'list' });
       setIndex(0);
       list.current?.focus();
@@ -205,9 +215,9 @@ export function BranchPopup({
     else fetchLock.current = false;
   }
   const fetching = remoteStatus?.fetch.state === 'fetching';
-  const blocked = busy || gitActivity.busy || fetching || operation !== 'none';
+  const blocked = !snapshot || busy || gitActivity.busy || fetching || operation !== 'none';
   const incoming = incomingBranches(branches);
-  const current = snapshot?.branch ?? '';
+  const current = snapshot?.branch ?? remoteStatus?.current ?? '';
   const currentBranch = branches.find((branch) => branch.current && !branch.remote);
   const detached = !!snapshot && snapshot.branch === 'Detached HEAD';
   const diverged = (currentBranch?.ahead ?? 0) > 0 && (currentBranch?.behind ?? 0) > 0;
@@ -265,6 +275,7 @@ export function BranchPopup({
       else locked.current = false;
       return;
     }
+    setMutating(true);
     setBusy(true);
     setPending(operationLabel(method));
     setSubmenu(null);
@@ -288,6 +299,7 @@ export function BranchPopup({
     } finally {
       locked.current = false;
       setBusy(false);
+      setMutating(false);
     }
   }
   async function compare(branch: Branch, mode: Comparison['mode']) {
@@ -348,7 +360,7 @@ export function BranchPopup({
         id,
         label,
         run,
-        disabled: id === 'compare' || id === 'diff' ? busy : blocked,
+        disabled: id === 'compare' || id === 'diff' ? busy || !snapshot : blocked,
         danger: id === 'delete',
       });
     const tracker = branch.remote
@@ -451,7 +463,7 @@ export function BranchPopup({
     return list;
   }
   function chooseRow(position: number) {
-    if (busy || (position === 0 && blocked)) return;
+    if (mutating || (position === 0 && blocked)) return;
     setIndex(position);
     if (position === 0) {
       setSubmenu(null);
@@ -500,13 +512,13 @@ export function BranchPopup({
     );
   const title = snapshot ? `Git Branches in ${snapshot.root.split('/').pop()}` : 'Git Branches';
   return (
-    <Modal title={title} onClose={onClose} dismissible={!busy}>
+    <Modal title={title} onClose={onClose} dismissible={!mutating}>
       <div
         ref={body}
         className="modal-body branch-popup"
         aria-busy={busy}
         onKeyDown={(event) => {
-          if (busy) return;
+          if (mutating) return;
           const typing = event.target instanceof HTMLInputElement && view.kind === 'input';
           const step = (at: number, count: number) =>
             (at + (event.key === 'ArrowDown' ? 1 : count - 1)) % Math.max(1, count);
@@ -784,7 +796,7 @@ export function BranchPopup({
                   <BranchRow
                     key={branch.name}
                     id={`branch-option-${position + 1}`}
-                    disabled={busy}
+                    disabled={mutating}
                     branch={branch}
                     expanded={submenu?.name === branch.name}
                     selected={selectedIndex === position + 1}
@@ -797,7 +809,7 @@ export function BranchPopup({
                   <BranchRow
                     key={branch.name}
                     id={`branch-option-${local.length + position + 1}`}
-                    disabled={busy}
+                    disabled={mutating}
                     branch={branch}
                     expanded={submenu?.name === branch.name}
                     selected={selectedIndex === local.length + position + 1}

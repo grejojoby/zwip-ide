@@ -18,6 +18,7 @@ export const scratchTypes: readonly ScratchType[] = [
   },
   { label: 'TypeScript', extension: 'ts', template: '' },
   { label: 'JavaScript', extension: 'js', template: '' },
+  { label: 'PHP', extension: 'php', template: '<?php\n\n' },
   { label: 'Python', extension: 'py', template: '' },
   {
     label: 'HTML',

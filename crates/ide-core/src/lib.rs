@@ -664,7 +664,7 @@ impl Core {
                             | "git.updateBranch"
                     )
                 {
-                    let _ = self.git_remote.snapshot(&workspace.root, true);
+                    let _ = self.git_remote.refresh(&workspace.root);
                 }
                 result
             }
@@ -943,7 +943,8 @@ impl Core {
                                 matches!(
                                     part.as_os_str().to_str(),
                                     Some(
-                                        "node_modules"
+                                        ".git"
+                                            | "node_modules"
                                             | "target"
                                             | "dist"
                                             | ".next"
@@ -955,11 +956,8 @@ impl Core {
                                 continue;
                             }
                             let display = path.to_string_lossy().into_owned();
-                            if let Some((_, suffix)) = display.split_once("/.git/") {
-                                if suffix != "HEAD" && !suffix.starts_with("refs/") {
-                                    continue;
-                                }
-                            }
+                            // Git metadata is observed by RemoteUpdates independently. Only
+                            // source/configuration changes invalidate language analysis.
                             epoch.fetch_add(1, Ordering::SeqCst);
                             if events.len() < 2048 {
                                 events.insert(display);

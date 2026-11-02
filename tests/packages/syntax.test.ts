@@ -28,6 +28,7 @@ it('downloadable grammars share host CodeMirror instances and parse real Go/Web 
     },
   });
   for (const [name, extension, source, node] of [
+    ['php', 'php', '<?php function greet() {}', 'keyword'],
     ['go', 'go', 'package main\nfunc main() {}', 'FunctionDecl'],
     ['web', 'ts', 'export class Worker { run(): void {} }', 'ClassDeclaration'],
     ['web', 'html', '<h1 class="title">Hello</h1>', 'Element'],

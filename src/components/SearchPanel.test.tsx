@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { SearchPanel } from './SearchPanel';
 
 afterEach(cleanup);
@@ -60,7 +60,7 @@ it('opens the first occurrence and keeps highlights tied to the submitted query'
     'find',
     'find',
   ]);
-  expect(screen.getByText('Press Enter to update results.')).toBeTruthy();
+  expect(screen.getByText('Results update after you stop typing.')).toBeTruthy();
 });
 
 it('moves keyboard focus through visible rows', () => {
@@ -137,7 +137,7 @@ it('offers directory and module suggestions, includes subdirectories, and clears
     'src/nested',
   ]);
   expect(screen.getByText('Includes nested directories · saved files')).toBeTruthy();
-  expect(screen.getByText('Press Enter to update results.')).toBeTruthy();
+  expect(screen.getByText('Results update after you stop typing.')).toBeTruthy();
   fireEvent.change(scope, { target: { value: 'src/nested' } });
   expect(onDirectoryChange).toHaveBeenCalledWith('src/nested');
   fireEvent.click(screen.getByRole('button', { name: 'Search whole workspace' }));
@@ -147,5 +147,43 @@ it('offers directory and module suggestions, includes subdirectories, and clears
 it('keeps the submitted scope visible while the next scope is being edited', () => {
   show({ directory: 'test', resultDirectory: 'src' });
   expect(screen.getByText('Results in src')).toBeTruthy();
-  expect(screen.getByText('Press Enter to update results.')).toBeTruthy();
+  expect(screen.getByText('Results update after you stop typing.')).toBeTruthy();
+});
+
+it('waits 500ms after the latest query or scope change and cancels on clear or unmount', () => {
+  vi.useFakeTimers();
+  try {
+    const { props, rerender, unmount } = show({ query: '', resultQuery: null });
+    rerender(<SearchPanel {...props} query="fi" />);
+    act(() => vi.advanceTimersByTime(499));
+    expect(props.onSearch).not.toHaveBeenCalled();
+    rerender(<SearchPanel {...props} query="find" directory="src" />);
+    act(() => vi.advanceTimersByTime(499));
+    expect(props.onSearch).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(props.onSearch).toHaveBeenCalledOnce();
+    rerender(<SearchPanel {...props} query="other" />);
+    rerender(<SearchPanel {...props} query=" " />);
+    act(() => vi.advanceTimersByTime(500));
+    expect(props.onSearch).toHaveBeenCalledOnce();
+    rerender(<SearchPanel {...props} query="again" />);
+    unmount();
+    act(() => vi.advanceTimersByTime(500));
+    expect(props.onSearch).toHaveBeenCalledOnce();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('searches immediately on submit without repeating the pending automatic search', () => {
+  vi.useFakeTimers();
+  try {
+    const { props } = show({ resultQuery: null });
+    fireEvent.submit(screen.getByRole('button', { name: /^Find$/ }).closest('form')!);
+    expect(props.onSearch).toHaveBeenCalledOnce();
+    act(() => vi.advanceTimersByTime(500));
+    expect(props.onSearch).toHaveBeenCalledOnce();
+  } finally {
+    vi.useRealTimers();
+  }
 });

@@ -28,5 +28,11 @@
       "package-lock.json",
       "next.config.*"
     ]
+  },
+  {
+    "language": "php",
+    "documentExtensions": ["php", "phtml", "php8"],
+    "configGlobs": ["composer.json", "*.php", "*.phtml", "*.php8"],
+    "configurationGlobs": ["composer.json", "composer.lock"]
   }
 ]

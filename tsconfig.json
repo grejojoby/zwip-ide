@@ -19,6 +19,7 @@
     "site/main.ts",
     "tests",
     "packages/web/src",
-    "packages/tools/src"
+    "packages/tools/src",
+    "packages/php"
   ]
 }

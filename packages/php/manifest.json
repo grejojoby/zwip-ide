@@ -1,0 +1,34 @@
+{
+  "id": "php",
+  "name": "PHP Languages",
+  "version": "0.1.0",
+  "coreVersion": "0.1.0",
+  "description": "PHP 8+ syntax diagnostics, declaration symbols, name completion and navigation candidates. Requires local PHP CLI; no type or framework resolution.",
+  "capabilities": [
+    "definition",
+    "references",
+    "completion",
+    "hover",
+    "diagnostics",
+    "symbols",
+    "workspaceSymbols"
+  ],
+  "languages": ["php"],
+  "executable": "runtime/node",
+  "args": ["worker.mjs"],
+  "checksums": {},
+  "syntax": {
+    "abi": 1,
+    "asset": "syntax.mjs",
+    "extensions": ["php", "phtml", "php8"]
+  },
+  "documentExtensions": ["php", "phtml", "php8"],
+  "discovery": [
+    {
+      "language": "php",
+      "documentExtensions": ["php", "phtml", "php8"],
+      "configGlobs": ["composer.json", "*.php", "*.phtml", "*.php8"],
+      "configurationGlobs": ["composer.json", "composer.lock"]
+    }
+  ]
+}

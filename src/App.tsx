@@ -2875,8 +2875,16 @@ function WorkspaceApp() {
                         resultDirectory={resultDirectory}
                         directories={workspace.directories}
                         modules={workspace.contexts}
-                        onDirectoryChange={setSearchDirectory}
-                        onQueryChange={setSearchQuery}
+                        onDirectoryChange={(directory) => {
+                          searchId.current += 1;
+                          setSearching(false);
+                          setSearchDirectory(directory);
+                        }}
+                        onQueryChange={(query) => {
+                          searchId.current += 1;
+                          setSearching(false);
+                          setSearchQuery(query);
+                        }}
                         onSearch={() => void search()}
                         onOpen={(match, character) =>
                           void openFile(match.path, { line: match.line, character })

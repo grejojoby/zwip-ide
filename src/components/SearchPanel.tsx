@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useEffectEvent, useId, useMemo, useRef, useState } from 'react';
 import type { BuildContext, SearchMatch } from '../contracts';
 import { FileIcon } from './FileIcon';
 import { Icon } from './Icon';
@@ -59,6 +59,13 @@ export function SearchPanel({
   onSearch(): void;
   onOpen(match: SearchMatch, character: number): void;
 }) {
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const automaticSearch = useEffectEvent(() => onSearch());
+  useEffect(() => {
+    if (!query.trim()) return;
+    searchTimer.current = setTimeout(() => automaticSearch(), 500);
+    return () => clearTimeout(searchTimer.current);
+  }, [query, directory, workspaceRoot]);
   const directoryListId = useId();
   const queryInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -101,7 +108,10 @@ export function SearchPanel({
         className="find-toolbar"
         onSubmit={(event) => {
           event.preventDefault();
-          if (query.trim() && !searching) onSearch();
+          if (query.trim() && !searching) {
+            clearTimeout(searchTimer.current);
+            onSearch();
+          }
         }}
       >
         <label className="find-input">
@@ -161,7 +171,9 @@ export function SearchPanel({
         {resultQuery !== null && !searching && !error && (
           <span className="find-scope">Results in {resultDirectory || 'whole workspace'}</span>
         )}
-        {stale && !searching && <span className="find-stale">Press Enter to update results.</span>}
+        {stale && !searching && (
+          <span className="find-stale">Results update after you stop typing.</span>
+        )}
         <div className="spacer" />
         <button
           className="icon-button"
@@ -285,7 +297,7 @@ export function SearchPanel({
               </strong>
               <p>
                 {resultQuery === null ? (
-                  'Enter text above, optionally choose a directory or module, and press Enter to search saved files.'
+                  'Enter text above, optionally choose a directory or module, and results appear after you stop typing.'
                 ) : (
                   <>
                     No results for <q>{resultQuery}</q>. Try a different term or check

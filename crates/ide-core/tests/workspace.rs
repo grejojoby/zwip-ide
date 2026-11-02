@@ -926,3 +926,82 @@ fn text_search_scope_includes_descendants_but_not_sibling_prefixes_or_excluded_f
         );
     }
 }
+
+#[test]
+fn php_discovery_covers_composer_and_loose_files_without_ignored_sources() {
+    let root = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    fs::write(root.path().join("composer.json"), "{}").unwrap();
+    fs::write(root.path().join("main.php"), "<?php function greet() {}").unwrap();
+    fs::write(root.path().join("page.phtml"), "<p><?= 1 ?></p>").unwrap();
+    fs::write(root.path().join("ignored.php"), "<?php").unwrap();
+    fs::write(root.path().join(".gitignore"), "ignored.php\n").unwrap();
+    let core = Core::new(data.path().to_owned()).unwrap();
+    let workspace = core
+        .request("workspace.open", json!({"root":root.path()}))
+        .unwrap();
+    let contexts = workspace["contexts"].as_array().unwrap();
+    assert!(contexts
+        .iter()
+        .any(|c| c["id"] == "composer.json" && c["language"] == "php"));
+    assert!(contexts.iter().any(|c| c["id"] == "main.php"));
+    assert!(contexts.iter().any(|c| c["id"] == "page.phtml"));
+    assert!(!contexts.iter().any(|c| c["id"] == "ignored.php"));
+    fs::remove_file(root.path().join("composer.json")).unwrap();
+    let workspace = core.request("workspace.refresh", json!({})).unwrap();
+    assert!(workspace["contexts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|c| c["id"] == "main.php"));
+}
+
+#[test]
+fn git_metadata_changes_do_not_become_workspace_source_changes() {
+    let root = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    fs::create_dir_all(root.path().join(".git/refs/remotes/origin")).unwrap();
+    fs::write(root.path().join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+    fs::write(root.path().join("main.go"), "package main\n").unwrap();
+    let core = Core::new(data.path().to_owned()).unwrap();
+    core.request("workspace.open", json!({"root":root.path()}))
+        .unwrap();
+    fs::write(
+        root.path().join(".git/refs/remotes/origin/main"),
+        "new remote commit\n",
+    )
+    .unwrap();
+    fs::write(root.path().join(".git/HEAD"), "ref: refs/heads/topic\n").unwrap();
+    // Drain several watcher batches: a ref update may arrive separately from HEAD.
+    let until = std::time::Instant::now() + std::time::Duration::from_millis(500);
+    while std::time::Instant::now() < until {
+        let changes = core.request("workspace.changes", json!({})).unwrap();
+        assert_eq!(changes["configurationChanged"], false, "{changes}");
+        assert!(changes["paths"].as_array().unwrap().is_empty(), "{changes}");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    fs::write(
+        root.path().join("main.go"),
+        "package main\nfunc main() {}\n",
+    )
+    .unwrap();
+    fs::write(root.path().join("go.mod"), "module example.test/watcher\n").unwrap();
+    let mut source = false;
+    let mut configuration = false;
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    while std::time::Instant::now() < until && !(source && configuration) {
+        let changes = core.request("workspace.changes", json!({})).unwrap();
+        source |= changes["paths"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p.as_str().unwrap().ends_with("/main.go"));
+        configuration |= changes["configurationChanged"] == true;
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(source, "Source changes must still reach language providers");
+    assert!(
+        configuration,
+        "Configuration changes must still trigger discovery"
+    );
+}

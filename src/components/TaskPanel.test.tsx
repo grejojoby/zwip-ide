@@ -38,6 +38,7 @@ async function setup(onImport?: () => void) {
 }
 it('preserves imported debugging when only the configuration name changes', async () => {
   const backend = await setup();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit configuration' }));
   fireEvent.change(screen.getByLabelText('Run configuration name'), {
     target: { value: 'Renamed' },
   });
@@ -56,6 +57,9 @@ it.each(['Command to run', 'Run working directory'])(
   'clears debug metadata with a notice when %s changes',
   async (label) => {
     const backend = await setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit configuration' }));
+    if (label === 'Command to run')
+      fireEvent.click(screen.getByRole('button', { name: 'Edit command' }));
     fireEvent.change(screen.getByLabelText(label), {
       target: { value: label === 'Command to run' ? 'go test .' : 'other' },
     });
@@ -83,6 +87,7 @@ it('offers IntelliJ import as the last dropdown choice without changing the sele
 });
 it('edits environment variables, keeps the debug target and rejects invalid lines', async () => {
   const backend = await setup();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit configuration' }));
   const env = screen.getByLabelText('Run environment variables');
   fireEvent.change(env, { target: { value: 'SETUP=c21-or\nbad line' } });
   expect(screen.getByRole('alert').textContent).toContain('NAME=value');
@@ -110,7 +115,7 @@ it('edits environment variables, keeps the debug target and rejects invalid line
   );
   expect(backend.runTask).not.toHaveBeenCalled();
 });
-it('shows the command, elapsed time while silent, and the exit line', async () => {
+it('keeps execution details out of output while showing progress and exit status', async () => {
   const backend: RunBackend = {
     getSetting: async <T,>() =>
       ({ version: 1, selectedId: 'go', configurations: [configuration] }) as T,
@@ -124,9 +129,60 @@ it('shows the command, elapsed time while silent, and the exit line', async () =
   await session.runSelected();
   const view = render(<TaskPanel session={session} state={session.getSnapshot()} />);
   const output = () => screen.getByLabelText('Task output').textContent;
-  expect(output()).toContain('/fixture/api $ go run .');
+  expect(output()).not.toContain('go run .');
+  expect(screen.queryByText('/fixture/api $ go run .')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Execution details' }));
+  expect(screen.getByLabelText('Executed command').textContent).toBe('go run .');
   expect(output()).toMatch(/Running for \d+s · no output yet/);
   await waitFor(() => expect(backend.taskStatus).toHaveBeenCalled());
   view.rerender(<TaskPanel session={session} state={session.getSnapshot()} />);
   expect(output()).toContain('served\nProcess finished with exit code 0');
+});
+
+it('keeps saved commands and configuration fields hidden until requested', async () => {
+  await setup();
+  expect(screen.queryByLabelText('Command to run')).toBeNull();
+  expect(screen.queryByLabelText('Run environment variables')).toBeNull();
+  expect(screen.getByText('Runs in api')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Run' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit configuration' }));
+  expect(screen.getByLabelText('Run configuration name')).toBeTruthy();
+  expect(screen.queryByLabelText('Command to run')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit command' }));
+  expect(screen.getByLabelText<HTMLInputElement>('Command to run').value).toBe(
+    configuration.command,
+  );
+});
+
+it('runs a saved configuration with one click while its command stays hidden', async () => {
+  const backend = await setup();
+  vi.mocked(backend.runTask).mockResolvedValue({
+    id: 'task',
+    output: 'done',
+    exitCode: 0,
+    running: false,
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Run' }));
+  await waitFor(() =>
+    expect(backend.runTask).toHaveBeenCalledWith(configuration.command, '/fixture/api'),
+  );
+  expect(screen.queryByLabelText('Command to run')).toBeNull();
+});
+
+it('keeps custom commands editable when creating a new configuration', async () => {
+  const backend: RunBackend = {
+    getSetting: async () => null,
+    setSetting: async <T,>(_key: string, value: T) => value,
+    runTask: vi.fn(async () => ({ id: 'task', output: 'done', exitCode: 0, running: false })),
+    taskStatus: vi.fn(),
+    stopTask: vi.fn(),
+  };
+  vi.spyOn(backend, 'setSetting');
+  const session = new WorkspaceRunSession('/fixture', backend);
+  await session.load();
+  render(<TaskPanel session={session} state={session.getSnapshot()} />);
+  fireEvent.change(screen.getByLabelText('Command to run'), { target: { value: 'printf done' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Run' }));
+  await waitFor(() => expect(backend.runTask).toHaveBeenCalledWith('printf done', '/fixture'));
+  expect(backend.setSetting).not.toHaveBeenCalled();
 });

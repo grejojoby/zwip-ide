@@ -22,6 +22,67 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-11-02-debounced-file-search',
+    version: '0.1.0',
+    date: '2026-11-02',
+    title: 'Search as you type',
+    summary: 'Find in files searches automatically after a 500 ms typing pause.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'Automatic project, module and directory search',
+        description:
+          'Search text and scope changes wait until you stop typing for 500 ms before searching saved files. Enter and Find still search immediately.',
+      },
+    ],
+  },
+  {
+    id: '2026-11-02-background-git-refresh',
+    version: '0.1.0',
+    date: '2026-11-02',
+    title: 'Less waiting around Git operations',
+    summary:
+      'Browse branches while repository checks run, without unnecessary source indexing after Git-only changes.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'Branches and indexing',
+        description:
+          'Git metadata updates no longer trigger source rescans or invalidate language analysis. Source and configuration changes still do. The branches menu shows cached branches immediately and stays closable while checking repository state. It reuses fresh status information instead of repeating a full status scan, and completed branch changes schedule remote refresh without rebuilding the branch list before responding. Branch mutations still require fresh repository checks and remain serialized.',
+      },
+    ],
+  },
+  {
+    id: '2026-11-02-simpler-run-controls',
+    version: '0.1.0',
+    date: '2026-11-02',
+    title: 'Simpler Run controls',
+    summary: 'Choose a saved configuration and run it without dealing with generated commands.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'Commands stay behind details',
+        description:
+          'Saved configurations show a compact summary and Run button. Open Edit configuration for settings and Edit command for the underlying command. Program output no longer starts with a shell command; Execution details keeps it available separately. IntelliJ import previews also hide commands behind Command details. Existing saved commands, environments and debug targets keep working.',
+      },
+    ],
+  },
+  {
+    id: '2026-11-02-php-language-package',
+    version: '0.1.0',
+    date: '2026-11-02',
+    title: 'PHP editing and add-on package',
+    summary: 'Highlight PHP files and install PHP language tools separately.',
+    changes: [
+      {
+        type: 'added',
+        title: 'PHP language tools',
+        description:
+          'PHP, PHTML and PHP8 files have built-in highlighting and PHP scratch files. The PHP Languages add-on uses a local PHP 8+ CLI for syntax diagnostics, declaration outlines, workspace symbols, name completion, hover and navigation candidates. Navigation and references report partial coverage: namespaces, imports, receiver types, Composer autoloading and frameworks are not resolved. Formatting, rename, type navigation, call hierarchies, run and debug are unsupported.',
+      },
+    ],
+  },
+  {
     id: '2026-10-28-update-project-and-push-preview',
     version: '0.1.0',
     date: '2026-10-28',

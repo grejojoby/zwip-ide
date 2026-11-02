@@ -382,7 +382,6 @@ kbd {
   width: 13px;
   flex-shrink: 0;
 }
-.task-command-line,
 .task-progress {
   color: var(--muted);
 }
@@ -1655,22 +1654,85 @@ kbd {
   font-size: 11px;
   color: var(--muted);
 }
-.run-configuration-fields label {
-  flex: 1;
-  min-width: 200px;
+.run-configuration-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  align-items: start;
 }
-.run-configuration-fields input {
-  min-width: 100px;
+.run-configuration-fields label {
+  min-width: 0;
+  flex-direction: column;
+  align-items: stretch;
+}
+.run-configuration-fields input,
+.run-configuration-fields textarea {
+  min-width: 0;
   width: 100%;
 }
-.task-command input {
-  flex: 1;
-  border: none;
-  background: transparent;
+.run-configuration-toolbar label {
+  min-width: 0;
+}
+.run-configuration-toolbar select {
+  min-width: 0;
+  max-width: 100%;
 }
 .task-command > span {
   font-size: 10px;
   color: var(--muted);
+}
+.run-configuration-form {
+  flex-shrink: 0;
+  max-height: 65%;
+  overflow: auto;
+}
+.run-actions {
+  flex-wrap: wrap;
+}
+.run-configuration-summary {
+  flex: 1;
+  min-width: 140px;
+  overflow-wrap: anywhere;
+}
+.run-configuration-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+}
+.run-command-toggle {
+  margin: 8px 10px 0;
+}
+.run-command-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.run-command-editor textarea {
+  width: 100%;
+  resize: vertical;
+  font-family: var(--editor-font, monospace);
+}
+.task-execution-details {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  max-height: 35%;
+  overflow: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.task-execution-details button {
+  font-size: inherit;
+}
+.task-execution-details p {
+  overflow-wrap: anywhere;
+}
+.task-execution-details pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .task-output {
   overflow: auto;

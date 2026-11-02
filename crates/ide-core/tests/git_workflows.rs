@@ -903,3 +903,27 @@ fn revert_protects_dirty_files_when_workspace_is_inside_repository() {
     assert!(error.contains("unsaved"));
     assert_eq!(fs::read_to_string(path).unwrap(), "disk change\n");
 }
+
+#[test]
+fn git_snapshot_reports_integration_state_with_its_reviewed_fingerprint() {
+    let (root, _data, core) = fixture();
+    assert_eq!(
+        core.request("git.status", json!({})).unwrap()["operation"],
+        "none"
+    );
+    let head = git(root.path(), &["rev-parse", "HEAD"]);
+    for (name, expected) in [
+        ("MERGE_HEAD", "merge"),
+        ("CHERRY_PICK_HEAD", "cherryPick"),
+        ("REVERT_HEAD", "revert"),
+    ] {
+        let path = root.path().join(".git").join(name);
+        fs::write(&path, &head).unwrap();
+        let snapshot = core.request("git.status", json!({})).unwrap();
+        let state = core.request("git.operationState", json!({})).unwrap();
+        assert_eq!(snapshot["operation"], expected);
+        assert_eq!(snapshot["operation"], state["operation"]);
+        assert_eq!(snapshot["fingerprint"], state["fingerprint"]);
+        fs::remove_file(path).unwrap();
+    }
+}

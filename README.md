@@ -25,16 +25,17 @@ _Workspace capture from before the current branding; see the [screenshot provena
 
 ## Install the capabilities you need
 
-The core is general-purpose. Go and Web are the initial language packages, with additional tools installed through the same package manager.
+The core is general-purpose. Go, Web and PHP are available language packages, with additional tools installed through the same package manager.
 
-| Package             | Includes                                                                                                               |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| **Go**              | Semantic navigation, completion, diagnostics, rename, run/test/coverage and Delve debugging across independent modules |
-| **Web**             | JavaScript, TypeScript, HTML and CSS; JS/TS semantic navigation and editor services; JSX/TSX support                   |
-| **React / Next.js** | Framework integration through the project's Next.js TypeScript plugin; requires Web                                    |
-| **SQL**             | SQL Server, MySQL, PostgreSQL and SQLite; paged queries, reviewed row edits, and SQL Server procedure details          |
-| **Redis**           | Read-only incremental key scans, typed values and TTL inspection                                                       |
-| **HTTP**            | Requests, environments, response inspection and cancellation                                                           |
+| Package             | Includes                                                                                                                 |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **Go**              | Semantic navigation, completion, diagnostics, rename, run/test/coverage and Delve debugging across independent modules   |
+| **PHP**             | PHP 8+ syntax diagnostics, declaration symbols, name completion, hover and navigation candidates; requires local PHP CLI |
+| **Web**             | JavaScript, TypeScript, HTML and CSS; JS/TS semantic navigation and editor services; JSX/TSX support                     |
+| **React / Next.js** | Framework integration through the project's Next.js TypeScript plugin; requires Web                                      |
+| **SQL**             | SQL Server, MySQL, PostgreSQL and SQLite; paged queries, reviewed row edits, and SQL Server procedure details            |
+| **Redis**           | Read-only incremental key scans, typed values and TTL inspection                                                         |
+| **HTTP**            | Requests, environments, response inspection and cancellation                                                             |
 
 Packages are installed and enabled separately. Language workers start on demand; building the app does not enable them automatically. See the [provider contracts and limitations](docs/protocol.md).
 
@@ -42,7 +43,7 @@ See the [SQL Server guide](docs/sql-server.md) for connection settings, selected
 
 ## Build and run
 
-Use Apple Silicon macOS, **Node.js 24.16.0 exactly**, Rust and Xcode Command Line Tools. Building the Go package also requires the configured Go 1.25.5 toolchain. Its default path is `/Users/grejo.j/.gvm/gos/go1.25.5/bin/go`; see the [development guide](docs/development.md#prerequisites) for explicit toolchain configuration.
+Use Apple Silicon macOS, **Node.js 24.16.0 exactly**, Rust and Xcode Command Line Tools. PHP language tools and their tests require PHP 8+ CLI with tokenizer on PATH (or `ZWIP_PHP_BINARY`); see the [PHP setup and scope](packages/php/README.md). Building the Go package also requires the configured Go 1.25.5 toolchain. Its default path is `/Users/grejo.j/.gvm/gos/go1.25.5/bin/go`; see the [development guide](docs/development.md#prerequisites) for explicit toolchain configuration.
 
 ```sh
 git clone https://github.com/grejojoby/zwip-ide.git zwip

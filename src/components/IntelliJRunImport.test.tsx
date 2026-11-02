@@ -69,6 +69,16 @@ async function mount() {
   return { backend, session, onError, onMessage };
 }
 describe('reviewed run configuration import', () => {
+  it('shows command details only when requested', async () => {
+    await mount();
+    const command = "'npm' 'run' 'dev'";
+    expect(screen.queryByText(command)).toBeNull();
+    const toggle = screen.getByRole('button', { name: 'Command details' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    expect(screen.getByText(command)).toBeTruthy();
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  });
   it('imports plain environment values, and credential-like values only when confirmed', async () => {
     const env = (value: string | null) => [
       { name: 'SETUP', value: 'c21-or', sensitive: false },

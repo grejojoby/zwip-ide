@@ -27,6 +27,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Export Go path for package builds
         run: echo "ZWIP_GO=$(command -v go)" >> "$GITHUB_ENV"
+      - name: Set up PHP for language package tests
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
       - run: npm ci
       # The notices script runs `cargo metadata --offline`, so crates must be downloaded first.
       - name: Fetch Rust dependencies

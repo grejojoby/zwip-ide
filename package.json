@@ -18,7 +18,7 @@
     "test:e2e": "wdio run wdio.conf.mjs",
     "bench:workspace": "node scripts/bench-workspace.mjs",
     "build:e2e": "VITE_E2E=1 tauri build --debug --features e2e --config src-tauri/tauri.e2e.conf.json --no-bundle",
-    "lint": "eslint src site/main.ts vite.site.config.ts packages/web/src packages/tools/src tests --max-warnings 0",
+    "lint": "eslint src site/main.ts vite.site.config.ts packages/web/src packages/tools/src packages/php tests --max-warnings 0",
     "format:check": "prettier --check .",
     "format": "prettier --write . && cargo fmt --all"
   },

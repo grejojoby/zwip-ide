@@ -350,7 +350,7 @@ pub fn status(root: &str) -> Result<Value, String> {
         files.push(json!({"path":path,"indexStatus":char::from(entry[0]).to_string(),"worktreeStatus":char::from(entry[1]).to_string(),"originalPath":original}));
     }
     Ok(
-        json!({"root":root,"branch":branch,"head":head,"fingerprint":hash(&fingerprint),"files":files}),
+        json!({"root":root,"branch":branch,"head":head,"fingerprint":hash(&fingerprint),"files":files,"operation":operation_at(metadata_root)}),
     )
 }
 
@@ -1470,23 +1470,29 @@ fn string<'a>(value: &'a Value, key: &str) -> Result<&'a str, String> {
         .ok_or_else(|| format!("Missing string field: {key}"))
 }
 
-fn operation(root: &str) -> &'static str {
-    if has_operation(root, "rebase-merge") || has_operation(root, "rebase-apply") {
+fn operation_at(metadata: &Path) -> &'static str {
+    if metadata.join("rebase-merge").exists() || metadata.join("rebase-apply").exists() {
         "rebase"
-    } else if has_operation(root, "MERGE_HEAD") {
+    } else if metadata.join("MERGE_HEAD").exists() {
         "merge"
-    } else if has_operation(root, "CHERRY_PICK_HEAD") {
+    } else if metadata.join("CHERRY_PICK_HEAD").exists() {
         "cherryPick"
-    } else if has_operation(root, "REVERT_HEAD") {
+    } else if metadata.join("REVERT_HEAD").exists() {
         "revert"
     } else {
         "none"
     }
 }
+fn operation(root: &str) -> &'static str {
+    git_path(root, "MERGE_HEAD")
+        .ok()
+        .and_then(|path| path.parent().map(operation_at))
+        .unwrap_or("none")
+}
 fn operation_state(root: &str) -> Result<Value, String> {
     let snapshot = status(root)?;
     Ok(
-        json!({"operation":operation(root),"fingerprint":snapshot["fingerprint"],"conflicts":conflicts(root)?}),
+        json!({"operation":snapshot["operation"],"fingerprint":snapshot["fingerprint"],"conflicts":conflicts(root)?}),
     )
 }
 fn reviewed_root(root: &str, params: &Value) -> Result<String, String> {

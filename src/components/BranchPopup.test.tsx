@@ -559,3 +559,32 @@ it.each(['update', 'push'] as const)(
     expect(changed).toHaveBeenCalledOnce();
   },
 );
+
+it('shows cached branches immediately and stays dismissible while repository checks are pending', async () => {
+  status.mockReturnValueOnce(new Promise(() => {}));
+  const onClose = vi.fn();
+  render(<BranchPopup onClose={onClose} onChanged={() => {}} remoteStatus={remoteStatus()} />);
+  expect(screen.getByText('feature')).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Filter branches'), { target: { value: 'feature' } });
+  expect(screen.queryByText('origin/topic')).toBeNull();
+  expect(calls.some((call) => call.method === 'git.branches')).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: 'Close Git Branches' }));
+  expect(onClose).toHaveBeenCalledOnce();
+  expect(mutation).not.toHaveBeenCalled();
+});
+
+it('uses integration state from the fresh snapshot without a duplicate status scan', async () => {
+  status.mockResolvedValueOnce({
+    root: '/p/demo',
+    branch: 'main',
+    fingerprint: 'fp',
+    files: [],
+    operation: 'merge',
+  });
+  render(<BranchPopup onClose={() => {}} onChanged={() => {}} remoteStatus={remoteStatus()} />);
+  await screen.findByText(/Finish the merge before changing branches/);
+  expect(operation).not.toHaveBeenCalled();
+  expect(calls.some((call) => call.method === 'git.branches')).toBe(false);
+  fireEvent.click(screen.getByText('feature'));
+  expect(screen.getByRole('menuitem', { name: 'Checkout' }).hasAttribute('disabled')).toBe(true);
+});
