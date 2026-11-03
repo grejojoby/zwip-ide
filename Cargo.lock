@@ -5563,10 +5563,12 @@ name = "zwip"
 version = "0.1.0"
 dependencies = [
  "ide-core",
+ "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-wdio",
  "tauri-plugin-wdio-webdriver",
+ "tempfile",
 ]

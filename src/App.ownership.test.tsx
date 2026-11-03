@@ -7,8 +7,17 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { EditorStore, type OpenEditor } from './editor/editor-store';
 import type { WorkspaceSnapshot } from './contracts';
 import { updates } from './content/updates';
+import { invoke } from '@tauri-apps/api/core';
 
 const editors = vi.hoisted(() => new Map<string, OpenEditor>());
+const nativeEvents = vi.hoisted(() => new Map<string, () => void>());
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn(async (name: string, callback: () => void) => {
+    nativeEvents.set(name, callback);
+    return () => nativeEvents.delete(name);
+  }),
+}));
 vi.mock('./editor/CodeEditor', () => ({
   CodeEditor: ({ document }: { document: OpenEditor }) => {
     editors.set(document.session.path, document);
@@ -53,6 +62,10 @@ function deferred<T>() {
 beforeEach(() => {
   vi.resetAllMocks();
   editors.clear();
+  nativeEvents.clear();
+  vi.mocked(invoke).mockImplementation(async (command) =>
+    command === 'take_open_targets' ? [] : { unavailable: 'Development build' },
+  );
   localStorage.clear();
   vi.stubGlobal(
     'ResizeObserver',
@@ -107,6 +120,48 @@ async function openInitialFile() {
   return editors.get('/first/file.txt')!;
 }
 describe('workspace and tab ownership', () => {
+  it('opens queued launch files after startup and keeps later requests in the same workspace', async () => {
+    vi.stubGlobal('__TAURI_INTERNALS__', {});
+    vi.mocked(api.getSetting).mockImplementation(async (key) =>
+      key === 'zwip.updates.lastSeen' ? updates[0].id : null,
+    );
+    vi.mocked(invoke).mockResolvedValueOnce([
+      { root: '/first', file: '/first/file.txt' },
+      { root: '/first', file: '/first/second.txt' },
+    ]);
+    render(<App />);
+    await screen.findByRole('tab', { name: 'second.txt' });
+    expect(screen.getByRole('tab', { name: 'file.txt' })).toBeTruthy();
+    expect(api.openWorkspace).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      editors.get('/first/file.txt')!.session.enqueue([{ from: 8, to: 8, insert: '!' }]);
+    });
+    vi.mocked(invoke).mockResolvedValueOnce([{ root: '/first', file: '/first/third.txt' }]);
+    await act(async () => nativeEvents.get('zwip://open-targets')!());
+    await screen.findByRole('tab', { name: 'third.txt' });
+    expect(api.openWorkspace).toHaveBeenCalledTimes(1);
+    expect(editors.get('/first/file.txt')!.session.dirty).toBe(true);
+  });
+
+  it('waits for an active workspace transition before opening an incoming file', async () => {
+    vi.stubGlobal('__TAURI_INTERNALS__', {});
+    vi.mocked(api.getSetting).mockImplementation(async (key) =>
+      key === 'zwip.updates.lastSeen' ? updates[0].id : null,
+    );
+    const gate = deferred<WorkspaceSnapshot>();
+    vi.mocked(api.openWorkspace).mockReturnValueOnce(gate.promise);
+    render(<App />);
+    await waitFor(() => expect(nativeEvents.has('zwip://open-targets')).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: 'Open project…' }));
+    await screen.findByRole('dialog', { name: 'Opening workspace' });
+    vi.mocked(invoke).mockResolvedValueOnce([{ root: '/first', file: '/first/file.txt' }]);
+    await act(async () => nativeEvents.get('zwip://open-targets')!());
+    expect(api.openDocument).not.toHaveBeenCalled();
+    await act(async () => gate.resolve(workspace('/first', 1)));
+    await screen.findByRole('tab', { name: 'file.txt' });
+    expect(api.openWorkspace).toHaveBeenCalledTimes(1);
+  });
+
   it('defers an unseen update behind an active dialog without losing the startup notification', async () => {
     vi.stubGlobal('__TAURI_INTERNALS__', {});
     const gate = deferred<string>();

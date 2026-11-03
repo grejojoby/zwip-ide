@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Modal } from './Modal';
 import { IntelliJImport } from './IntelliJImport';
+import { CommandLineTool } from './CommandLineTool';
 import {
   defaultShortcuts,
   doubleTapRecognizer,
@@ -147,6 +148,7 @@ export function Settings({
           }}
         >
           <div className="modal-body settings-body">
+            <CommandLineTool />
             <div className="settings-section">
               <h3>Bring your IntelliJ settings</h3>
               <p className="muted">

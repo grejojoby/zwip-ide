@@ -2952,6 +2952,38 @@ button.danger {
   font-size: 11px;
   line-height: 1.6;
 }
+.command-line-usage {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  font-size: 11px;
+}
+.command-line-usage li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+.command-line-usage code {
+  min-width: 155px;
+}
+.command-line-usage span {
+  color: var(--muted);
+}
+.command-line-setup {
+  margin-top: 12px;
+  font-size: 11px;
+}
+.command-line-setup summary {
+  cursor: pointer;
+}
+.command-line-setup pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 10px;
+  background: var(--background);
+  border: 1px solid var(--border);
+}
 .shortcut-list {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -48,20 +48,19 @@ if (!process.env.ZWIP_E2E_WORKSPACE) {
   process.env.ZWIP_DATA = join(directory, 'data');
   process.env.ZWIP_E2E_WORKSPACE = workspace;
 }
+const application = resolve(process.env.ZWIP_E2E_APP ?? 'target/debug/zwip');
 export const config = {
   runner: 'local',
   specs: ['./tests/e2e/**/*.mjs'],
   maxInstances: 1,
   bail: 1,
-  capabilities: [
-    { browserName: 'tauri', 'tauri:options': { application: resolve('target/debug/zwip') } },
-  ],
+  capabilities: [{ browserName: 'tauri', 'tauri:options': { application } }],
   services: [
     [
       '@wdio/tauri-service',
       {
         driverProvider: 'embedded',
-        appBinaryPath: resolve('target/debug/zwip'),
+        appBinaryPath: application,
         embeddedPort: 4457,
       },
     ],

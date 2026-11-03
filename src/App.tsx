@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 // Already in the main bundle: the syntax runtime shares it with downloaded grammars.
 import { closeCompletion } from '@codemirror/autocomplete';
 import { EditorState } from '@codemirror/state';
@@ -129,6 +130,10 @@ import { WhatsNew } from './components/WhatsNew';
 import { updates } from './content/updates';
 
 type AuxiliaryTool = 'database' | 'http' | 'git';
+interface OpenTarget {
+  root: string;
+  file: string | null;
+}
 type SidebarAction =
   | { kind: 'move'; tool: SidebarTool; side: SidebarSide }
   | { kind: 'open'; tool: SidebarTool }
@@ -599,6 +604,48 @@ function WorkspaceApp() {
   );
 
   const uiZoom = useRef<number>(UI_ZOOM.initial);
+  const [openTargets, setOpenTargets] = useState<OpenTarget[]>([]);
+  const handlingOpenTarget = useRef(false);
+  useEffect(() => {
+    if (!globalPreferencesReady || !('__TAURI_INTERNALS__' in window)) return;
+    let alive = true;
+    let unlisten: (() => void) | undefined;
+    const receive = async () => {
+      const targets = await invoke<OpenTarget[]>('take_open_targets');
+      if (alive && targets?.length) setOpenTargets((current) => [...current, ...targets]);
+    };
+    // Subscribe before draining so both cold launches and later requests are delivered.
+    void listen('zwip://open-targets', () => void receive().catch(report))
+      .then(async (stop) => {
+        if (!alive) {
+          stop();
+          return;
+        }
+        unlisten = stop;
+        await receive();
+      })
+      .catch(report);
+    return () => {
+      alive = false;
+      unlisten?.();
+    };
+  }, [globalPreferencesReady]);
+  useEffect(() => {
+    const target = openTargets[0];
+    if (!target || handlingOpenTarget.current || lifecycleBusy.current) return;
+    handlingOpenTarget.current = true;
+    void (async () => {
+      if (workspaceRef.current?.root !== target.root) await loadWorkspace(target.root);
+      if (workspaceRef.current?.root === target.root && target.file)
+        await openFile(target.file, undefined, true, 'main');
+    })()
+      .catch(report)
+      .finally(() => {
+        handlingOpenTarget.current = false;
+        setOpenTargets((current) => current.slice(1));
+      });
+    // Workspace transitions wake requests that arrived while another transition was busy.
+  }, [openTargets, opening, closing]);
   useEffect(() => {
     // ⌘+ / ⌘− / ⌘0 zoom the whole IDE, also while a dialog is open.
     const key = (event: KeyboardEvent) => {

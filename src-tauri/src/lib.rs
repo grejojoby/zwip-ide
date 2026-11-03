@@ -4,6 +4,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::menu::{Menu, MenuItem, MenuItemKind, PredefinedMenuItem};
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+mod command_line;
+use command_line::OpenTarget;
 
 /// One IDE core per window, so each window holds its own workspace, workers and tasks.
 struct Cores {
@@ -16,6 +18,8 @@ struct Window {
     core: Option<Arc<ide_core::Core>>,
     /// Canonical workspace root; a project opens in at most one window.
     root: Option<String>,
+    opening_root: Option<String>,
+    open_targets: Vec<OpenTarget>,
 }
 impl Cores {
     fn core(&self, label: &str) -> Result<Arc<ide_core::Core>, String> {
@@ -33,13 +37,49 @@ impl Cores {
         let windows = self.windows.lock().ok()?;
         windows
             .iter()
-            .find(|(label, window)| *label != except && window.root.as_deref() == Some(root))
+            .find(|(label, window)| {
+                *label != except
+                    && (window.root.as_deref() == Some(root)
+                        || window.opening_root.as_deref() == Some(root))
+            })
             .map(|(label, _)| label.clone())
     }
     fn set_root(&self, label: &str, root: Option<String>) {
         if let Ok(mut windows) = self.windows.lock() {
-            windows.entry(label.to_owned()).or_default().root = root;
+            let window = windows.entry(label.to_owned()).or_default();
+            window.root = root;
+            window.opening_root = None;
         }
+    }
+    /// Reserve an empty window, or reuse the window already opening this workspace.
+    fn queue_open(&self, mut target: OpenTarget) -> Option<String> {
+        let mut windows = self.windows.lock().ok()?;
+        // A file inside an open project belongs to that workspace, including nested folders.
+        if let Some(file) = &target.file {
+            if let Some(root) = windows
+                .values()
+                .filter_map(|window| window.root.as_ref().or(window.opening_root.as_ref()))
+                .filter(|root| std::path::Path::new(file).starts_with(root))
+                .max_by_key(|root| root.len())
+            {
+                target.root = root.clone();
+            }
+        }
+        let label = windows
+            .iter()
+            .find(|(_, window)| {
+                window.root.as_ref().or(window.opening_root.as_ref()) == Some(&target.root)
+            })
+            .or_else(|| {
+                windows
+                    .iter()
+                    .find(|(_, window)| window.root.is_none() && window.opening_root.is_none())
+            })
+            .map(|(label, _)| label.clone())?;
+        let window = windows.get_mut(&label)?;
+        window.opening_root = Some(target.root.clone());
+        window.open_targets.push(target);
+        Some(label)
     }
     fn close(&self, label: &str) {
         let window = self
@@ -93,6 +133,8 @@ async fn ide_request(
         if method == "workspace.open" {
             if let Ok(workspace) = &result {
                 cores.set_root(&label, workspace["root"].as_str().map(str::to_owned));
+            } else if let Ok(mut windows) = cores.windows.lock() {
+                windows.entry(label.clone()).or_default().opening_root = None;
             }
         }
         result
@@ -104,22 +146,68 @@ async fn ide_request(
 /// Opens another IDE window, optionally opening `root` in it.
 #[tauri::command]
 fn new_window(app: tauri::AppHandle, root: Option<String>) -> Result<(), String> {
-    open_window(&app, root).map_err(|error| error.to_string())
+    open_window(&app, root)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 
-fn open_window(app: &tauri::AppHandle, root: Option<String>) -> tauri::Result<()> {
+fn open_window(app: &tauri::AppHandle, root: Option<String>) -> tauri::Result<String> {
     let cores = app.state::<Arc<Cores>>();
     let label = format!("window-{}", cores.sequence.fetch_add(1, Ordering::Relaxed));
     let url = match root {
         Some(root) => format!("index.html?root={}", urlencoding(&root)),
         None => "index.html".to_owned(),
     };
-    WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
+    WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
         .title("Zwip")
         .inner_size(1440.0, 940.0)
         .min_inner_size(900.0, 600.0)
         .disable_drag_drop_handler()
         .build()?;
+    // Register even before the webview sends its first request.
+    cores
+        .windows
+        .lock()
+        .unwrap()
+        .entry(label.clone())
+        .or_default();
+    Ok(label)
+}
+
+#[tauri::command]
+fn take_open_targets(
+    window: tauri::WebviewWindow,
+    cores: tauri::State<'_, Arc<Cores>>,
+) -> Result<Vec<OpenTarget>, String> {
+    let mut windows = cores.windows.lock().map_err(|e| e.to_string())?;
+    Ok(std::mem::take(
+        &mut windows
+            .entry(window.label().to_owned())
+            .or_default()
+            .open_targets,
+    ))
+}
+
+#[cfg(target_os = "macos")]
+fn open_external_path(app: &tauri::AppHandle, path: &std::path::Path) -> Result<(), String> {
+    let target = OpenTarget::from_path(path)?;
+    let cores = app.state::<Arc<Cores>>();
+    let label = if let Some(label) = cores.queue_open(target.clone()) {
+        label
+    } else {
+        let label = open_window(app, None).map_err(|e| e.to_string())?;
+        let mut windows = cores.windows.lock().map_err(|e| e.to_string())?;
+        let window = windows.entry(label.clone()).or_default();
+        window.opening_root = Some(target.root.clone());
+        window.open_targets.push(target);
+        label
+    };
+    if let Some(window) = app.get_webview_window(&label) {
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+        // The queue also survives events arriving before the frontend listener is ready.
+        let _ = window.emit("zwip://open-targets", ());
+    }
     Ok(())
 }
 
@@ -149,7 +237,7 @@ pub fn run() {
             let data = std::env::var_os("ZWIP_DATA").map(std::path::PathBuf::from).unwrap_or(app.path().app_data_dir()?);
             app.manage(Arc::new(Cores {
                 data,
-                windows: Mutex::new(HashMap::new()),
+                windows: Mutex::new(HashMap::from([("main".into(), Window::default())])),
                 sequence: AtomicU64::new(1),
             }));
             // The standard macOS menu, plus Settings… after About and New Window in the File menu.
@@ -187,10 +275,20 @@ pub fn run() {
                 window.state::<Arc<Cores>>().close(window.label());
             }
         })
-        .invoke_handler(tauri::generate_handler![ide_request, new_window])
+        .invoke_handler(tauri::generate_handler![ide_request, new_window, take_open_targets, command_line::command_line_status, command_line::install_command_line_tool])
         .build(tauri::generate_context!())
         .expect("failed to start Zwip")
         .run(|app, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = &event {
+                for url in urls {
+                    if let Ok(path) = url.to_file_path() {
+                        if let Err(error) = open_external_path(app, &path) {
+                            eprintln!("Could not open {}: {error}", path.display());
+                        }
+                    }
+                }
+            }
             // App::run exits the process directly; destructors alone cannot
             // guarantee that language workers and their subprocesses finish.
             if matches!(event, tauri::RunEvent::Exit) {
@@ -221,5 +319,56 @@ mod tests {
         cores.close("main");
         assert_eq!(cores.window_with("/work/web", "window-1"), None);
         assert_eq!(urlencoding("/a b/é"), "/a%20b/%C3%A9");
+    }
+
+    #[test]
+    fn launch_requests_reserve_empty_windows_and_reuse_open_or_starting_projects() {
+        let cores = Cores {
+            data: PathBuf::new(),
+            windows: Mutex::new(HashMap::from([("main".into(), Window::default())])),
+            sequence: AtomicU64::new(1),
+        };
+        let target = OpenTarget {
+            root: "/work/api".into(),
+            file: Some("/work/api/main.rs".into()),
+        };
+        assert_eq!(cores.queue_open(target.clone()).as_deref(), Some("main"));
+        assert_eq!(
+            cores.window_with("/work/api", "other").as_deref(),
+            Some("main")
+        );
+        assert_eq!(cores.queue_open(target.clone()).as_deref(), Some("main"));
+        assert!(cores
+            .queue_open(OpenTarget {
+                root: "/work/other".into(),
+                file: None
+            })
+            .is_none());
+        cores.set_root("main", Some(target.root.clone()));
+        assert_eq!(cores.queue_open(target).as_deref(), Some("main"));
+        assert_eq!(cores.windows.lock().unwrap()["main"].open_targets.len(), 3);
+        assert_eq!(
+            cores
+                .queue_open(OpenTarget {
+                    root: "/work/api/src".into(),
+                    file: Some("/work/api/src/lib.rs".into())
+                })
+                .as_deref(),
+            Some("main")
+        );
+        assert_eq!(
+            cores.windows.lock().unwrap()["main"]
+                .open_targets
+                .last()
+                .unwrap()
+                .root,
+            "/work/api"
+        );
+        assert!(cores
+            .queue_open(OpenTarget {
+                root: "/work/api-other".into(),
+                file: Some("/work/api-other/main.rs".into())
+            })
+            .is_none());
     }
 }

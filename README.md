@@ -67,6 +67,21 @@ npm run build # Creates target/release/bundle/macos/Zwip.app
 
 The current app targets macOS 13.5 or later; only macOS 27.0.1 has been exercised. Local builds are ad-hoc signed, without Developer ID signing or notarization.
 
+## Open from your terminal
+
+In the built **Zwip.app**, open **Settings → Command-line tool → Install zwip command**. This installs `~/.local/bin/zwip` without an administrator password. Development executables cannot install the launcher.
+
+```sh
+zwip .                  # Current directory as a workspace (also the default with no argument)
+zwip path/to/project    # Project directory
+zwip path/to/file       # File, with its parent directory as the workspace
+zwip "My Project"       # Quote paths containing spaces
+```
+
+If your terminal cannot find `zwip`, run `export PATH="$HOME/.local/bin:$PATH"` and add that line to `~/.zshrc` (or your shell's startup file). The command supports one existing file or directory per invocation and `--help`. It forwards requests to the running app, reusing a matching workspace window or opening another window. Files inside an open workspace use that window; otherwise, a file uses its parent directory, without searching for a repository root.
+
+If you move Zwip.app, install the command again from Settings in its new location. To uninstall, remove `~/.local/bin/zwip`. Installation preserves unrelated files or symlinks already at that path.
+
 ## Preview status
 
 Zwip is a personal preview, **not yet a qualified daily-driver release**. Navigation correctness and native workflow tests provide useful evidence; resource usage still needs controlled production measurements. Production workflow coverage, physical input, IME and accessibility qualification remain in progress.

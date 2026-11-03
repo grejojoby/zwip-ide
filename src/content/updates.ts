@@ -22,6 +22,27 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-11-03-command-line-launcher',
+    version: '0.1.0',
+    date: '2026-11-03',
+    title: 'Open Zwip from your terminal',
+    summary: 'Install the zwip command from Settings to open project folders and files.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Command-line tool in Settings',
+        description:
+          'Install a user-level macOS launcher with one click, with usage examples and terminal PATH instructions. Installation is available from a built Zwip.app.',
+      },
+      {
+        type: 'added',
+        title: 'Open folders and individual files',
+        description:
+          'Use zwip . or a directory path to open a workspace, or pass a file to open it with its parent folder. Requests reach the running app and reuse the matching workspace window.',
+      },
+    ],
+  },
+  {
     id: '2026-11-02-debounced-file-search',
     version: '0.1.0',
     date: '2026-11-02',
