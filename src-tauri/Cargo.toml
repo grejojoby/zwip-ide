@@ -20,6 +20,11 @@ ide-core = { path = "../crates/ide-core" }
 tauri-plugin-wdio = { version = "1", optional = true }
 tauri-plugin-wdio-webdriver = { version = "1", optional = true }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6.2"
+objc2 = "0.6.5"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSEvent", "NSWindow", "block2", "objc2-core-foundation"] }
+
 [features]
 e2e = ["dep:tauri-plugin-wdio", "dep:tauri-plugin-wdio-webdriver"]
 custom-protocol = ["tauri/custom-protocol"]

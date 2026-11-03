@@ -1,6 +1,7 @@
 export const shortcutActions = {
   save: 'Save file',
   files: 'Go to file',
+  everywhere: 'Search everywhere',
   symbols: 'Go to symbol',
   actions: 'Find action',
   search: 'Find text in workspace',
@@ -24,6 +25,7 @@ export type Shortcuts = Record<ShortcutAction, string>;
 export const defaultShortcuts: Shortcuts = {
   save: 'Mod-s',
   files: 'Mod-Shift-o',
+  everywhere: 'Shift Shift',
   symbols: 'Mod-Alt-o',
   actions: 'Mod-Shift-a',
   search: 'Mod-Shift-f',
@@ -68,6 +70,7 @@ const doubleTap = /^(meta|mod|ctrl|alt|shift) \1$/i;
 export const globalShortcutActions: ShortcutAction[] = [
   'save',
   'files',
+  'everywhere',
   'symbols',
   'actions',
   'search',
@@ -110,12 +113,21 @@ export function validShortcut(value: string): boolean {
   return canonicalShortcut(value) !== null;
 }
 export function normalizedShortcuts(value: Partial<Shortcuts> | null | undefined): Shortcuts {
+  // Older keymaps often assign double Shift to Go to file, which opens the same search.
+  const alreadyAssigned =
+    value?.everywhere === undefined &&
+    Object.values(value ?? {}).some(
+      (shortcut) =>
+        typeof shortcut === 'string' && canonicalShortcut(shortcut) === defaultShortcuts.everywhere,
+    );
   return Object.fromEntries(
     Object.entries(defaultShortcuts).map(([key, fallback]) => [
       key,
       typeof value?.[key as ShortcutAction] === 'string'
         ? (canonicalShortcut(value[key as ShortcutAction]!) ?? fallback)
-        : fallback,
+        : key === 'everywhere' && alreadyAssigned
+          ? ''
+          : fallback,
     ]),
   ) as Shortcuts;
 }

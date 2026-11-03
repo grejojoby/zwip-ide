@@ -104,6 +104,8 @@ interface Props extends SemanticCallbacks {
   onCopyReference?(line: number): void;
   onNavigate(operation: NavigationOperation | 'smart', position: Position): void;
   onPosition(position: Position): void;
+  /** User caret moves become history stops; programmatic reveals and edits do not. */
+  onVisit?(from: Position, to: Position): void;
   onFocus(): void;
   onSave(): void;
 }
@@ -319,6 +321,21 @@ export function CodeEditor(props: Props) {
         }
         if ((update.selectionSet || update.docChanged) && update.view.hasFocus)
           callbacks.current.onPosition(positionAt(update.state, update.state.selection.main.head));
+        if (
+          update.selectionSet &&
+          !update.docChanged &&
+          update.view.hasFocus &&
+          update.transactions.some((transaction) => transaction.isUserEvent('select'))
+        ) {
+          const from = positionAt(update.startState, update.startState.selection.main.head);
+          const to = positionAt(update.state, update.state.selection.main.head);
+          // Keep individual clicks and line changes, without filling history with each arrow key.
+          if (
+            from.line !== to.line ||
+            update.transactions.some((transaction) => transaction.isUserEvent('select.pointer'))
+          )
+            callbacks.current.onVisit?.(from, to);
+        }
       }),
       EditorView.contentAttributes.of({
         'aria-label': `Editor for ${doc.session.path.split('/').pop()}`,

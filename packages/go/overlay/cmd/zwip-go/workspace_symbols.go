@@ -3,10 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"go/parser"
+	"go/token"
 	"sort"
+	"strings"
 
 	"golang.org/x/tools/gopls/internal/cache"
 	"golang.org/x/tools/gopls/internal/golang"
+	"golang.org/x/tools/gopls/internal/protocol"
 	"golang.org/x/tools/gopls/internal/settings"
 )
 
@@ -70,6 +74,44 @@ func (w *worker) workspaceSymbols(ctx context.Context, q workspaceSymbolQuery) (
 				break
 			}
 		}
+		// WorkspaceSymbols returns declarations inside packages, but not package clauses.
+		// Match both the declared name and import path; open one declaration per package.
+		seenPackages := make(map[string]bool)
+		query := strings.ToLower(strings.TrimSpace(q.Query))
+	packages:
+		for _, pkg := range metadata {
+			if ctx.Err() != nil {
+				break
+			}
+			if query == "" || (!strings.Contains(strings.ToLower(string(pkg.Name)), query) && !strings.Contains(strings.ToLower(string(pkg.PkgPath)), query)) {
+				continue
+			}
+			uris := append([]protocol.DocumentURI(nil), pkg.GoFiles...)
+			sort.Slice(uris, func(i, j int) bool { return uris[i] < uris[j] })
+			for _, uri := range uris {
+				if !within(item.context.Root, uri.Path()) {
+					continue
+				}
+				key := string(pkg.PkgPath) + ":" + string(pkg.Name)
+				if seenPackages[key] {
+					break
+				}
+				if len(seenPackages) >= 100 {
+					result.State = "partial"
+					result.Reasons = append(result.Reasons, item.context.ID+": package result limit reached; refine the query")
+					break packages
+				}
+				entry, err := describePackage(ctx, item.snapshot, uri, item.context.ID)
+				if err != nil {
+					result.State = "partial"
+					result.Reasons = append(result.Reasons, err.Error())
+					continue
+				}
+				seenPackages[key] = true
+				result.Locations = append(result.Locations, entry)
+				break
+			}
+		}
 		symbols, err := golang.WorkspaceSymbols(ctx, settings.SymbolFuzzy, settings.DynamicSymbols, []*cache.Snapshot{item.snapshot}, q.Query)
 		if err != nil {
 			result.State = "partial"
@@ -106,4 +148,27 @@ func (w *worker) workspaceSymbols(ctx context.Context, q workspaceSymbolQuery) (
 		return a.Range.Start.Line < b.Range.Start.Line
 	})
 	return
+}
+
+func describePackage(ctx context.Context, snapshot *cache.Snapshot, uri protocol.DocumentURI, contextID string) (sourceLocation, error) {
+	fh, err := snapshot.ReadFile(ctx, uri)
+	if err != nil {
+		return sourceLocation{}, err
+	}
+	content, err := fh.Content()
+	if err != nil {
+		return sourceLocation{}, err
+	}
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, uri.Path(), content, parser.PackageClauseOnly)
+	if err != nil {
+		return sourceLocation{}, err
+	}
+	start := fset.Position(file.Name.Pos()).Offset
+	end := fset.Position(file.Name.End()).Offset
+	rng, err := protocol.NewMapper(uri, content).OffsetRange(start, end)
+	if err != nil {
+		return sourceLocation{}, err
+	}
+	return describeLocation(ctx, snapshot, protocol.Location{URI: uri, Range: rng}, contextID, "package")
 }

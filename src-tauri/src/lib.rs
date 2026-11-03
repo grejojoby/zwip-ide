@@ -5,6 +5,8 @@ use std::sync::{Arc, Mutex};
 use tauri::menu::{Menu, MenuItem, MenuItemKind, PredefinedMenuItem};
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 mod command_line;
+#[cfg(target_os = "macos")]
+mod navigation_gestures;
 use command_line::OpenTarget;
 
 /// One IDE core per window, so each window holds its own workspace, workers and tasks.
@@ -232,6 +234,8 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            navigation_gestures::install(app.handle().clone())?;
             #[cfg(feature = "e2e")]
             app.add_capability(r#"{"identifier":"e2e","windows":["main"],"permissions":["wdio:default","wdio-webdriver:default"]}"#)?;
             let data = std::env::var_os("ZWIP_DATA").map(std::path::PathBuf::from).unwrap_or(app.path().app_data_dir()?);
@@ -292,6 +296,8 @@ pub fn run() {
             // App::run exits the process directly; destructors alone cannot
             // guarantee that language workers and their subprocesses finish.
             if matches!(event, tauri::RunEvent::Exit) {
+                #[cfg(target_os = "macos")]
+                navigation_gestures::shutdown();
                 app.state::<Arc<Cores>>().shutdown();
             }
         });

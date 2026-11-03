@@ -39,6 +39,7 @@ describe('IntelliJ keymap preview', () => {
     const empty = {
       ...Object.fromEntries(Object.keys(defaultShortcuts).map((action) => [action, ''])),
       branches: defaultShortcuts.branches,
+      everywhere: defaultShortcuts.everywhere,
       push: defaultShortcuts.push,
       updateProject: defaultShortcuts.updateProject,
     } as typeof defaultShortcuts;

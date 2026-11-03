@@ -11,6 +11,13 @@ import {
   validShortcut,
 } from './shortcuts';
 describe('macOS shortcuts', () => {
+  it('preserves existing double Shift bindings without introducing a fallback conflict', () => {
+    const shortcuts = normalizedShortcuts({ files: 'Shift Shift' });
+    expect(shortcuts.files).toBe('Shift Shift');
+    expect(shortcuts.everywhere).toBe('');
+    expect(shortcutConflicts(shortcuts)).toEqual([]);
+    expect(normalizedShortcuts({}).everywhere).toBe('Shift Shift');
+  });
   it('matches physical letter codes even when Option produces an alternate character', () => {
     const event = {
       key: '∫',

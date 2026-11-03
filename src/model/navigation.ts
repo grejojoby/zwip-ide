@@ -43,6 +43,20 @@ export function isCurrentResult(
 export class NavigationHistory {
   private entries: { path: string; position: Position; sourceContextId?: string }[] = [];
   private cursor = -1;
+  get current() {
+    return this.entries[this.cursor];
+  }
+  get canBack(): boolean {
+    return this.cursor > 0;
+  }
+  get canForward(): boolean {
+    return this.cursor < this.entries.length - 1;
+  }
+  updateCurrent(path: string, position: Position, sourceContextId?: string): void {
+    const current = this.current;
+    if (current?.path === path && current.sourceContextId === sourceContextId)
+      this.entries[this.cursor] = { ...current, position };
+  }
   visit(path: string, position: Position, sourceContextId?: string): void {
     const previous = this.entries[this.cursor];
     if (

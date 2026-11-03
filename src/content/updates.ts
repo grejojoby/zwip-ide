@@ -22,6 +22,54 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-11-03-swipe-and-command-search',
+    version: '0.1.0',
+    date: '2026-11-03',
+    title: 'Swipe navigation and complete double-Shift search',
+    summary: 'Navigate with macOS page-swipe gestures and keep settings and commands in search.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Three-finger Back and Forward on macOS',
+        description:
+          'Swipe right to go back and left to go forward in the window receiving the gesture. Uses native page-swipe events; configure Swipe between pages for three fingers in macOS Trackpad settings. Dialogs block editor navigation, and ordinary two-finger scrolling is unchanged.',
+      },
+      {
+        type: 'improved',
+        title: 'Settings and commands stay in double-Shift search',
+        description:
+          'Search settings and available commands alongside files and symbols. Command search works before opening a project and preserves existing double-Shift bindings for Find action. The separate Find action shortcut remains available.',
+      },
+    ],
+  },
+  {
+    id: '2026-11-03-search-and-navigation-history',
+    version: '0.1.0',
+    date: '2026-11-03',
+    title: 'Search everywhere and keep your place',
+    summary: 'Find files, functions and packages with double Shift, and retrace editor navigation.',
+    changes: [
+      {
+        type: 'fixed',
+        title: 'Navigation targets open reliably',
+        description:
+          'Command-click and usage results use the resolved file path and retain their editor when a usage preview closes. File aliases share unsaved changes in one buffer.',
+      },
+      {
+        type: 'added',
+        title: 'Search everywhere with double Shift',
+        description:
+          'Search project files and language-provider symbols together. Go package names and import paths open their package declaration. Incomplete indexing and provider failures remain visible.',
+      },
+      {
+        type: 'improved',
+        title: 'Back and Forward restore line and column',
+        description:
+          'Cursor clicks, movement between lines, tab switches and navigation targets retain exact locations. Use the toolbar arrows or Command+[ and Command+]; history shortcuts take priority over editor indentation.',
+      },
+    ],
+  },
+  {
     id: '2026-11-03-command-line-launcher',
     version: '0.1.0',
     date: '2026-11-03',

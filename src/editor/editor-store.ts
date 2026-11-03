@@ -22,19 +22,26 @@ export class EditorStore {
   readonly documents = new Map<string, OpenEditor>();
   private epoch = 0;
   private pending = new Map<string, Promise<OpenEditor>>();
+  private closing = new Map<string, Promise<boolean>>();
   private editingLocks = 0;
   constructor(private changed: () => void) {}
   async open(path: string): Promise<OpenEditor> {
+    const epoch = this.epoch;
+    // A usage preview may still be releasing its backend mirror when a tab claims it.
+    const closing = this.closing.get(path);
+    if (closing) await closing;
+    if (epoch !== this.epoch) throw new Error('Workspace changed while opening the document');
     const existing = this.documents.get(path);
     if (existing) return existing;
     const request = this.pending.get(path);
     if (request) return request;
-    const epoch = this.epoch;
     const promise = api
       .openDocument(path)
-      .then((snapshot) => {
+      .then(async (snapshot) => {
         if (epoch !== this.epoch) throw new Error('Workspace changed while opening the document');
-        return this.add(snapshot);
+        // Aliases and symlinks must share the buffer, including unsaved changes.
+        if (this.closing.has(snapshot.path)) return this.open(snapshot.path);
+        return this.documents.get(snapshot.path) ?? this.add(snapshot);
       })
       .finally(() => {
         if (epoch === this.epoch) this.pending.delete(path);
@@ -73,6 +80,15 @@ export class EditorStore {
     };
   }
   async close(path: string): Promise<boolean> {
+    const pending = this.closing.get(path);
+    if (pending) return pending;
+    const closing = this.release(path).finally(() => {
+      if (this.closing.get(path) === closing) this.closing.delete(path);
+    });
+    this.closing.set(path, closing);
+    return closing;
+  }
+  private async release(path: string): Promise<boolean> {
     const doc = this.documents.get(path);
     if (!doc) return true;
     const epoch = this.epoch;
@@ -155,6 +171,7 @@ export class EditorStore {
     this.epoch += 1;
     this.documents.clear();
     this.pending.clear();
+    this.closing.clear();
   }
 }
 

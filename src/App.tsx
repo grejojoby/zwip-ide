@@ -130,6 +130,11 @@ import { WhatsNew } from './components/WhatsNew';
 import { updates } from './content/updates';
 
 type AuxiliaryTool = 'database' | 'http' | 'git';
+interface EditorLocation {
+  path: string;
+  position: Position;
+  sourceContextId?: string;
+}
 interface OpenTarget {
   root: string;
   file: string | null;
@@ -566,12 +571,16 @@ function WorkspaceApp() {
   const [closePath, setClosePath] = useState<string>();
   const [pendingRoot, setPendingRoot] = useState<string>();
   const [chosenRoot, setChosenRoot] = useState<string>();
-  const [targets, setTargets] = useState<SourceLocation[] | null>(null);
+  const [targets, setTargets] = useState<{
+    locations: SourceLocation[];
+    origin: EditorLocation;
+  } | null>(null);
   const [usagesPopup, setUsagesPopup] = useState<{
     id: string;
     anchor: PopupAnchor;
     symbol: string;
     editor?: EditorView;
+    origin: EditorLocation;
   } | null>(null);
   // Files the usage preview opened without a tab; released once the popup and its navigation end.
   const previewDocuments = useRef(new Set<string>());
@@ -966,6 +975,38 @@ function WorkspaceApp() {
     }
   }
   const openSequence = useRef({ main: 0, split: 0 });
+  function currentLocation(path = focusPath): EditorLocation | undefined {
+    const doc = path ? documents.documents.get(path) : undefined;
+    if (!doc) return undefined;
+    const state =
+      [...doc.views].find((view) => view.hasFocus)?.state ?? [...doc.views][0]?.state ?? doc.state;
+    return {
+      path: doc.session.path,
+      position: state ? positionAt(state, state.selection.main.head) : { line: 0, character: 0 },
+      sourceContextId: doc.sourceContextId,
+    };
+  }
+  function visitPosition(path: string, from: Position, to: Position) {
+    const context = documents.documents.get(path)?.sourceContextId;
+    history.current.visit(path, from, context);
+    history.current.visit(path, to, context);
+    redraw((value) => value + 1);
+  }
+  function activateTab(path: string) {
+    const destination = currentLocation(path);
+    if (!destination) {
+      void openFile(path, undefined, true, 'main');
+      return;
+    }
+    const origin = currentLocation();
+    if (origin) history.current.visit(origin.path, origin.position, origin.sourceContextId);
+    history.current.visit(destination.path, destination.position, destination.sourceContextId);
+    openSequence.current.main += 1;
+    setActiveSql(undefined);
+    setActive(destination.path);
+    setActiveDiff(undefined);
+    setFocusPane('main');
+  }
   async function openFile(
     path: string,
     target?: Position,
@@ -973,12 +1014,18 @@ function WorkspaceApp() {
     pane: 'main' | 'split' = focusPane,
     sourceContextId?: string,
     highlightEnd?: Position,
+    from = currentLocation(),
   ) {
     if (lifecycleBusy.current) return;
     const generation = workspaceRef.current?.generation;
     const sequence = ++openSequence.current[pane];
+    const origin = record ? from : undefined;
+    // Claim preview ownership before closing its popup can schedule cleanup.
+    previewDocuments.current.delete(path);
     try {
       const doc = await documents.open(path);
+      path = doc.session.path;
+      previewDocuments.current.delete(path);
       if (
         lifecycleBusy.current ||
         workspaceRef.current?.generation !== generation ||
@@ -1002,8 +1049,15 @@ function WorkspaceApp() {
         openSequence.current[pane] !== sequence
       )
         return;
-      if (record)
-        history.current.visit(path, target ?? { line: 0, character: 0 }, doc.sourceContextId);
+      if (record) {
+        if (origin) history.current.visit(origin.path, origin.position, origin.sourceContextId);
+        const destination =
+          target ??
+          (doc.state
+            ? positionAt(doc.state, doc.state.selection.main.head)
+            : { line: 0, character: 0 });
+        history.current.visit(path, destination, doc.sourceContextId);
+      }
       setActiveSql(undefined);
       setTabs((current) => (current.includes(path) ? current : [...current, path]));
       if (pane === 'split' && split) setSplit(path);
@@ -1028,8 +1082,10 @@ function WorkspaceApp() {
         }
         setPosition(target);
       }
+      return true;
     } catch (e) {
       report(e);
+      return false;
     }
   }
   async function save(path = focusPath) {
@@ -1318,6 +1374,7 @@ function WorkspaceApp() {
         bottom: bounds?.top ?? window.innerHeight / 3,
       },
       symbol: word ? state.sliceDoc(word.from, word.to) : 'symbol',
+      origin: { path: doc.session.path, position: at, sourceContextId: doc.sourceContextId },
     };
     const showUsagesPopup = () => {
       setUsagesPopup(popup);
@@ -1388,7 +1445,6 @@ function WorkspaceApp() {
         result.state === 'complete' &&
         result.locations.length === 1
       ) {
-        history.current.visit(path, at, doc.sourceContextId);
         const location = result.locations[0];
         await openFile(
           location.path,
@@ -1397,6 +1453,7 @@ function WorkspaceApp() {
           focusPane,
           location.contextIds[0],
           location.range.end,
+          { path, position: at, sourceContextId: doc.sourceContextId },
         );
       } else if (actual === 'references') {
         showUsagesPopup();
@@ -1404,7 +1461,7 @@ function WorkspaceApp() {
         (actual === 'definition' || actual === 'typeDefinition' || actual === 'implementations') &&
         result.locations.length > 1
       ) {
-        setTargets(result.locations);
+        setTargets({ locations: result.locations, origin: popup.origin });
         setTool('usages');
       } else setTool('usages');
       setStatus(
@@ -1612,10 +1669,30 @@ function WorkspaceApp() {
       setEditBusy(false);
     }
   }
-  function goHistory(direction: 'back' | 'forward') {
-    const target = history.current[direction]();
-    if (target)
-      void openFile(target.path, target.position, false, focusPane, target.sourceContextId);
+  const historyOpening = useRef(false);
+  async function goHistory(direction: 'back' | 'forward') {
+    if (lifecycleBusy.current || historyOpening.current) return;
+    const navigationHistory = history.current;
+    const origin = currentLocation();
+    if (origin)
+      navigationHistory.updateCurrent(origin.path, origin.position, origin.sourceContextId);
+    const target = navigationHistory[direction]();
+    if (!target) return;
+    historyOpening.current = true;
+    try {
+      const opened = await openFile(
+        target.path,
+        target.position,
+        false,
+        focusPane,
+        target.sourceContextId,
+      );
+      if (!opened && history.current === navigationHistory && navigationHistory.current === target)
+        navigationHistory[direction === 'back' ? 'forward' : 'back']();
+    } finally {
+      historyOpening.current = false;
+      redraw((value) => value + 1);
+    }
   }
   async function search() {
     if (!searchQuery.trim()) return;
@@ -1783,6 +1860,18 @@ function WorkspaceApp() {
   const actionsRef = useRef({ save, goHistory, shortcuts, gitBusy: gitActivity.busy });
   actionsRef.current = { save, goHistory, shortcuts, gitBusy: gitActivity.busy };
   useEffect(() => {
+    if (!('__TAURI_INTERNALS__' in window)) return;
+    let alive = true;
+    const stop = listen<string>('zwip://navigate-history', ({ payload }) => {
+      if (!alive || document.querySelector('dialog[open]')) return;
+      if (payload === 'back' || payload === 'forward') void actionsRef.current.goHistory(payload);
+    }).catch(() => null);
+    return () => {
+      alive = false;
+      void stop.then((unlisten) => unlisten?.());
+    };
+  }, []);
+  useEffect(() => {
     const tap = doubleTapRecognizer();
     const key = (event: KeyboardEvent) => {
       // Double-tap shortcuts complete on the second keyup; others match a keydown.
@@ -1799,7 +1888,11 @@ function WorkspaceApp() {
       } else if (matchesShortcut(event, keys.scratch)) {
         event.preventDefault();
         if (workspaceRef.current) setShowNewScratch(true);
-      } else if (matchesShortcut(event, keys.files)) {
+      } else if (
+        matchesShortcut(event, keys.files) ||
+        matchesShortcut(event, keys.everywhere) ||
+        (doubled === 'Shift Shift' && matchesShortcut(event, keys.actions))
+      ) {
         event.preventDefault();
         setShowFiles(true);
       } else if (matchesShortcut(event, keys.symbols)) {
@@ -1840,16 +1933,25 @@ function WorkspaceApp() {
         actions.goHistory('forward');
       }
     };
-    // Capture Git shortcuts before the editor or webview consumes them.
-    const capturePush = (event: KeyboardEvent) => {
-      if (
-        event.defaultPrevented ||
-        document.querySelector('dialog[open]') ||
-        !(
-          matchesKeystroke(event, actionsRef.current.shortcuts.push) ||
-          matchesKeystroke(event, actionsRef.current.shortcuts.updateProject)
-        )
-      )
+    // History and Git shortcuts take priority over editor and webview bindings.
+    const captureShortcut = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || document.querySelector('dialog[open]')) return;
+      const keys = actionsRef.current.shortcuts;
+      const direction = matchesKeystroke(event, keys.back)
+        ? 'back'
+        : matchesKeystroke(event, keys.forward)
+          ? 'forward'
+          : null;
+      if (direction) {
+        event.preventDefault();
+        event.stopPropagation();
+        void actionsRef.current.goHistory(direction);
+        return;
+      }
+      if (!(
+        matchesKeystroke(event, actionsRef.current.shortcuts.push) ||
+        matchesKeystroke(event, actionsRef.current.shortcuts.updateProject)
+      ))
         return;
       event.preventDefault();
       event.stopPropagation();
@@ -1864,11 +1966,11 @@ function WorkspaceApp() {
         else setShowPushReview(true);
       }
     };
-    window.addEventListener('keydown', capturePush, true);
+    window.addEventListener('keydown', captureShortcut, true);
     window.addEventListener('keydown', key);
     window.addEventListener('keyup', key);
     return () => {
-      window.removeEventListener('keydown', capturePush, true);
+      window.removeEventListener('keydown', captureShortcut, true);
       window.removeEventListener('keydown', key);
       window.removeEventListener('keyup', key);
     };
@@ -1925,6 +2027,13 @@ function WorkspaceApp() {
       id: 'files',
       label: 'Go to file',
       shortcut: shortcutLabel(shortcuts.files),
+      disabled: !workspace,
+      run: () => setShowFiles(true),
+    },
+    {
+      id: 'search-everywhere',
+      label: 'Search everywhere: files, functions and packages',
+      shortcut: shortcutLabel(shortcuts.everywhere),
       disabled: !workspace,
       run: () => setShowFiles(true),
     },
@@ -2093,7 +2202,8 @@ function WorkspaceApp() {
                 className="icon-button"
                 aria-label="Navigation back"
                 title={`Back (${shortcutLabel(shortcuts.back)})`}
-                onClick={() => goHistory('back')}
+                disabled={!history.current.canBack}
+                onClick={() => void goHistory('back')}
               >
                 <Icon name="back" />
               </button>
@@ -2101,7 +2211,8 @@ function WorkspaceApp() {
                 className="icon-button"
                 aria-label="Navigation forward"
                 title={`Forward (${shortcutLabel(shortcuts.forward)})`}
-                onClick={() => goHistory('forward')}
+                disabled={!history.current.canForward}
+                onClick={() => void goHistory('forward')}
               >
                 <Icon name="forward" />
               </button>
@@ -2171,7 +2282,7 @@ function WorkspaceApp() {
               </button>
               <button className="global-search" onClick={() => setShowFiles(true)}>
                 <Icon name="search" />
-                Go to file<kbd>{shortcutLabel(shortcuts.files)}</kbd>
+                Search everywhere<kbd>{shortcutLabel(shortcuts.everywhere || shortcuts.files)}</kbd>
               </button>
             </>
           )}
@@ -2426,12 +2537,7 @@ function WorkspaceApp() {
                       role="tab"
                       aria-selected={path === active && !diffView && !activeSql}
                       title={path}
-                      onClick={() => {
-                        setActiveSql(undefined);
-                        setActive(path);
-                        setActiveDiff(undefined);
-                        setFocusPane('main');
-                      }}
+                      onClick={() => activateTab(path)}
                     >
                       <Icon name="file" />
                       {path.split('/').pop()}
@@ -2675,6 +2781,7 @@ function WorkspaceApp() {
                           }
                           onNavigate={(operation, at) => void navigate(operation, at, active)}
                           onPosition={setPosition}
+                          onVisit={(from, to) => visitPosition(mainDoc.session.path, from, to)}
                           onFocus={() => setFocusPane('main')}
                           onRequest={(operation, at) =>
                             editorRequest(operation, mainDoc.session.path, at)
@@ -2716,6 +2823,7 @@ function WorkspaceApp() {
                             }
                             onNavigate={(operation, at) => void navigate(operation, at, split)}
                             onPosition={setPosition}
+                            onVisit={(from, to) => visitPosition(splitDoc.session.path, from, to)}
                             onFocus={() => setFocusPane('split')}
                             onRequest={(operation, at) =>
                               editorRequest(operation, splitDoc.session.path, at)
@@ -3092,13 +3200,15 @@ function WorkspaceApp() {
             onClose={() => setShowSymbols(false)}
           />
         )}
-        {showFiles && workspace && (
+        {showFiles && (
           <FileSearch
-            files={workspace.files}
+            files={workspace?.files ?? []}
             recent={recentFiles}
-            onOpen={(path) => {
+            onSearch={workspace ? searchSymbols : undefined}
+            commands={commands}
+            onOpen={(path, at, context, end) => {
               setShowFiles(false);
-              void openFile(path);
+              void openFile(path, at, true, focusPane, context, end);
             }}
             onClose={() => setShowFiles(false)}
           />
@@ -3254,7 +3364,7 @@ function WorkspaceApp() {
         {showPackages && <Packages onClose={() => setShowPackages(false)} />}
         {targets && (
           <TargetChooser
-            locations={targets}
+            locations={targets.locations}
             onClose={() => setTargets(null)}
             onChoose={(location) => {
               setTargets(null);
@@ -3265,6 +3375,7 @@ function WorkspaceApp() {
                 focusPane,
                 location.contextIds[0],
                 location.range.end,
+                targets.origin,
               );
             }}
           />
@@ -3280,7 +3391,7 @@ function WorkspaceApp() {
             dark={dark}
             loadPreview={async (path) => {
               const doc = await documents.open(path);
-              previewDocuments.current.add(path);
+              previewDocuments.current.add(doc.session.path);
               return doc.state?.doc.toString() ?? doc.initial;
             }}
             onNavigate={(path, at) => void navigate('smart', at, path)}
@@ -3293,6 +3404,7 @@ function WorkspaceApp() {
                 focusPane,
                 location.contextIds[0],
                 location.range.end,
+                usagesPopup.origin,
               );
             }}
             onDock={() => {
