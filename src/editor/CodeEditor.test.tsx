@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getChunks } from '@codemirror/merge';
 import { undo } from '@codemirror/commands';
+import { fireEvent, within } from '@testing-library/react';
 import { CodeEditor } from './CodeEditor';
 import { externalDocumentChange } from './external-change';
 import { DocumentSession } from '../model/document-session';
@@ -56,11 +57,12 @@ afterEach(async () => {
   container.remove();
   vi.unstubAllGlobals();
 });
-function Editor({ diffBase }: { diffBase?: string } = {}) {
+function Editor({ diffBase, readOnly }: { diffBase?: string; readOnly?: boolean } = {}) {
   return (
     <CodeEditor
       document={doc}
       diffBase={diffBase}
+      readOnly={readOnly}
       dark
       onNavigate={() => {}}
       onPosition={() => {}}
@@ -157,4 +159,102 @@ it('updates diff highlighting while editing and keeps normal undo history', asyn
   await act(async () => root.render(<Editor />));
   expect(getChunks(view.state)).toBeNull();
   expect(view.state.doc.toString()).toBe('original');
+});
+
+describe('find in the open file', () => {
+  it('wraps to a match spanning the caret when a query is pasted', async () => {
+    const { view, input, bar } = await openFind('hello');
+    await act(async () => view.dispatch({ selection: { anchor: 2 } }));
+    await act(async () => fireEvent.input(input, { target: { value: 'hello' } }));
+    expect(view.state.selection.main.from).toBe(0);
+    expect(view.state.selection.main.to).toBe(5);
+    expect(within(bar).getByRole('status').textContent).toBe('1 of 1');
+  });
+  async function openFind(content = 'alpha Alpha alphabet\nalpha\n', readOnly = false) {
+    doc.initial = content;
+    await act(async () => root.render(<Editor readOnly={readOnly} />));
+    const view = [...doc.views][0];
+    await act(async () => {
+      fireEvent.keyDown(view.contentDOM, { key: 'f', code: 'KeyF', ctrlKey: true });
+    });
+    const bar = within(container).getByRole('search', { name: 'Find in file' });
+    const input = within(bar).getByRole('searchbox', { name: 'Find in file' });
+    return { view, bar, input };
+  }
+  it('searches read-only files and updates counts when content changes externally', async () => {
+    const { view, bar, input } = await openFind('foo', true);
+    await act(async () => fireEvent.input(input, { target: { value: 'foo' } }));
+    expect(within(bar).getByRole('status').textContent).toBe('1 of 1');
+    await act(async () =>
+      view.dispatch({
+        changes: { from: 3, insert: ' foo' },
+        annotations: externalDocumentChange.of(true),
+      }),
+    );
+    expect(within(bar).getByRole('status').textContent).toBe('1 of 2');
+    expect(doc.session.dirty).toBe(false);
+  });
+  it('labels capped match counts honestly on files with many matches', async () => {
+    const { bar, input } = await openFind('x '.repeat(10_001));
+    await act(async () => fireEvent.input(input, { target: { value: 'x' } }));
+    expect(within(bar).getByRole('status').textContent).toBe('1 of 10,000+');
+  });
+  it('opens a focused search bar and navigates live matches with Enter and Shift+Enter', async () => {
+    const { view, bar, input } = await openFind();
+    expect(document.activeElement).toBe(input);
+    await act(async () => fireEvent.input(input, { target: { value: 'alpha' } }));
+    expect(within(bar).getByRole('status').textContent).toBe('1 of 4');
+    expect(view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to)).toBe(
+      'alpha',
+    );
+    await act(async () => fireEvent.keyDown(input, { key: 'Enter' }));
+    expect(within(bar).getByRole('status').textContent).toBe('2 of 4');
+    await act(async () => fireEvent.keyDown(input, { key: 'Enter', shiftKey: true }));
+    expect(within(bar).getByRole('status').textContent).toBe('1 of 4');
+    await act(async () =>
+      fireEvent.click(within(bar).getByRole('button', { name: 'Previous match' })),
+    );
+    expect(within(bar).getByRole('status').textContent).toBe('4 of 4');
+    expect(view.state.doc.toString()).toBe('alpha Alpha alphabet\nalpha\n');
+  });
+  it('supports case and whole-word options, invalid regex and no-results feedback', async () => {
+    const { bar, input } = await openFind();
+    await act(async () => fireEvent.input(input, { target: { value: 'alpha' } }));
+    await act(async () => fireEvent.click(within(bar).getByRole('button', { name: 'Match case' })));
+    expect(within(bar).getByRole('status').textContent).toBe('1 of 3');
+    await act(async () => fireEvent.click(within(bar).getByRole('button', { name: 'Whole word' })));
+    expect(within(bar).getByRole('status').textContent).toBe('1 of 2');
+    await act(async () => fireEvent.input(input, { target: { value: 'missing' } }));
+    expect(within(bar).getByRole('status').textContent).toBe('No results');
+    expect(within(bar).getByRole('button', { name: 'Next match' }).hasAttribute('disabled')).toBe(
+      true,
+    );
+    await act(async () =>
+      fireEvent.click(within(bar).getByRole('button', { name: 'Regular expression' })),
+    );
+    await act(async () => fireEvent.input(input, { target: { value: '[' } }));
+    expect(within(bar).getByRole('status').textContent).toBe('Invalid regular expression');
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+    await act(async () => fireEvent.input(input, { target: { value: 'alph[a-z]' } }));
+    expect(within(bar).getByRole('status').textContent).toBe('1 of 2');
+  });
+  it('seeds from selected text, preserves the query across tabs, and closes back to the editor', async () => {
+    doc.initial = 'foo foo';
+    await act(async () => root.render(<Editor />));
+    let view = [...doc.views][0];
+    await act(async () => view.dispatch({ selection: { anchor: 0, head: 3 } }));
+    await act(async () =>
+      fireEvent.keyDown(view.contentDOM, { key: 'f', code: 'KeyF', ctrlKey: true }),
+    );
+    let input = within(container).getByRole('searchbox') as HTMLInputElement;
+    expect(input.value).toBe('foo');
+    await act(async () => root.render(null));
+    await act(async () => root.render(<Editor />));
+    view = [...doc.views][0];
+    input = within(container).getByRole('searchbox') as HTMLInputElement;
+    expect(input.value).toBe('foo');
+    await act(async () => fireEvent.keyDown(input, { key: 'Escape' }));
+    expect(within(container).queryByRole('search')).toBeNull();
+    expect(document.activeElement).toBe(view.contentDOM);
+  });
 });

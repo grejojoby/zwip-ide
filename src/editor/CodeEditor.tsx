@@ -32,6 +32,7 @@ import { semanticExtensions, type SemanticCallbacks } from './semantic-extension
 import { defaultShortcuts, type Shortcuts } from '../model/shortcuts';
 import { syntaxColors } from './syntax-colors';
 import { navigationHighlight, revealNavigationTarget } from './navigation-highlight';
+import { fileSearch } from './file-search';
 import type { NavigationOperation, Position, TextDelta } from '../contracts';
 import { offsetAt, positionAt, type OpenEditor } from './editor-store';
 import { currentEditorFontSize, editorFontSizeAfterWheel, setEditorFontSize } from '../model/zoom';
@@ -65,6 +66,11 @@ function theme(dark: boolean): Extension {
         },
         // Other occurrences of the selected text, as IntelliJ marks them.
         '.cm-selectionMatch': { backgroundColor: 'var(--selection-match)' },
+        '.cm-searchMatch': { backgroundColor: 'var(--selection-match)' },
+        '.cm-searchMatch-selected': {
+          backgroundColor: 'var(--navigation-target)',
+          outline: '1px solid var(--accent)',
+        },
         '.cm-cursor': { borderLeftColor: 'var(--text)' },
         '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': {
           backgroundColor: 'var(--selection)',
@@ -249,6 +255,7 @@ export function CodeEditor(props: Props) {
       highlightActiveLine(),
       highlightActiveLineGutter(),
       highlightSelectionMatches(),
+      fileSearch,
       navigationHighlight,
       syntax.current.of([]),
       color.current.of(theme(callbacks.current.dark)),
@@ -263,9 +270,6 @@ export function CodeEditor(props: Props) {
         indentWithTab,
       ]),
       EditorView.domEventHandlers({
-        focus: () => {
-          callbacks.current.onFocus();
-        },
         contextmenu: (event, view) => {
           if (!callbacks.current.onContextMenu) return false;
           event.preventDefault();
@@ -319,12 +323,15 @@ export function CodeEditor(props: Props) {
           )
             callbacks.current.onBreakpoints?.(lines, true);
         }
-        if ((update.selectionSet || update.docChanged) && update.view.hasFocus)
+        const searchSelection = update.transactions.some((transaction) =>
+          transaction.isUserEvent('select.search'),
+        );
+        if ((update.selectionSet || update.docChanged) && (update.view.hasFocus || searchSelection))
           callbacks.current.onPosition(positionAt(update.state, update.state.selection.main.head));
         if (
           update.selectionSet &&
           !update.docChanged &&
-          update.view.hasFocus &&
+          (update.view.hasFocus || searchSelection) &&
           update.transactions.some((transaction) => transaction.isUserEvent('select'))
         ) {
           const from = positionAt(update.startState, update.startState.selection.main.head);
@@ -332,7 +339,12 @@ export function CodeEditor(props: Props) {
           // Keep individual clicks and line changes, without filling history with each arrow key.
           if (
             from.line !== to.line ||
-            update.transactions.some((transaction) => transaction.isUserEvent('select.pointer'))
+            update.transactions.some(
+              (transaction) =>
+                transaction.isUserEvent('select.pointer') ||
+                (transaction.isUserEvent('select.search') &&
+                  !transaction.isUserEvent('select.search.input')),
+            )
           )
             callbacks.current.onVisit?.(from, to);
         }
@@ -440,7 +452,9 @@ export function CodeEditor(props: Props) {
       ),
     });
   }, [props.document, props.diffBase]);
-  return <div className="code-editor" ref={container} />;
+  return (
+    <div className="code-editor" ref={container} onFocus={() => callbacks.current.onFocus()} />
+  );
 }
 // Reconfigure retains history state fields when extensions are retained by identity.
 import { StateEffect } from '@codemirror/state';

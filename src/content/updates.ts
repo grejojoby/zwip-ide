@@ -22,6 +22,27 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-11-03-find-in-open-file',
+    version: '0.1.0',
+    date: '2026-11-03',
+    title: 'Find in the current file',
+    summary: 'Command+F opens a compact search bar above the editor.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Visible in-file search',
+        description:
+          'Use Command+F, Edit → Find in File, or action search. Find selected text, highlight matches, see the current match count, and move between results with Enter, Shift+Enter, the arrow buttons, Command+G or Shift+Command+G. Escape returns focus to the editor.',
+      },
+      {
+        type: 'added',
+        title: 'Search options and retained queries',
+        description:
+          'Toggle case-sensitive, whole-word or regular-expression matching. Invalid patterns and missing results are shown clearly. Queries stay with their file across tab switches; counts above 10,000 are marked with a plus sign.',
+      },
+    ],
+  },
+  {
     id: '2026-11-03-swipe-and-command-search',
     version: '0.1.0',
     date: '2026-11-03',

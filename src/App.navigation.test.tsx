@@ -121,6 +121,40 @@ async function completedPopup() {
   return popup;
 }
 describe('editor navigation history', () => {
+  it('keeps Command+F in the split pane whose search input is focused', async () => {
+    await openEditor();
+    fireEvent.click(screen.getByRole('button', { name: 'Split editor' }));
+    await waitFor(() => expect(screen.getAllByLabelText('Editor for main.ts')).toHaveLength(2));
+    const [main, secondary] = screen
+      .getAllByLabelText('Editor for main.ts')
+      .map((host) => EditorView.findFromDOM(host)!);
+    act(() => secondary.focus());
+    fireEvent.keyDown(secondary.contentDOM, { key: 'f', code: 'KeyF', metaKey: true });
+    const secondaryInput = within(secondary.dom).getByRole('searchbox') as HTMLInputElement;
+    fireEvent.input(secondaryInput, { target: { value: 'Run' } });
+    act(() => main.focus());
+    fireEvent.keyDown(main.contentDOM, { key: 'f', code: 'KeyF', metaKey: true });
+    const mainInput = within(main.dom).getByRole('searchbox') as HTMLInputElement;
+    fireEvent.input(mainInput, { target: { value: 'function' } });
+    act(() => secondaryInput.focus());
+    fireEvent.keyDown(secondaryInput, { key: 'f', code: 'KeyF', metaKey: true });
+    expect(document.activeElement).toBe(secondaryInput);
+    expect(mainInput.value).toBe('function');
+    expect(secondaryInput.value).toBe('Run');
+  });
+  it('opens in-file search with Command+F even when focus is outside the editor', async () => {
+    const view = await openEditor();
+    const button = screen.getByRole('button', { name: /Search everywhere/ });
+    act(() => button.focus());
+    fireEvent.keyDown(button, { key: 'f', code: 'KeyF', metaKey: true });
+    const bar = await screen.findByRole('search', { name: 'Find in file' });
+    const input = within(bar).getByRole('searchbox');
+    expect(document.activeElement).toBe(input);
+    fireEvent.input(input, { target: { value: 'Run' } });
+    expect(within(bar).getByRole('status').textContent).toBe('1 of 3');
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(document.activeElement).toBe(view.contentDOM);
+  });
   it('routes native swipe events through editor history and ignores swipes while a dialog is open', async () => {
     vi.stubGlobal('__TAURI_INTERNALS__', {});
     vi.mocked(api.getSetting).mockImplementation(async (key) =>

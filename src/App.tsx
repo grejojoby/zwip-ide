@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 // Already in the main bundle: the syntax runtime shares it with downloaded grammars.
 import { closeCompletion } from '@codemirror/autocomplete';
+import { openSearchPanel } from '@codemirror/search';
 import { EditorState } from '@codemirror/state';
 import { api, newWindow, request } from './api';
 import type {
@@ -1670,6 +1671,14 @@ function WorkspaceApp() {
     }
   }
   const historyOpening = useRef(false);
+  function findInFile() {
+    const doc = focusPath ? documents.documents.get(focusPath) : undefined;
+    const focused = [...documents.documents.values()]
+      .flatMap((item) => [...item.views])
+      .find((view) => view.dom.contains(document.activeElement));
+    const view = focused ?? (doc && [...doc.views][0]);
+    return view && !lifecycleBusy.current ? openSearchPanel(view) : false;
+  }
   async function goHistory(direction: 'back' | 'forward') {
     if (lifecycleBusy.current || historyOpening.current) return;
     const navigationHistory = history.current;
@@ -1857,18 +1866,23 @@ function WorkspaceApp() {
     auxiliaryWidth,
     breakpoints,
   ]);
-  const actionsRef = useRef({ save, goHistory, shortcuts, gitBusy: gitActivity.busy });
-  actionsRef.current = { save, goHistory, shortcuts, gitBusy: gitActivity.busy };
+  const actionsRef = useRef({ save, goHistory, findInFile, shortcuts, gitBusy: gitActivity.busy });
+  actionsRef.current = { save, goHistory, findInFile, shortcuts, gitBusy: gitActivity.busy };
   useEffect(() => {
     if (!('__TAURI_INTERNALS__' in window)) return;
     let alive = true;
-    const stop = listen<string>('zwip://navigate-history', ({ payload }) => {
-      if (!alive || document.querySelector('dialog[open]')) return;
-      if (payload === 'back' || payload === 'forward') void actionsRef.current.goHistory(payload);
-    }).catch(() => null);
+    const stops = [
+      listen<string>('zwip://navigate-history', ({ payload }) => {
+        if (!alive || document.querySelector('dialog[open]')) return;
+        if (payload === 'back' || payload === 'forward') void actionsRef.current.goHistory(payload);
+      }).catch(() => null),
+      listen('zwip://find-in-file', () => {
+        if (alive && !document.querySelector('dialog[open]')) actionsRef.current.findInFile();
+      }).catch(() => null),
+    ];
     return () => {
       alive = false;
-      void stop.then((unlisten) => unlisten?.());
+      for (const stop of stops) void stop.then((unlisten) => unlisten?.());
     };
   }, []);
   useEffect(() => {
@@ -1936,6 +1950,11 @@ function WorkspaceApp() {
     // History and Git shortcuts take priority over editor and webview bindings.
     const captureShortcut = (event: KeyboardEvent) => {
       if (event.defaultPrevented || document.querySelector('dialog[open]')) return;
+      if (matchesKeystroke(event, 'Mod-f') && actionsRef.current.findInFile()) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       const keys = actionsRef.current.shortcuts;
       const direction = matchesKeystroke(event, keys.back)
         ? 'back'
@@ -2078,6 +2097,13 @@ function WorkspaceApp() {
       shortcut: shortcutLabel(shortcuts.search),
       disabled: !workspace,
       run: () => setTool('search'),
+    },
+    {
+      id: 'find-in-file',
+      label: 'Find in current file',
+      shortcut: '⌘F',
+      disabled: !focusPath,
+      run: findInFile,
     },
     ...Object.entries(titles).map(([operation, title]) => ({
       id: operation,

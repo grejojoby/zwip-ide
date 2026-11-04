@@ -248,6 +248,7 @@ pub fn run() {
             let menu = Menu::default(app.handle())?;
             let settings = MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
             let new_window = MenuItem::with_id(app, "new-window", "New Window", true, None::<&str>)?;
+            let find_file = MenuItem::with_id(app, "find-in-file", "Find in File…", true, Some("CmdOrCtrl+F"))?;
             let mut submenus = menu.items()?.into_iter().filter_map(|item| match item {
                 MenuItemKind::Submenu(submenu) => Some(submenu),
                 _ => None,
@@ -257,6 +258,9 @@ pub fn run() {
             }
             if let Some(file) = submenus.next() {
                 file.insert(&new_window, 0)?;
+            }
+            if let Some(edit) = submenus.next() {
+                edit.append_items(&[&PredefinedMenuItem::separator(app)?, &find_file])?;
             }
             app.set_menu(menu)?;
             app.on_menu_event(|app, event| {
@@ -269,6 +273,10 @@ pub fn run() {
                     };
                 } else if event.id() == "new-window" {
                     let _ = open_window(app, None);
+                } else if event.id() == "find-in-file" {
+                    if let Some(window) = app.webview_windows().into_values().find(|window| window.is_focused().unwrap_or(false)) {
+                        let _ = app.emit_to(window.label(), "zwip://find-in-file", ());
+                    }
                 }
             });
             Ok(())
