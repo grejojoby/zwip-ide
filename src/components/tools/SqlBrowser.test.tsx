@@ -2,13 +2,14 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { SqlBrowser } from './SqlBrowser';
-import { queryConsoleApi, toolRequest } from './tool-api';
+import { connectionApi, queryConsoleApi, toolRequest } from './tool-api';
 
 vi.mock('./tool-api', async () => {
   const actual = await vi.importActual<typeof import('./tool-api')>('./tool-api');
   return {
     ...actual,
     queryConsoleApi: { get: vi.fn(), save: vi.fn() },
+    connectionApi: { trustCertificate: vi.fn() },
     toolRequest: vi.fn(),
   };
 });
@@ -46,9 +47,135 @@ afterEach(() => {
 });
 beforeEach(() => {
   vi.resetAllMocks();
+  HTMLDialogElement.prototype.showModal = function () {
+    this.setAttribute('open', '');
+  };
   vi.mocked(toolRequest).mockResolvedValue([]);
   vi.mocked(queryConsoleApi.get).mockResolvedValue({ content: 'SELECT 1;' });
   vi.mocked(queryConsoleApi.save).mockResolvedValue({ content: 'SELECT 1;' });
+});
+
+const sqlServer = {
+  id: 'sql-server',
+  kind: 'mssql' as const,
+  name: 'Reporting SQL Server',
+  config: { host: 'sql.example', port: 1433, database: 'reporting', tls: true },
+};
+const certificateError = {
+  code: -32603,
+  message: 'SQL Server certificate verification failed. Trust the server CA.',
+};
+
+it('offers certificate trust on a failed SQL command and saves only after explicit consent', async () => {
+  vi.mocked(toolRequest).mockImplementation(async (_, method) => {
+    if (method === 'query') throw certificateError;
+    return [];
+  });
+  const updated = {
+    ...sqlServer,
+    config: { ...sqlServer.config, tls: true, trustServerCertificate: true },
+  };
+  vi.mocked(connectionApi.trustCertificate).mockResolvedValue([updated]);
+  const changed = vi.fn();
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  const view = render(
+    <SqlBrowser
+      connection={sqlServer}
+      onDirty={() => {}}
+      visible
+      resultsTarget={host}
+      onShowResults={() => {}}
+      onConnectionChange={changed}
+    />,
+  );
+  await screen.findByLabelText('SQL query');
+  fireEvent.click(screen.getByRole('button', { name: 'Execute' }));
+  const popup = await screen.findByRole('dialog', { name: 'Trust SQL Server certificate?' });
+  expect(popup.textContent).toContain('sql.example:1433');
+  expect(popup.textContent).toContain('server identity');
+  expect(connectionApi.trustCertificate).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Trust and save' }));
+  await waitFor(() => expect(changed).toHaveBeenCalledExactlyOnceWith(updated));
+  expect(connectionApi.trustCertificate).toHaveBeenCalledExactlyOnceWith(sqlServer);
+  expect(await screen.findByRole('status')).toHaveProperty(
+    'textContent',
+    'Certificate trust saved. Run your command again.',
+  );
+  expect(vi.mocked(toolRequest).mock.calls.filter(([, method]) => method === 'query')).toHaveLength(
+    1,
+  );
+  view.unmount();
+  host.remove();
+});
+
+it('lets certificate errors be dismissed and reopened without saving trust', async () => {
+  vi.mocked(toolRequest).mockRejectedValue(certificateError);
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  const view = render(
+    <SqlBrowser
+      connection={sqlServer}
+      onDirty={() => {}}
+      visible
+      resultsTarget={host}
+      onShowResults={() => {}}
+    />,
+  );
+  const popup = await screen.findByRole('dialog', { name: 'Trust SQL Server certificate?' });
+  fireEvent.keyDown(popup, { key: 'Escape' });
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(connectionApi.trustCertificate).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Resolve certificate error…' }));
+  expect(screen.getByRole('dialog', { name: 'Trust SQL Server certificate?' })).toBeTruthy();
+  view.unmount();
+  host.remove();
+});
+
+it('handles stored-procedure certificate failures without closing the procedure viewer', async () => {
+  vi.mocked(toolRequest).mockImplementation(async (_, method) => {
+    if (method === 'procedures') throw certificateError;
+    return [];
+  });
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  const view = render(
+    <SqlBrowser
+      connection={sqlServer}
+      onDirty={() => {}}
+      visible
+      resultsTarget={host}
+      onShowResults={() => {}}
+    />,
+  );
+  await screen.findByLabelText('SQL query');
+  fireEvent.click(screen.getByRole('button', { name: 'Stored procedures…' }));
+  await screen.findByRole('dialog', { name: 'Trust SQL Server certificate?' });
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(screen.getByRole('dialog', { name: 'Stored procedures' })).toBeTruthy();
+  expect(connectionApi.trustCertificate).not.toHaveBeenCalled();
+  view.unmount();
+  host.remove();
+});
+
+it('does not offer SQL Server trust for another database kind', async () => {
+  vi.mocked(toolRequest).mockRejectedValue(certificateError);
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  const view = render(
+    <SqlBrowser
+      connection={connection}
+      onDirty={() => {}}
+      visible
+      resultsTarget={host}
+      onShowResults={() => {}}
+    />,
+  );
+  await screen.findByRole('alert');
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Resolve certificate error…' })).toBeNull();
+  view.unmount();
+  host.remove();
 });
 
 it('loads the saved query console for the connection', async () => {

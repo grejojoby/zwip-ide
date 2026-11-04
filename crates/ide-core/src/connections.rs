@@ -140,6 +140,36 @@ impl Connections {
         self.db.execute("INSERT INTO connections(id,kind,name,config) VALUES(?1,?2,?3,?4) ON CONFLICT(id) DO UPDATE SET kind=excluded.kind,name=excluded.name,config=excluded.config",params![id,kind,name,Value::Object(config).to_string()]).map_err(|e|e.to_string())?;
         self.list()
     }
+    /// Record explicit certificate trust only for the SQL Server settings the user reviewed.
+    /// Compare-and-update also protects against edits made by another IDE window.
+    pub fn trust_server_certificate(&self, id: &str, expected: &Value) -> Result<Value, String> {
+        let (kind, config): (String, String) = self
+            .db
+            .query_row(
+                "SELECT kind,config FROM connections WHERE id=?1",
+                [id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|_| "Connection no longer exists".to_string())?;
+        let mut updated: Value = serde_json::from_str(&config).map_err(|e| e.to_string())?;
+        let changed = "Connection settings changed. Close this popup and try again.";
+        if kind != "mssql" || !expected.is_object() || updated != *expected {
+            return Err(changed.into());
+        }
+        updated["tls"] = json!(true);
+        updated["trustServerCertificate"] = json!(true);
+        let rows = self
+            .db
+            .execute(
+                "UPDATE connections SET config=?1 WHERE id=?2 AND kind='mssql' AND config=?3",
+                params![updated.to_string(), id, config],
+            )
+            .map_err(|e| e.to_string())?;
+        if rows != 1 {
+            return Err(changed.into());
+        }
+        self.list()
+    }
     pub fn resolved(&self, id: &str) -> Result<Value, String> {
         let (kind, config): (String, String) = self
             .db
@@ -210,6 +240,63 @@ fn delete_secret(_id: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn certificate_trust_changes_only_tls_settings_and_survives_reopening() {
+        let data = tempfile::tempdir().unwrap();
+        let store = Connections::new(data.path()).unwrap();
+        let original = json!({"id":"sql-test","kind":"mssql","name":"SQL test","config":{
+            "host":"sql.example","port":1433,"database":"demo","username":"reader",
+            "tls":false,"trustServerCertificate":false}});
+        store.save(&original).unwrap();
+        store
+            .save(
+                &json!({"id":"other","kind":"mssql","name":"Other","config":{
+            "host":"other.example","tls":true,"trustServerCertificate":false}}),
+            )
+            .unwrap();
+        store
+            .trust_server_certificate("sql-test", &original["config"])
+            .unwrap();
+        let items = Connections::new(data.path()).unwrap().list().unwrap();
+        let updated = items
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == "sql-test")
+            .unwrap();
+        let mut expected = original;
+        expected["config"]["tls"] = json!(true);
+        expected["config"]["trustServerCertificate"] = json!(true);
+        assert_eq!(updated, &expected);
+        assert_eq!(items[0]["config"]["trustServerCertificate"], false);
+    }
+
+    #[test]
+    fn certificate_trust_rejects_changed_connections_and_other_database_kinds() {
+        let data = tempfile::tempdir().unwrap();
+        let store = Connections::new(data.path()).unwrap();
+        let other_window = Connections::new(data.path()).unwrap();
+        let mut connection = json!({"id":"sql-test","kind":"mssql","name":"SQL test",
+            "config":{"host":"original.example","tls":true}});
+        store.save(&connection).unwrap();
+        let expected = connection["config"].clone();
+        connection["config"]["host"] = json!("changed.example");
+        other_window.save(&connection).unwrap();
+        assert!(store
+            .trust_server_certificate("sql-test", &expected)
+            .is_err());
+        assert_eq!(store.list().unwrap()[0], connection);
+        connection["kind"] = json!("postgres");
+        store.save(&connection).unwrap();
+        assert!(store
+            .trust_server_certificate("sql-test", &connection["config"])
+            .is_err());
+        assert!(store
+            .trust_server_certificate("missing", &expected)
+            .is_err());
+        assert_eq!(store.list().unwrap()[0], connection);
+    }
 
     #[test]
     fn sql_server_metadata_round_trips_without_persisting_credentials() {

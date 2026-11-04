@@ -2761,6 +2761,11 @@ function WorkspaceApp() {
                       }
                       onDirty={sqlDirtyChanged}
                       onRegisterClose={registerSqlClose}
+                      onConnectionChange={(updated) =>
+                        setSqlTabs((current) =>
+                          current.map((item) => (item.id === updated.id ? updated : item)),
+                        )
+                      }
                       discardEdits={discardSqlEdits}
                       onShowResults={() => {
                         setRequestedSqlConnection({ id: connection.id });

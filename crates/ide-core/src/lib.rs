@@ -700,6 +700,11 @@ impl Core {
                 self.query_consoles.remove(id)?;
                 Ok(connections)
             }
+            "connection.trustServerCertificate" => self
+                .connections
+                .lock()
+                .map_err(|e| e.to_string())?
+                .trust_server_certificate(string(&params, "id")?, &params["expectedConfig"]),
             "tool.request" => {
                 let workspace = self.current()?;
                 let package = string(&params, "packageId")?;

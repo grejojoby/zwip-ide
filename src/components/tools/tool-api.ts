@@ -5,6 +5,7 @@ export type ConnectionKind = Connection['kind'];
 export const connectionApi = {
   list: api.connections,
   save: (connection: Connection, password?: string) => api.saveConnection(connection, password),
+  trustCertificate: (connection: Connection) => api.trustServerCertificate(connection),
   delete: api.deleteConnection,
 };
 export const queryConsoleApi = {

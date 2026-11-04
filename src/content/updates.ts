@@ -22,6 +22,28 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-11-04-sql-certificate-trust-popup',
+    version: '0.1.0',
+    date: '2026-11-04',
+    title: 'Resolve SQL certificate errors in a popup',
+    summary:
+      'Review the affected SQL Server and explicitly save certificate trust for its connection.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Trust and save from the certificate error',
+        description:
+          'SQL Server certificate verification errors open a popup showing the connection, server and database. Trust and save keeps encryption enabled while skipping server identity verification for that connection. Cancel keeps verification enabled, and failed SQL commands are never replayed automatically.',
+      },
+      {
+        type: 'fixed',
+        title: 'Preserve connection settings and saved passwords',
+        description:
+          'Saving trust changes only the two TLS options and preserves saved credentials. If another window changes the connection, review the new settings before saving trust.',
+      },
+    ],
+  },
+  {
     id: '2026-11-04-package-update-version-check',
     version: '0.1.0',
     date: '2026-11-04',

@@ -68,6 +68,14 @@ export const api = {
   connections: () => request<import('./contracts').Connection[]>('connection.list'),
   saveConnection: (connection: import('./contracts').Connection, password?: string) =>
     request<import('./contracts').Connection[]>('connection.save', { ...connection, password }),
+  trustServerCertificate: (connection: import('./contracts').Connection) =>
+    request<import('./contracts').Connection[]>('connection.trustServerCertificate', {
+      id: connection.id,
+      expectedConfig: connection.config,
+    }).then((connections) => {
+      window.dispatchEvent(new Event('zwip:connections-changed'));
+      return connections;
+    }),
   deleteConnection: (id: string) =>
     request<import('./contracts').Connection[]>('connection.delete', { id }),
   queryConsole: (connectionId: string) =>

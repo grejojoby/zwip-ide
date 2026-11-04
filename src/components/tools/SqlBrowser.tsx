@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Connection, SqlColumn, SqlPage, SqlQueryPage, SqlTable } from '../../contracts';
 import { asError } from '../../model/document-session';
 import { Modal } from '../Modal';
 import { StoredProcedures } from './StoredProcedures';
 import { SqlConsole } from './SqlConsole';
+import { isSqlServerCertificateError, SqlCertificateDialog } from './SqlCertificateDialog';
 import { queryConsoleApi, toolRequest } from './tool-api';
 import { cellText, parseCell } from './sql-values';
 type Row = Record<string, unknown>;
@@ -17,6 +18,7 @@ export function SqlBrowser({
   discardEdits = 0,
   focusRequest = 0,
   onRegisterClose,
+  onConnectionChange,
 }: {
   connection: Connection;
   onDirty(id: string, dirty: boolean): void;
@@ -26,6 +28,7 @@ export function SqlBrowser({
   discardEdits?: number;
   focusRequest?: number;
   onRegisterClose?(id: string, flush: (() => Promise<void>) | null): void;
+  onConnectionChange?(connection: Connection): void;
 }) {
   const [tables, setTables] = useState<SqlTable[]>([]);
   const [table, setTable] = useState<SqlTable | null>(null);
@@ -36,6 +39,8 @@ export function SqlBrowser({
   const [filter, setFilter] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [certificateConnection, setCertificateConnection] = useState<Connection | null>(null);
+  const [notice, setNotice] = useState('');
   const [consoleContent, setConsoleContent] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Map<number, Row>>(new Map());
   const [cell, setCell] = useState<{ row: number; column: SqlColumn } | null>(null);
@@ -51,6 +56,19 @@ export function SqlBrowser({
   const busyRef = useRef(false);
   busyRef.current = busy;
   const connectionId = connection.id;
+  const reportSqlError = useCallback(
+    (e: unknown) => {
+      setError(asError(e).message);
+      setNotice('');
+      if (
+        connection.kind === 'mssql' &&
+        !connection.config.trustServerCertificate &&
+        isSqlServerCertificateError(e)
+      )
+        setCertificateConnection(connection);
+    },
+    [connection],
+  );
   useEffect(() => {
     ++epoch.current;
     const mounted = epoch.current;
@@ -124,7 +142,7 @@ export function SqlBrowser({
       const value = await operation();
       if (epoch.current === mounted && id === requestId.current) apply(value);
     } catch (e) {
-      if (epoch.current === mounted && id === requestId.current) setError(asError(e).message);
+      if (epoch.current === mounted && id === requestId.current) reportSqlError(e);
     } finally {
       if (epoch.current === mounted && id === requestId.current) setBusy(false);
     }
@@ -279,7 +297,11 @@ export function SqlBrowser({
         </div>
       )}
       {showProcedures && (
-        <StoredProcedures connectionId={connectionId} onClose={() => setShowProcedures(false)} />
+        <StoredProcedures
+          connectionId={connectionId}
+          onClose={() => setShowProcedures(false)}
+          onError={reportSqlError}
+        />
       )}
       <div className="tool-section-title">
         <button className="primary" disabled={busy} onClick={() => void execute()}>
@@ -293,6 +315,18 @@ export function SqlBrowser({
       {error && (
         <p className="inline-notice error-message" role="alert">
           {error}
+          {connection.kind === 'mssql' &&
+            !connection.config.trustServerCertificate &&
+            isSqlServerCertificateError(error) && (
+              <button onClick={() => setCertificateConnection(connection)}>
+                Resolve certificate error…
+              </button>
+            )}
+        </p>
+      )}
+      {notice && (
+        <p role="status" className="inline-notice">
+          {notice}
         </p>
       )}
       <div className="response-tabs">
@@ -528,6 +562,18 @@ export function SqlBrowser({
         )}
       </section>
       {resultsTarget && createPortal(results, resultsTarget)}
+      {visible && certificateConnection && (
+        <SqlCertificateDialog
+          connection={certificateConnection}
+          onClose={() => setCertificateConnection(null)}
+          onSaved={(updated) => {
+            setCertificateConnection(null);
+            setError('');
+            setNotice('Certificate trust saved. Run your command again.');
+            onConnectionChange?.(updated);
+          }}
+        />
+      )}
     </>
   );
 }

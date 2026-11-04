@@ -7,9 +7,11 @@ const keyOf = (item: SqlProcedure) => JSON.stringify([item.schema, item.name]);
 export function StoredProcedures({
   connectionId,
   onClose,
+  onError,
 }: {
   connectionId: string;
   onClose(): void;
+  onError?(error: unknown): void;
 }) {
   const [procedures, setProcedures] = useState<SqlProcedure[] | null>(null);
   const [selected, setSelected] = useState('');
@@ -24,12 +26,15 @@ export function StoredProcedures({
         if (current) setProcedures(items);
       })
       .catch((e) => {
-        if (current) setError(asError(e).message);
+        if (current) {
+          setError(asError(e).message);
+          onError?.(e);
+        }
       });
     return () => {
       current = false;
     };
-  }, [connectionId]);
+  }, [connectionId, onError]);
   useEffect(() => {
     let current = true;
     const procedure = procedures?.find((item) => keyOf(item) === selected);
@@ -50,7 +55,10 @@ export function StoredProcedures({
         if (current) setDetails(value);
       })
       .catch((e) => {
-        if (current) setError(asError(e).message);
+        if (current) {
+          setError(asError(e).message);
+          onError?.(e);
+        }
       })
       .finally(() => {
         if (current) setLoading(false);
@@ -58,7 +66,7 @@ export function StoredProcedures({
     return () => {
       current = false;
     };
-  }, [connectionId, selected, procedures]);
+  }, [connectionId, selected, procedures, onError]);
   return (
     <Modal title="Stored procedures" onClose={onClose} wide>
       <div className="modal-body procedure-viewer">
