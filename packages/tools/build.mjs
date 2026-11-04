@@ -52,7 +52,7 @@ export async function buildToolsPackages({
         {
           id,
           name,
-          version: id === 'sql' ? '0.2.0' : '0.1.0',
+          version: id === 'sql' ? '0.2.1' : '0.1.0',
           coreVersion: '^0.1.0',
           description: name,
           platform: process.platform,

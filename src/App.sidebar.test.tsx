@@ -171,7 +171,46 @@ async function move(tool: string, side: 'left' | 'right') {
   await waitFor(() => expect(screen.queryByRole('dialog', { name: `Move ${tool}` })).toBeNull());
 }
 
+it('consumes unhandled Escape without triggering native window controls', () => {
+  const view = render(<App />);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(fireEvent.keyDown(document.body, { key: 'Escape' })).toBe(false);
+  expect(fireEvent.keyDown(document.body, { key: 'a' })).toBe(true);
+  view.unmount();
+  expect(fireEvent.keyDown(document.body, { key: 'Escape' })).toBe(true);
+});
+
 describe('sidebar panel ownership', () => {
+  it('persists the toolbar dropdown selection and opens the run editor without executing a task', async () => {
+    const runRoot = '/run-selector-fixture';
+    const key = `zwip.${runRoot}.runConfigurations`;
+    storage.set(key, {
+      version: 1,
+      selectedId: 'api',
+      configurations: [
+        { id: 'api', name: 'API server', command: 'go run .', workingDirectory: 'api' },
+        { id: 'web', name: 'Web app', command: 'npm run dev', workingDirectory: '.' },
+      ],
+    });
+    vi.mocked(api.openWorkspace).mockResolvedValue({ ...workspace, root: runRoot });
+    await openWorkspace();
+    const trigger = screen.getByRole('button', { name: 'Run configuration' });
+    await waitFor(() => expect(trigger.textContent).toContain('API server'));
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Web app' }));
+    await waitFor(() => expect(storage.get(key)).toMatchObject({ selectedId: 'web' }));
+    expect(trigger.textContent).toContain('Web app');
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit configurations…' }));
+    expect(await screen.findByRole('region', { name: 'Run task' })).toBeTruthy();
+    expect((screen.getByLabelText('Edit run configuration') as HTMLSelectElement).value).toBe(
+      'web',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Edit configuration' }));
+    expect(screen.getByLabelText('Run configuration name').getAttribute('value')).toBe('Web app');
+    expect(request).not.toHaveBeenCalledWith('task.run', expect.anything());
+  });
+
   it('hydrates canonical workspace preferences and enables sidebar controls when opening an alias', async () => {
     vi.mocked(open).mockResolvedValue('/workspace-alias/');
     storage.set(layoutKey, {

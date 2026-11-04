@@ -201,6 +201,10 @@ export function Settings({
                 Default macOS shortcuts. Select a shortcut and press its replacement. Escape cancels
                 recording; Delete clears a binding.
               </p>
+              <p className="muted">
+                Window controls: Control+Command+F toggles fullscreen; Command+M minimizes. Escape
+                dismisses dialogs and popups without changing the window size.
+              </p>
               <div className="shortcut-list">
                 {(Object.keys(shortcutActions) as ShortcutAction[]).map((action) => (
                   <div key={action}>

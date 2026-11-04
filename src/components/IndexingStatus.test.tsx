@@ -56,7 +56,7 @@ describe('IndexingStatus', () => {
       'Failedbroken-modgo list failed',
       'Readyready-mod',
     ]);
-    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })).toBe(false);
     expect(screen.queryByRole('dialog')).toBeNull();
   });
   it('shows background package indexing once every module has loaded', () => {

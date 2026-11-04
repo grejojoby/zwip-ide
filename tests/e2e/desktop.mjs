@@ -1155,11 +1155,11 @@ describe('native desktop workspace', () => {
         browser.execute(() =>
           document
             .querySelector('[aria-label="Run configuration"]')
-            ?.selectedOptions[0]?.textContent.includes('Native proof task'),
+            ?.textContent.includes('Native proof task'),
         ),
       { timeout: 10000 },
     );
-    const selectedId = await $('[aria-label="Run configuration"]').getValue();
+    const selectedId = await $('[aria-label="Run configuration"]').getAttribute('value');
     const saved = await call('settings.get', { key: `zwip.${workspace}.runConfigurations` });
     assert.equal(saved.selectedId, selectedId);
     assert.equal(
@@ -1180,7 +1180,8 @@ describe('native desktop workspace', () => {
     await $('.recent-projects button').waitForDisplayed();
     await $('.recent-projects button').click();
     await browser.waitUntil(
-      async () => (await $('[aria-label="Run configuration"]').getValue()) === selectedId,
+      async () =>
+        (await $('[aria-label="Run configuration"]').getAttribute('value')) === selectedId,
       { timeout: 15000 },
     );
     unlinkSync(proof);

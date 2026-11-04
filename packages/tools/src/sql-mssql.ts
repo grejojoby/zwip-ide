@@ -1,5 +1,6 @@
 import mssql from 'mssql';
 import { Readable } from 'node:stream';
+import tls from 'node:tls';
 import type { Config, Driver, Row } from './sql-driver';
 import { queryColumns, RowPage } from './sql-results';
 
@@ -12,7 +13,14 @@ export function mssqlConfig(c: Config): mssql.config {
     password: c.password,
     connectionTimeout: 10000,
     requestTimeout: 120000,
-    options: { encrypt: c.tls ?? true, trustServerCertificate: c.trustServerCertificate ?? false },
+    options: {
+      encrypt: c.tls ?? true,
+      trustServerCertificate: c.trustServerCertificate ?? false,
+      // An explicit CA list replaces Node's defaults, so retain those too.
+      cryptoCredentialsDetails: {
+        ca: [...new Set([...tls.getCACertificates('default'), ...tls.getCACertificates('system')])],
+      },
+    },
     pool: { min: 0, max: 1 },
   };
 }
@@ -23,6 +31,17 @@ async function poolFor(c: Config) {
     return await pool.connect();
   } catch (error) {
     await pool.close();
+    if (
+      error instanceof Error &&
+      /self[- ]signed certificate|unable to verify (?:the )?(?:first|leaf) certificate|unable to get (?:local )?issuer certificate/i.test(
+        error.message,
+      )
+    ) {
+      throw new Error(
+        'SQL Server certificate verification failed. Trust the server CA in your system certificate store and restart Zwip, or edit this connection and enable "Trust server certificate (skip verification)" only if you trust this server. Keep "Encrypt connection (TLS)" enabled.',
+        { cause: error },
+      );
+    }
     throw error;
   }
 }

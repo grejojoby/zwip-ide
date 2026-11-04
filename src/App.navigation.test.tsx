@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EditorView } from '@codemirror/view';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -121,6 +122,54 @@ async function completedPopup() {
   return popup;
 }
 describe('editor navigation history', () => {
+  it('selects the in-file query on every Command+F so typing replaces it immediately', async () => {
+    const user = userEvent.setup();
+    const view = await openEditor();
+    act(() => view.dispatch({ selection: { anchor: 9, head: 12 } }));
+    fireEvent.keyDown(view.contentDOM, { key: 'f', code: 'KeyF', metaKey: true });
+    const input = screen.getByRole('searchbox', { name: 'Find in file' }) as HTMLInputElement;
+    expect(document.activeElement).toBe(input);
+    expect(input.value).toBe('Run');
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, 3]);
+    await user.keyboard('function');
+    expect(input.value).toBe('function');
+    fireEvent.keyDown(input, { key: 'f', code: 'KeyF', metaKey: true });
+    expect(document.activeElement).toBe(input);
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, 8]);
+    await user.keyboard('Run');
+    expect(input.value).toBe('Run');
+    expect(view.state.doc.toString()).toBe(source);
+  });
+  it('focuses and selects the workspace query on opening, repeating and reopening Command+Shift+F', async () => {
+    const user = userEvent.setup();
+    const view = await openEditor();
+    const shortcut = (target: Element) =>
+      fireEvent.keyDown(target, { key: 'F', code: 'KeyF', metaKey: true, shiftKey: true });
+    shortcut(view.contentDOM);
+    let input = screen.getByRole('textbox', {
+      name: 'Search text in workspace',
+    }) as HTMLInputElement;
+    expect(document.activeElement).toBe(input);
+    await user.keyboard('first');
+    expect(input.value).toBe('first');
+    const directory = screen.getByRole('combobox', { name: 'Directory / module' });
+    act(() => directory.focus());
+    shortcut(directory);
+    expect(document.activeElement).toBe(input);
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, 5]);
+    await user.keyboard('second');
+    expect(input.value).toBe('second');
+    shortcut(input);
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, 6]);
+    fireEvent.click(screen.getByRole('button', { name: 'Hide tool window' }));
+    shortcut(view.contentDOM);
+    input = screen.getByRole('textbox', { name: 'Search text in workspace' }) as HTMLInputElement;
+    expect(document.activeElement).toBe(input);
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, 6]);
+    await user.keyboard('third');
+    expect(input.value).toBe('third');
+    expect(view.state.doc.toString()).toBe(source);
+  });
   it('keeps Command+F in the split pane whose search input is focused', async () => {
     await openEditor();
     fireEvent.click(screen.getByRole('button', { name: 'Split editor' }));

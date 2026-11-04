@@ -22,6 +22,93 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-11-04-sql-certificate-package-upgrade',
+    version: '0.1.0',
+    date: '2026-11-04',
+    title: 'SQL certificate fixes ready to install',
+    summary: 'SQL databases 0.2.1 packages the certificate trust improvements as an upgrade.',
+    changes: [
+      {
+        type: 'maintenance',
+        title: 'Upgrade the SQL package',
+        description:
+          'Install SQL databases 0.2.1 to apply the certificate trust fixes to existing installations. The previous installed version remains available for rollback.',
+      },
+    ],
+  },
+  {
+    id: '2026-11-04-run-configuration-dropdown',
+    version: '0.1.0',
+    date: '2026-11-04',
+    title: 'A clearer run configuration dropdown',
+    summary: 'Choose workspace commands from a menu that matches the toolbar.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'Run configurations at a glance',
+        description:
+          'The toolbar dropdown shows the selected configuration, working directories and a shortcut to edit configurations. Use arrow keys, type a name, or press Escape to dismiss. Selecting a configuration does not execute it.',
+      },
+    ],
+  },
+  {
+    id: '2026-11-04-escape-window-shortcuts',
+    version: '0.1.0',
+    date: '2026-11-04',
+    title: 'Escape keeps your window size',
+    summary: 'Dismiss dialogs and popups without accidentally leaving fullscreen.',
+    changes: [
+      {
+        type: 'fixed',
+        title: 'Escape dismisses dialogs without leaving fullscreen',
+        description:
+          'Escape closes the active dialog or popup while preserving the window size. Nested dialogs close one at a time, and protected operations remain open.',
+      },
+      {
+        type: 'improved',
+        title: 'Window shortcuts listed in Settings',
+        description:
+          'Use Control+Command+F to enter or leave fullscreen and Command+M to minimize on macOS. Window controls require modifier keys.',
+      },
+    ],
+  },
+  {
+    id: '2026-11-04-sql-server-certificate-trust',
+    version: '0.1.0',
+    date: '2026-11-04',
+    title: 'SQL Server certificate trust',
+    summary: 'Connect using system-trusted certificates and get clear certificate recovery steps.',
+    changes: [
+      {
+        type: 'fixed',
+        title: 'Use trusted internal certificate authorities',
+        description:
+          'SQL Server connections include system-trusted certificates alongside the default certificate authorities while retaining encryption and verification. Restart Zwip after changing system certificate trust.',
+      },
+      {
+        type: 'improved',
+        title: 'Resolve self-signed certificate errors',
+        description:
+          'Certificate trust errors explain how to trust the server CA or explicitly enable Trust server certificate for that connection while keeping TLS encryption enabled.',
+      },
+    ],
+  },
+  {
+    id: '2026-11-04-search-shortcut-focus',
+    version: '0.1.0',
+    date: '2026-11-04',
+    title: 'Type immediately after opening search',
+    summary: 'Search shortcuts focus the search field and select the current query.',
+    changes: [
+      {
+        type: 'fixed',
+        title: 'Search is ready for typing',
+        description:
+          'Command+F and Command+Shift+F select the search text so you can type a replacement immediately, including when search is already open.',
+      },
+    ],
+  },
+  {
     id: '2026-11-03-find-in-open-file',
     version: '0.1.0',
     date: '2026-11-03',

@@ -1,4 +1,13 @@
-import { Fragment, useEffect, useEffectEvent, useId, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  useEffect,
+  useEffectEvent,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { BuildContext, SearchMatch } from '../contracts';
 import { FileIcon } from './FileIcon';
 import { Icon } from './Icon';
@@ -68,8 +77,9 @@ export function SearchPanel({
   }, [query, directory, workspaceRoot]);
   const directoryListId = useId();
   const queryInput = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (focusRequest) queryInput.current?.focus();
+  useLayoutEffect(() => {
+    queryInput.current?.focus();
+    queryInput.current?.select();
   }, [focusRequest]);
   const suggestions = useMemo(() => {
     const root = workspaceRoot.replace(/\/+$/, '');
@@ -117,7 +127,6 @@ export function SearchPanel({
         <label className="find-input">
           <Icon name="search" />
           <input
-            autoFocus
             ref={queryInput}
             aria-label="Search text in workspace"
             placeholder="Find in files…"

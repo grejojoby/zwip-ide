@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import tls from 'node:tls';
 import { afterEach, expect, it, vi } from 'vitest';
 import mssql from 'mssql';
 import { connectMssql, mssqlConfig, mssqlQuery } from '../../packages/tools/src/sql-mssql';
@@ -55,6 +56,50 @@ it('defaults to encrypted SQL authentication with certificate verification', () 
     password: 'secret',
     options: { encrypt: true, trustServerCertificate: false },
   });
+});
+it('includes system-trusted CAs without dropping the default or extra CA certificates', () => {
+  vi.spyOn(tls, 'getCACertificates').mockImplementation((type) =>
+    type === 'system' ? ['corporate-ca', 'public-ca'] : ['public-ca', 'extra-ca'],
+  );
+  expect(mssqlConfig({ id: 'c', kind: 'mssql' }).options).toMatchObject({
+    encrypt: true,
+    trustServerCertificate: false,
+    cryptoCredentialsDetails: { ca: ['public-ca', 'extra-ca', 'corporate-ca'] },
+  });
+});
+it('keeps certificate trust an explicit per-connection choice while retaining encryption', () => {
+  expect(
+    mssqlConfig({ id: 'c', kind: 'mssql', tls: true, trustServerCertificate: true }).options,
+  ).toMatchObject({ encrypt: true, trustServerCertificate: true });
+  expect(mssqlConfig({ id: 'other', kind: 'mssql' }).options).toMatchObject({
+    encrypt: true,
+    trustServerCertificate: false,
+  });
+});
+it.each(['metadata', 'query'] as const)(
+  'explains how to resolve a self-signed certificate for %s connections and closes the failed pool',
+  async (operation) => {
+    const error = new Error(
+      'Failed to connect to sql.internal:1533 - self-signed certificate; if the root CA is installed locally, try running Node.js with --use-system-ca',
+    );
+    const connect = vi.spyOn(mssql.ConnectionPool.prototype, 'connect').mockRejectedValue(error);
+    const close = vi.spyOn(mssql.ConnectionPool.prototype, 'close').mockResolvedValue();
+    const c = { id: 'c', kind: 'mssql' } as const;
+    const result = operation === 'metadata' ? connectMssql(c) : mssqlQuery(c, 'SELECT 1', 10);
+    await expect(result).rejects.toMatchObject({
+      message: expect.stringContaining('Trust server certificate (skip verification)'),
+      cause: error,
+    });
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(close).toHaveBeenCalledOnce();
+  },
+);
+it('preserves unrelated connection errors without suggesting a certificate bypass', async () => {
+  const error = new Error('Login failed for user demo');
+  vi.spyOn(mssql.ConnectionPool.prototype, 'connect').mockRejectedValue(error);
+  const close = vi.spyOn(mssql.ConnectionPool.prototype, 'close').mockResolvedValue();
+  await expect(connectMssql({ id: 'c', kind: 'mssql' })).rejects.toBe(error);
+  expect(close).toHaveBeenCalledOnce();
 });
 it('pages SQL Server results without mixing different result-set columns', async () => {
   const { request, pool } = fixture([

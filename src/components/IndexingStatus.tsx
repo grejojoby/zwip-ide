@@ -152,6 +152,7 @@ export function IndexingStatus({
           aria-label="Indexing progress per module"
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
+              event.preventDefault();
               event.stopPropagation();
               setOpen(false);
             }

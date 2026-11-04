@@ -99,6 +99,7 @@ import { GitPanel, type Selection as GitSelection } from './components/GitPanel'
 import { Packages } from './components/Packages';
 import { IndexingStatus, useScanProgress } from './components/IndexingStatus';
 import { TaskPanel } from './components/TaskPanel';
+import { RunConfigurationSelector } from './components/RunConfigurationSelector';
 import { HistoryPanel } from './components/HistoryPanel';
 import { Recovery } from './components/Recovery';
 import { EditPreview } from './components/EditPreview';
@@ -1677,7 +1678,10 @@ function WorkspaceApp() {
       .flatMap((item) => [...item.views])
       .find((view) => view.dom.contains(document.activeElement));
     const view = focused ?? (doc && [...doc.views][0]);
-    return view && !lifecycleBusy.current ? openSearchPanel(view) : false;
+    if (!view || lifecycleBusy.current) return false;
+    openSearchPanel(view);
+    view.dom.querySelector<HTMLInputElement>('[main-field]')?.select();
+    return true;
   }
   async function goHistory(direction: 'back' | 'forward') {
     if (lifecycleBusy.current || historyOpening.current) return;
@@ -1890,6 +1894,8 @@ function WorkspaceApp() {
     const key = (event: KeyboardEvent) => {
       // Double-tap shortcuts complete on the second keyup; others match a keydown.
       const doubled = tap(event);
+      // Dialogs and editor popups handle Escape first; consume any native fullscreen fallback.
+      if (event.type === 'keydown' && event.key === 'Escape') event.preventDefault();
       if (event.type === 'keyup' && !doubled) return;
       if (event.defaultPrevented || document.querySelector('dialog[open]')) return;
       const actions = actionsRef.current;
@@ -1939,6 +1945,7 @@ function WorkspaceApp() {
       } else if (matchesShortcut(event, keys.search)) {
         event.preventDefault();
         setTool('search');
+        setSearchFocusRequest((current) => current + 1);
       } else if (matchesShortcut(event, keys.back)) {
         event.preventDefault();
         actions.goHistory('back');
@@ -2096,7 +2103,10 @@ function WorkspaceApp() {
       label: 'Find text in workspace',
       shortcut: shortcutLabel(shortcuts.search),
       disabled: !workspace,
-      run: () => setTool('search'),
+      run: () => {
+        setTool('search');
+        setSearchFocusRequest((current) => current + 1);
+      },
     },
     {
       id: 'find-in-file',
@@ -2242,20 +2252,14 @@ function WorkspaceApp() {
               >
                 <Icon name="forward" />
               </button>
-              <select
-                className="run-configuration-select"
-                aria-label="Run configuration"
-                value={workspaceTasks.state.settings.selectedId ?? ''}
+              <RunConfigurationSelector
+                key={workspace.root}
+                configurations={workspaceTasks.state.settings.configurations}
+                selectedId={workspaceTasks.state.settings.selectedId}
                 disabled={!workspaceTasks.state.ready || workspaceTasks.state.saving}
-                onChange={(event) => void workspaceTasks.session.select(event.target.value || null)}
-              >
-                <option value="">Workspace command…</option>
-                {workspaceTasks.state.settings.configurations.map((config) => (
-                  <option key={config.id} value={config.id}>
-                    {config.name}
-                  </option>
-                ))}
-              </select>
+                onSelect={(id) => void workspaceTasks.session.select(id)}
+                onManage={() => setTool('run')}
+              />
               <button
                 aria-label="Run selected configuration"
                 disabled={

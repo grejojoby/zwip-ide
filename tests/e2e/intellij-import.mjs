@@ -33,24 +33,16 @@ const call = async (method, params = {}) => {
   if (reply.error) throw new Error(reply.error);
   return reply.result;
 };
-// The embedded driver option.click() does not perform a select's default
-// action. Dispatch the same real DOM change consumed by React, as in desktop.mjs.
 async function selectRunConfiguration(value) {
-  assert.equal(
-    await browser.execute((value) => {
-      const select = document.querySelector('[aria-label="Run configuration"]');
-      if (
-        !(select instanceof HTMLSelectElement) ||
-        !Array.from(select.options).some((option) => option.value === value)
-      )
-        return false;
-      select.value = value;
-      select.dispatchEvent(new Event('input', { bubbles: true }));
-      select.dispatchEvent(new Event('change', { bubbles: true }));
-      return true;
-    }, value),
-    true,
-  );
+  await $('[aria-label="Run configuration"]').click();
+  const options = await $$('[role="menuitemradio"]');
+  for (const option of options) {
+    if ((await option.getAttribute('data-configuration-id')) === value) {
+      await option.click();
+      return;
+    }
+  }
+  assert.fail(`Run configuration ${value} is missing from the dropdown`);
 }
 async function settings() {
   await $('footer').$('button=Settings').click();

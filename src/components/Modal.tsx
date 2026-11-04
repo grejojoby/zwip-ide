@@ -27,6 +27,13 @@ export function Modal({
       ref={ref}
       className={`modal ${wide ? 'modal-wide' : ''}`}
       aria-label={title}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && !event.defaultPrevented) {
+          event.preventDefault();
+          event.stopPropagation();
+          if (dismissible) onClose();
+        }
+      }}
       onCancel={(event) => {
         event.preventDefault();
         if (dismissible) onClose();
