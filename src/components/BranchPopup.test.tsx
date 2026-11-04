@@ -290,7 +290,7 @@ describe('branch workflow recovery and safety', () => {
   });
   it('lets toolbar buttons receive Enter without opening a branch action', async () => {
     await open();
-    const refresh = screen.getByRole('button', { name: 'Refresh branches' });
+    const refresh = await screen.findByRole('button', { name: 'Refresh branches' });
     refresh.focus();
     fireEvent.keyDown(refresh, { key: 'Enter' });
     expect(screen.queryByLabelText('Branch name')).toBeNull();

@@ -22,6 +22,21 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-11-04-package-update-version-check',
+    version: '0.1.0',
+    date: '2026-11-04',
+    title: 'Package updates show only newer versions',
+    summary: 'Older catalog packages no longer appear as updates to newer installed packages.',
+    changes: [
+      {
+        type: 'fixed',
+        title: 'Compare package versions correctly',
+        description:
+          'The package list selects the newest catalog version and offers Update only when it is newer than the installed version. Version numbers, prereleases and build metadata follow semantic version ordering.',
+      },
+    ],
+  },
+  {
     id: '2026-11-04-sql-certificate-package-upgrade',
     version: '0.1.0',
     date: '2026-11-04',

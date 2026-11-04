@@ -3,6 +3,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { api } from '../api';
 import type { PackageCatalog, PackageInstallProgress, PackageState } from '../contracts';
 import { asError } from '../model/document-session';
+import { comparePackageVersions } from '../model/package-versions';
 import { Modal } from './Modal';
 export function Packages({ onClose }: { onClose(): void }) {
   const [packages, setPackages] = useState<PackageState[]>([]);
@@ -65,7 +66,11 @@ export function Packages({ onClose }: { onClose(): void }) {
       setProgress(null);
     }
   }
-  const latest = (id: string) => catalog?.packages.filter((item) => item.id === id).at(-1);
+  const latest = (id: string) =>
+    catalog?.packages
+      .filter((item) => item.id === id)
+      .sort((a, b) => comparePackageVersions(a.version, b.version))
+      .at(-1);
   async function install(directory: boolean) {
     try {
       const path = await open({
@@ -128,7 +133,10 @@ export function Packages({ onClose }: { onClose(): void }) {
               <div className="package-actions">
                 {(() => {
                   const available = latest(item.id);
-                  if (!available || (item.installed && available.version === item.version))
+                  if (
+                    !available ||
+                    (item.installed && comparePackageVersions(available.version, item.version) <= 0)
+                  )
                     return null;
                   return (
                     <button
