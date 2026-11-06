@@ -22,6 +22,21 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-11-06-short-branch-switch-message',
+    version: '0.1.0',
+    date: '2026-11-06',
+    title: 'Shorter branch switch messages',
+    summary: 'Branch switches show a brief confirmation with the branch name once.',
+    changes: [
+      {
+        type: 'improved',
+        title: 'Concise branch confirmations',
+        description:
+          'Switching or creating a branch shows a short confirmation without repeated tracking setup output.',
+      },
+    ],
+  },
+  {
     id: '2026-11-04-sql-certificate-trust-popup',
     version: '0.1.0',
     date: '2026-11-04',

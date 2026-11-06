@@ -287,7 +287,10 @@ export function BranchPopup({
       });
       onChanged({
         branch: result.snapshot.branch,
-        message: result.output.trim() || 'Git operation completed.',
+        message:
+          method === 'git.switchBranch' || method === 'git.createBranch'
+            ? `Switched to '${result.snapshot.branch}'.`
+            : result.output.trim() || 'Git operation completed.',
         conflicts: result.conflicts.length > 0,
       });
       onClose();

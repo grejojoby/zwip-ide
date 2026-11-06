@@ -134,7 +134,7 @@ describe('branch popup', () => {
     await waitFor(() =>
       expect(onChanged).toHaveBeenCalledWith({
         branch: 'feature',
-        message: 'Switched',
+        message: "Switched to 'feature'.",
         conflicts: false,
       }),
     );
@@ -144,12 +144,24 @@ describe('branch popup', () => {
     });
   });
   it('checks out remote branches as tracking branches and offers no delete for them', async () => {
-    await open();
+    mutation.mockResolvedValue({
+      snapshot: { branch: 'topic' },
+      output: "Switched to a new branch 'topic'\nbranch 'topic' set up to track 'origin/topic'.",
+      conflicts: [],
+    });
+    const onChanged = await open();
     fireEvent.click(screen.getByText('origin/topic'));
     expect(screen.queryByRole('menuitem', { name: 'Delete' })).toBeNull();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Checkout' }));
     await waitFor(() =>
       expect(calls.at(-1)?.params).toMatchObject({ branch: 'origin/topic', remote: true }),
+    );
+    await waitFor(() =>
+      expect(onChanged).toHaveBeenCalledWith({
+        branch: 'topic',
+        message: "Switched to 'topic'.",
+        conflicts: false,
+      }),
     );
   });
   it('requires confirmation before merging and labels it with both branches', async () => {
@@ -170,7 +182,12 @@ describe('branch popup', () => {
     expect(screen.getByText(/1 commit only in feature/)).toBeTruthy();
   });
   it('creates a new branch from the first row', async () => {
-    await open();
+    mutation.mockResolvedValue({
+      snapshot: { branch: 'topic-2' },
+      output: "Switched to a new branch 'topic-2'",
+      conflicts: [],
+    });
+    const onChanged = await open();
     fireEvent.click(screen.getByRole('option', { name: '+ New Branch' }));
     fireEvent.change(screen.getByLabelText('Branch name'), { target: { value: 'topic-2' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create and switch' }));
@@ -178,6 +195,13 @@ describe('branch popup', () => {
       expect(calls.at(-1)).toMatchObject({
         method: 'git.createBranch',
         params: { name: 'topic-2' },
+      }),
+    );
+    await waitFor(() =>
+      expect(onChanged).toHaveBeenCalledWith({
+        branch: 'topic-2',
+        message: "Switched to 'topic-2'.",
+        conflicts: false,
       }),
     );
   });
