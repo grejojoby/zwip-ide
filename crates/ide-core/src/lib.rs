@@ -4,6 +4,7 @@ mod edits;
 mod files;
 mod git;
 mod intellij_import;
+mod package_credentials;
 mod packages;
 mod query_archive;
 mod query_console;
@@ -709,6 +710,15 @@ impl Core {
                 let workspace = self.current()?;
                 let package = string(&params, "packageId")?;
                 let mut args = params["params"].clone();
+                if !args.is_object() {
+                    return Err("Tool parameters must be an object".into());
+                }
+                if let Some(id) = params.get("credentialId") {
+                    let id = id.as_str().ok_or("Invalid package credential identity")?;
+                    if let Some(secret) = package_credentials::get(package, &workspace.root, id)? {
+                        args["credential"] = json!(secret);
+                    }
+                }
                 if let Some(id) = args["connectionId"].as_str() {
                     let config = self
                         .connections
@@ -735,6 +745,31 @@ impl Core {
                 )
             }
             "package.list" => self.packages.lock().map_err(|e| e.to_string())?.list(),
+            "package.credentialSet" => {
+                let workspace = self.current()?;
+                if params["workspaceRoot"].as_str() != Some(&workspace.root) {
+                    return Err("Workspace changed before saving the package credential".into());
+                }
+                package_credentials::set(
+                    string(&params, "packageId")?,
+                    &workspace.root,
+                    string(&params, "id")?,
+                    string(&params, "secret")?,
+                )?;
+                Ok(Value::Null)
+            }
+            "package.credentialDelete" => {
+                let workspace = self.current()?;
+                if params["workspaceRoot"].as_str() != Some(&workspace.root) {
+                    return Err("Workspace changed before removing the package credential".into());
+                }
+                package_credentials::delete(
+                    string(&params, "packageId")?,
+                    &workspace.root,
+                    string(&params, "id")?,
+                )?;
+                Ok(Value::Null)
+            }
             "package.syntax" => self
                 .packages
                 .lock()

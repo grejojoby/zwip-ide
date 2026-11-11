@@ -495,6 +495,16 @@ impl PackageHost {
             ("redis", "Redis", "Key and value browsing"),
             ("http", "HTTP client", "Request files and responses"),
             (
+                "deployment",
+                "SFTP Deployment",
+                "Mapped file uploads, remote browsing and upload on save",
+            ),
+            (
+                "live-server",
+                "Live Server",
+                "Local static web server with automatic browser reload on save",
+            ),
+            (
                 "make",
                 "Makefile",
                 "Makefile highlighting and IntelliJ Makefile run configurations",

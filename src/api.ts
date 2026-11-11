@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { notifyDeploymentSave } from './model/deployment-saves';
 import type {
   Changelist,
   ChangelistSelection,
@@ -64,7 +65,19 @@ export const api = {
     method: string,
     params: Record<string, unknown> = {},
     synchronizeDocuments = false,
-  ) => request<T>('tool.request', { packageId, method, params, synchronizeDocuments }),
+    credentialId?: string,
+  ) =>
+    request<T>('tool.request', {
+      packageId,
+      method,
+      params,
+      synchronizeDocuments,
+      ...(credentialId ? { credentialId } : {}),
+    }),
+  setPackageCredential: (packageId: string, id: string, secret: string, workspaceRoot: string) =>
+    request<null>('package.credentialSet', { packageId, id, secret, workspaceRoot }),
+  deletePackageCredential: (packageId: string, id: string, workspaceRoot: string) =>
+    request<null>('package.credentialDelete', { packageId, id, workspaceRoot }),
   connections: () => request<import('./contracts').Connection[]>('connection.list'),
   saveConnection: (connection: import('./contracts').Connection, password?: string) =>
     request<import('./contracts').Connection[]>('connection.save', { ...connection, password }),
@@ -133,7 +146,10 @@ export const api = {
   changeDocument: (path: string, revision: number, changes: TextDelta[]) =>
     request<DocumentAck>('document.change', { path, revision, changes }),
   saveDocument: (path: string, revision: number) =>
-    request<DocumentSnapshot>('document.save', { path, revision }),
+    request<DocumentSnapshot>('document.save', { path, revision }).then((saved) => {
+      void notifyDeploymentSave(saved);
+      return saved;
+    }),
   history: (path: string) => request<HistoryEntry[]>('document.history', { path }),
   search: (query: string, directory?: string) =>
     request<SearchMatch[]>('workspace.search', { query, directory }),

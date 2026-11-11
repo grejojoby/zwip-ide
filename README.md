@@ -38,10 +38,16 @@ The core is general-purpose. Go, Web and PHP are available language packages, wi
 | **SQL**             | SQL Server, MySQL, PostgreSQL and SQLite; paged queries, reviewed row edits, and SQL Server procedure details            |
 | **Redis**           | Read-only incremental key scans, typed values and TTL inspection                                                         |
 | **HTTP**            | Requests, environments, response inspection and cancellation                                                             |
+| **Live Server**     | Local static web server with browser reload after saved changes; no Web package required                                 |
+| **SFTP Deployment** | Saved servers, path mappings, exclusions, remote browsing, upload previews and opt-in upload after IDE saves             |
 
 Packages are installed and enabled separately. Language workers start on demand; building the app does not enable them automatically. See the [provider contracts and limitations](docs/protocol.md).
 
 See the [SQL Server guide](docs/sql-server.md) for connection settings, selected-query execution, and stored procedure documentation.
+
+See the [Live Server guide](docs/live-server.md) to install the optional static preview server and use its start/stop controls.
+
+See the [SFTP deployment guide](docs/sftp-deployment.md) for connection setup, reviewed uploads, automatic upload and supported scope.
 
 ## Build and run
 

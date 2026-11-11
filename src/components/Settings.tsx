@@ -36,6 +36,7 @@ export function Settings({
   onTheme,
   onSave,
   onClose,
+  onDeployment,
 }: {
   shortcuts: Shortcuts;
   history: HistoryPreferences;
@@ -51,6 +52,7 @@ export function Settings({
   onTheme(dark: boolean): void;
   onSave(shortcuts: Shortcuts, history: HistoryPreferences): Promise<void>;
   onClose(): void;
+  onDeployment?(): void;
 }) {
   const [draft, setDraft] = useState(shortcuts);
   const [retentionDays, setRetentionDays] = useState(history.retentionDays);
@@ -149,6 +151,18 @@ export function Settings({
         >
           <div className="modal-body settings-body">
             <CommandLineTool />
+            {onDeployment && (
+              <div className="settings-section">
+                <h3>SFTP deployment</h3>
+                <p className="muted">
+                  Manage optional SFTP servers, path mappings, exclusions and upload-on-save
+                  settings.
+                </p>
+                <button type="button" disabled={busy} onClick={onDeployment}>
+                  Configure deployment…
+                </button>
+              </div>
+            )}
             <div className="settings-section">
               <h3>Bring your IntelliJ settings</h3>
               <p className="muted">

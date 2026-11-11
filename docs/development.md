@@ -22,7 +22,7 @@ npm run dev
 npm run build:packages
 ```
 
-This writes the Go, Web, React/Next, SQL, Redis, HTTP and Makefile package directories under `dist/packages/`. In the app's Packages dialog, choose **Install directory…**, select a generated directory, then enable it. React/Next is a declarative extension requiring Web; install and enable Web first. Makefile is a declarative package with no process: it adds Makefile highlighting and lets the IntelliJ importer translate Makefile run configurations. Installation and activation are separate, and language workers start on demand. The application does not upgrade or rewrite your workspace's Go modules or TypeScript dependencies.
+This writes the Go, Web, PHP, React/Next, SQL, Redis, HTTP, Live Server, SFTP Deployment and Makefile package directories under `dist/packages/`. In the app's Packages dialog, choose **Install directory…**, select a generated directory, then enable it. React/Next is a declarative extension requiring Web; install and enable Web first. Makefile is a declarative package with no process: it adds Makefile highlighting and lets the IntelliJ importer translate Makefile run configurations. [Live Server](live-server.md) is an independent static preview server with browser reload on save. Installation and activation are separate, and workers start on demand. The application does not upgrade or rewrite your workspace's Go modules or TypeScript dependencies.
 
 For local ZIP installation:
 

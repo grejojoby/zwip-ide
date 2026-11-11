@@ -58,3 +58,29 @@ fn package_install_rejects_traversal_before_launch() {
         .iter()
         .all(|p| p["installed"] == false));
 }
+
+#[test]
+fn package_credential_writes_reject_stale_workspace_before_keychain_access() {
+    let root = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let core = Core::new(data.path().to_owned()).unwrap();
+    core.request("workspace.open", json!({"root":root.path()}))
+        .unwrap();
+    for method in ["package.credentialSet", "package.credentialDelete"] {
+        let error = core.request(method, json!({"packageId":"deployment","workspaceRoot":"/stale-workspace","id":"disposable-test-id","secret":"must-not-be-stored"})).unwrap_err();
+        assert!(error.contains("Workspace changed"), "{error}");
+    }
+    assert!(core
+        .request(
+            "package.credentialGet",
+            json!({"packageId":"deployment","id":"disposable-test-id"})
+        )
+        .is_err());
+    let error = core
+        .request(
+            "tool.request",
+            json!({"packageId":"deployment","method":"settings.get","params":[]}),
+        )
+        .unwrap_err();
+    assert!(error.contains("must be an object"), "{error}");
+}

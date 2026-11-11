@@ -7,6 +7,7 @@ import { closeCompletion } from '@codemirror/autocomplete';
 import { openSearchPanel } from '@codemirror/search';
 import { EditorState } from '@codemirror/state';
 import { api, newWindow, request } from './api';
+import { useDeploymentAutoUpload } from './model/use-deployment-auto-upload';
 import type {
   Connection,
   EditorOperation,
@@ -42,6 +43,12 @@ const DatabasePanel = lazy(() =>
 );
 const HttpPanel = lazy(() =>
   import('./components/tools/HttpPanel').then((module) => ({ default: module.HttpPanel })),
+);
+const LiveServer = lazy(() =>
+  import('./components/LiveServer').then((module) => ({ default: module.LiveServer })),
+);
+const Deployment = lazy(() =>
+  import('./components/deployment/Deployment').then((module) => ({ default: module.Deployment })),
 );
 const TerminalPanel = lazy(() =>
   import('./components/TerminalPanel').then((module) => ({ default: module.TerminalPanel })),
@@ -524,6 +531,8 @@ function WorkspaceApp() {
   const [globalPreferencesReady, setGlobalPreferencesReady] = useState(false);
   const [hydratedWorkspace, setHydratedWorkspace] = useState('');
   const [showSettings, setShowSettings] = useState(false);
+  const [showLiveServer, setShowLiveServer] = useState(false);
+  const [deploymentSelection, setDeploymentSelection] = useState<string[] | null>(null);
   const [showRecovery, setShowRecovery] = useState(false);
   const [showContexts, setShowContexts] = useState(false);
   const [dark, setDark] = useState(true);
@@ -556,6 +565,7 @@ function WorkspaceApp() {
   }, [gitRemote]);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('Ready');
+  useDeploymentAutoUpload(workspace?.root, workspace?.generation, setStatus);
   const [opening, setOpening] = useState(false);
   const scanProgress = useScanProgress(opening);
   const scannedFiles = scanProgress?.files ?? null;
@@ -1111,7 +1121,9 @@ function WorkspaceApp() {
   const fileActions = useRef<FileActionsHandle>(null);
   async function projectFileAction(action: ProjectAction, path: string, directory: boolean) {
     try {
-      if (action === 'search') {
+      if (action === 'deploy') {
+        setDeploymentSelection([path]);
+      } else if (action === 'search') {
         const root = workspaceRef.current?.root;
         if (!directory || !root || !path.startsWith(`${root}/`)) return;
         searchId.current += 1;
@@ -2192,6 +2204,24 @@ function WorkspaceApp() {
       run: () => setShowPackages(true),
     },
     {
+      id: 'live-server',
+      label: 'Live Server: start or stop a local web server',
+      disabled: !workspace,
+      run: () => setShowLiveServer(true),
+    },
+    {
+      id: 'deployment',
+      label: 'Deployment: configure SFTP servers and browse remote files',
+      disabled: !workspace,
+      run: () => setDeploymentSelection([]),
+    },
+    {
+      id: 'deployment-upload',
+      label: 'Deployment: preview upload of current file',
+      disabled: !focusPath,
+      run: () => setDeploymentSelection(focusPath ? [focusPath] : []),
+    },
+    {
       id: 'settings',
       label: 'Settings: shortcuts, appearance, and Local History',
       run: () => setShowSettings(true),
@@ -3163,12 +3193,41 @@ function WorkspaceApp() {
             </button>
           )}
           {workspace && <button onClick={() => setShowRecovery(true)}>Recovery</button>}
+          {workspace && <button onClick={() => setShowLiveServer(true)}>Live Server</button>}
+          {workspace && <button onClick={() => setDeploymentSelection([])}>Deployment</button>}
           <button onClick={() => setShowPackages(true)}>Packages</button>
           <button aria-label="What’s new" onClick={() => setShowWhatsNew(true)}>
             What’s new{hasNewUpdates && <span className="update-new">New</span>}
           </button>
         </footer>
         {showWhatsNew && <WhatsNew onClose={closeWhatsNew} />}
+        {showLiveServer && workspace && (
+          <Suspense fallback={null}>
+            <LiveServer
+              key={workspace.root}
+              onClose={() => setShowLiveServer(false)}
+              onPackages={() => {
+                setShowLiveServer(false);
+                setShowPackages(true);
+              }}
+            />
+          </Suspense>
+        )}
+        {deploymentSelection && workspace && (
+          <Suspense fallback={null}>
+            <Deployment
+              key={workspace.root}
+              root={workspace.root}
+              currentPath={focusPath}
+              selection={deploymentSelection}
+              onClose={() => setDeploymentSelection(null)}
+              onPackages={() => {
+                setDeploymentSelection(null);
+                setShowPackages(true);
+              }}
+            />
+          </Suspense>
+        )}
         {showContexts && workspace && (
           <Modal title="Workspace analysis coverage" onClose={() => setShowContexts(false)}>
             <div className="modal-body">
@@ -3360,6 +3419,7 @@ function WorkspaceApp() {
         )}
         {showSettings && (
           <Settings
+            onDeployment={workspace ? () => setDeploymentSelection([]) : undefined}
             shortcuts={shortcuts}
             workspaceRoot={workspace?.root}
             runSession={workspace ? workspaceTasks.session : undefined}

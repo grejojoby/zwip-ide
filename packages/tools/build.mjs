@@ -5,11 +5,20 @@ import { dirname, join, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { packageNotices } from '../../scripts/package-notices.mjs';
 const directory = dirname(fileURLToPath(import.meta.url));
-const names = { sql: 'SQL databases', redis: 'Redis', http: 'HTTP client' };
+const names = {
+  sql: 'SQL databases',
+  redis: 'Redis',
+  http: 'HTTP client',
+  'live-server': 'Live Server',
+  deployment: 'SFTP Deployment',
+};
 export async function buildToolsPackages({
   outDir = resolve(directory, '../../dist/packages'),
+  ids = Object.keys(names),
 } = {}) {
-  for (const [id, name] of Object.entries(names)) {
+  for (const id of ids) {
+    const name = names[id];
+    if (!name) throw new Error(`Unknown tool package: ${id}`);
     const output = join(outDir, id);
     await rm(output, { recursive: true, force: true });
     await mkdir(join(output, 'runtime'), { recursive: true });
@@ -26,7 +35,7 @@ export async function buildToolsPackages({
             bundle: true,
             metafile: true,
             target: 'node24',
-            external: ['pg-native'],
+            external: ['pg-native', 'cpu-features', './crypto/build/Release/sshcrypto.node'],
             logOverride: { 'empty-import-meta': 'silent' },
           })
         ).metafile,
@@ -54,17 +63,26 @@ export async function buildToolsPackages({
           name,
           version: id === 'sql' ? '0.2.1' : '0.1.0',
           coreVersion: '^0.1.0',
-          description: name,
+          description:
+            id === 'deployment'
+              ? 'SFTP file uploads, path mappings, remote browsing and upload on save'
+              : id === 'live-server'
+                ? 'Local static web server with automatic browser reload on save'
+                : name,
           platform: process.platform,
           architecture: process.arch,
           runtime,
           languages: [id],
           capabilities:
-            id === 'sql'
-              ? ['schema', 'query', 'pagedResults', 'rowEditing', 'storedProcedures']
-              : id === 'redis'
-                ? ['keys', 'inspect']
-                : ['requestFiles', 'environments', 'responses'],
+            id === 'deployment'
+              ? ['sftp', 'deploymentMappings', 'uploadPreview', 'uploadOnSave']
+              : id === 'live-server'
+                ? ['staticServer', 'liveReload']
+                : id === 'sql'
+                  ? ['schema', 'query', 'pagedResults', 'rowEditing', 'storedProcedures']
+                  : id === 'redis'
+                    ? ['keys', 'inspect']
+                    : ['requestFiles', 'environments', 'responses'],
           executable: 'runtime/node',
           args: [`${id}-worker.cjs`, ...(id === 'sql' ? ['sql-query.cjs'] : [])],
           checksums,

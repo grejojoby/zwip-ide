@@ -22,6 +22,55 @@ export interface UpdateEntry {
 // Newest first. Keep published IDs stable; see docs/update-history.md.
 export const updates: readonly [UpdateEntry, ...UpdateEntry[]] = [
   {
+    id: '2026-11-10-sftp-deployment-package',
+    version: '0.1.0',
+    date: '2026-11-10',
+    title: 'Optional SFTP deployment',
+    summary:
+      'Configure remote servers and upload saved project files through a reviewed SFTP workflow.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Deployment servers and settings',
+        description:
+          'Install SFTP Deployment separately, then configure password, private-key or SSH-agent connections, verify server fingerprints, map folders, and set exclusions and permissions. Saved passwords and passphrases use macOS Keychain.',
+      },
+      {
+        type: 'added',
+        title: 'Preview, compare and upload',
+        description:
+          'Open Deployment from Settings, the status bar, action search or a Project context menu. Browse remote files, review exact upload destinations, compare text, and monitor or cancel transfers. Changes after preview require review; uncertain publication is reported explicitly. This package uploads files and does not provide remote deletion, downloads or two-way synchronization.',
+      },
+      {
+        type: 'added',
+        title: 'Opt-in upload after saving',
+        description:
+          'Choose a default server and enable upload after successful IDE saves. Only the acknowledged saved bytes are eligible; unsaved buffers, external changes and deletions are not sent automatically. Unexpected remote content pauses automatic upload for manual review.',
+      },
+    ],
+  },
+  {
+    id: '2026-11-10-optional-live-server',
+    version: '0.1.0',
+    date: '2026-11-10',
+    title: 'Optional Live Server',
+    summary: 'Preview static websites locally with automatic browser reload after saving.',
+    changes: [
+      {
+        type: 'added',
+        title: 'Static previews on demand',
+        description:
+          'Install and enable Live Server in Packages, then use Live Server in the status bar or action search to choose a workspace folder and port, open your browser, or stop the server. Saved changes reload HTML pages automatically. It serves static files on localhost; backend code needs its own server.',
+      },
+      {
+        type: 'maintenance',
+        title: 'Independent tool package',
+        description:
+          'Live Server has its own bundled runtime and needs no language package. Disabling the package, changing workspace or closing the window stops its server. The setup guide explains installation and preview limitations.',
+      },
+    ],
+  },
+  {
     id: '2026-11-06-short-branch-switch-message',
     version: '0.1.0',
     date: '2026-11-06',

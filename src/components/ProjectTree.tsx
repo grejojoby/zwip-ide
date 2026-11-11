@@ -16,7 +16,8 @@ export type ProjectAction =
   | 'copyRelativePath'
   | 'reveal'
   | 'refactor'
-  | 'format';
+  | 'format'
+  | 'deploy';
 const ROW = 27;
 export function ProjectTree({
   files,
@@ -172,6 +173,7 @@ export function ProjectTree({
       if (!entry.directory) items.push({ label: 'Open', run: () => onOpen(path) }, 'separator');
       if (entry.directory) items.push(action('Find in folder…', 'search'), 'separator');
       items.push(action('New file…', 'file'), action('New folder…', 'directory'));
+      items.push(action('Upload with SFTP…', 'deploy'));
       if (!entry.directory)
         items.push(
           'separator',

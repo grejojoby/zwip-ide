@@ -98,6 +98,12 @@ The command-line JSONL host has six ordinary request threads, two reserved contr
 
 The package host supplies a generic `ZWIP_PACKAGE_CACHE` directory. Each package owns its tool-specific environment and cache layout; Go configures its own Go toolchain, build cache and gopls cache at bootstrap.
 
+### Package credentials
+
+`package.credentialSet { packageId, workspaceRoot, id, secret }` and `package.credentialDelete { packageId, workspaceRoot, id }` store/remove an opaque credential in macOS Keychain. Package and credential IDs contain only letters, digits and hyphens, with a maximum length of 80. The workspace precondition must match the current canonical workspace. Account identities include the package, workspace and credential ID; existing database credentials use a separate Keychain service. Other platforms return an explicit unsupported error for saving credentials.
+
+There is no frontend credential-read operation. `tool.request` accepts an optional top-level `credentialId`; the host resolves it within the requesting package/current workspace and injects `params.credential` directly into the worker request. Workers must not include secret material in results, persisted metadata or error messages. Package-specific settings and transfer protocols remain in their optional workers. [SFTP Deployment](sftp-deployment.md) uses this contract for passwords/passphrases; SSH-agent and session credentials require no saved secret.
+
 ## Incoming Git updates
 
 `git.status` includes `operation` (`none`, `merge`, `rebase`, `cherryPick`, or `revert`) with its reviewed snapshot, so consumers need not repeat a full status through `git.operationState`. Git mutations still revalidate their fingerprint. Git metadata notifications stay separate from source invalidation; the remote monitor observes ref/HEAD changes independently.
